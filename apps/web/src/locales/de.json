@@ -20,7 +20,7 @@
     },
     "knowledge": {
       "title": "Wissen",
-      "description": "Dokumente, Erinnerungen und feste Anweisungen für Ihren Assistenten."
+      "description": "Dokumente und Erinnerungen für Ihren Assistenten."
     },
     "settings": {
       "title": "Einstellungen",
@@ -108,6 +108,12 @@
     "reviewTitle": "Wartet auf Ihre Prüfung",
     "reviewHint": "Vom Assistenten vorgeschriebene Entwürfe, live aus Ihren Mail-Konten. Von hier wird nie etwas gesendet — Sie prüfen und senden in Ihrer Mail-App.",
     "reviewEmpty": "Keine Entwürfe offen. Wenn Sie oder der Assistent Antworten vorbereiten, erscheinen sie hier.",
+    "reviewEmptyFiltered": "Keine Entwürfe in diesem Zeitraum.",
+    "filterPeriod": "Zeitraum",
+    "filterToday": "Heute",
+    "filter7Days": "Letzte 7 Tage",
+    "filter30Days": "Letzte 30 Tage",
+    "filterAll": "Alle",
     "activityTitle": "Aktivität des Assistenten",
     "activityHint": "Ergebnisse Ihrer geplanten Automatisierungen — eine Morgen-Übersicht landet hier.",
     "activityEmptyTitle": "Noch nichts hier",
@@ -160,10 +166,13 @@
     "cronHint": "<c>0 8 * * 1-5</c> läuft werktags um 08:00 Uhr.",
     "instruction": "Anweisung für den Assistenten",
     "instructionPlaceholder": "Fasse die ungelesenen E-Mails der letzten 24 Stunden zusammen…",
+    "showInActivity": "In der Aktivität des Assistenten anzeigen",
+    "showInActivityHint": "Läufe dieser Automatisierung in der Aktivität des Assistenten auf der Startseite anzeigen.",
     "create": "Erstellen",
     "emptyTitle": "Noch keine Automatisierungen",
     "emptyBody": "Schreiben Sie eine feste Anweisung und wählen Sie, wann sie läuft.",
     "paused": "pausiert",
+    "hiddenFromActivity": "Nicht in Aktivität",
     "runNow": "Jetzt ausführen",
     "delete": "Löschen",
     "deleteConfirm": "Automatisierung \"{{name}}\" löschen?",
@@ -183,8 +192,10 @@
     "deleteConfirm": "Diese Erinnerung löschen?"
   },
   "library": {
-    "copyFolder": "Ordnerpfad kopieren",
-    "folderHint": "Hier abgelegte Dateien werden automatisch indiziert.",
+    "folderLabel": "Pfad des Bibliotheksordners",
+    "changeFolder": "Ordner ändern",
+    "editPath": "Pfad manuell bearbeiten",
+    "folderHint": "Hier abgelegte Dateien werden automatisch indiziert. Klicken Sie auf „Ordner ändern“, um einen anderen zu verwenden.",
     "upload": "Dateien hochladen",
     "rescan": "Erneut scannen",
     "emptyTitle": "Noch keine Dokumente",
@@ -197,18 +208,13 @@
   },
   "knowledge": {
     "sections": {
-      "instructions": {
-        "title": "Anweisungen für den Assistenten",
-        "description": "Eine feste Anweisung, der der Assistent in jeder Unterhaltung folgt — etwa Persona, Tonfall oder feste Regeln.",
-        "placeholder": "Antworte immer kurz. Unterschreibe Entwürfe mit „Beste Grüße, Kadim“."
-      },
       "memory": {
         "title": "Erinnerungen",
-        "description": "Dauerhafte Fakten und Vorlieben, an die sich der Assistent über Unterhaltungen hinweg erinnert — er merkt sich Dinge, wenn Sie „Merke dir …“ sagen, und Sie können sie hier bearbeiten."
+        "description": "Was Ihr Assistent weiß: kurze Fakten, die immer verfügbar sind. Er merkt sich Dinge, wenn Sie „Merke dir …“ sagen, und Sie können sie hier bearbeiten."
       },
       "library": {
         "title": "Dokumente",
-        "description": "Ein lokaler Ordner mit PDF-, Markdown- und Textdateien, die der Assistent durchsuchen und lesen kann. Legen Sie Dateien hinein oder laden Sie sie hoch — alles bleibt auf diesem Computer."
+        "description": "Was Ihr Assistent nachschlagen kann: PDF-, Word-, Markdown-, Text-, CSV- und HTML-Dateien, die er bei Bedarf durchsucht und liest. Legen Sie Dateien in den Ordner oder laden Sie sie hoch — alles bleibt auf diesem Computer."
       }
     }
   },

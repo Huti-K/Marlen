@@ -21,6 +21,7 @@ export const automations = sqliteTable("automations", {
   instruction: text("instruction").notNull(),
   schedule: text("schedule").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  showInActivity: integer("show_in_activity", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull(),
 });
 

@@ -49,7 +49,7 @@ export function AutomationsPanel() {
   const [loading, setLoading] = React.useState(true);
   const [showForm, setShowForm] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", instruction: "" });
+  const [form, setForm] = React.useState({ name: "", instruction: "", showInActivity: true });
   const [preset, setPreset] = React.useState<SchedulePreset>(DEFAULT_PRESET);
   const [cron, setCron] = React.useState("");
   const [advanced, setAdvanced] = React.useState(false);
@@ -80,7 +80,7 @@ export function AutomationsPanel() {
   }, [refresh]);
 
   const resetForm = () => {
-    setForm({ name: "", instruction: "" });
+    setForm({ name: "", instruction: "", showInActivity: true });
     setPreset(DEFAULT_PRESET);
     setCron("");
     setAdvanced(false);
@@ -147,7 +147,11 @@ export function AutomationsPanel() {
   };
 
   const openForEdit = (automation: Automation) => {
-    setForm({ name: automation.name, instruction: automation.instruction });
+    setForm({
+      name: automation.name,
+      instruction: automation.instruction,
+      showInActivity: automation.showInActivity,
+    });
     const parsed = parseCron(automation.schedule);
     if (parsed) {
       setPreset(parsed);
@@ -338,6 +342,19 @@ export function AutomationsPanel() {
             rows={3}
           />
         </FormField>
+
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <Label htmlFor="automation-activity">{t("automations.showInActivity")}</Label>
+            <p className="text-xs text-muted-foreground">{t("automations.showInActivityHint")}</p>
+          </div>
+          <Switch
+            id="automation-activity"
+            checked={form.showInActivity}
+            onCheckedChange={(v) => setForm({ ...form, showInActivity: v })}
+            aria-label={t("automations.showInActivity")}
+          />
+        </div>
       </Dialog>
 
       {loading ? (
@@ -530,6 +547,9 @@ function AutomationCard({
                 {label ?? automation.schedule}
               </Badge>
               {!automation.enabled && <Badge variant="warning">{t("automations.paused")}</Badge>}
+              {!automation.showInActivity && (
+                <Badge variant="muted">{t("automations.hiddenFromActivity")}</Badge>
+              )}
             </div>
             <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
               {automation.instruction}

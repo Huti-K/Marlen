@@ -225,7 +225,7 @@ export function ChatPanel({
   return (
     <div className="flex h-full flex-col gap-3">
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-stable">
         {historyOpen ? (
           <HistoryList activeId={conversationId} onPick={(id) => void openConversation(id)} />
         ) : restoring ? (

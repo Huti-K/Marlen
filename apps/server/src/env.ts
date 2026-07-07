@@ -8,7 +8,7 @@ function optional(name: string): string | undefined {
 export const env = {
   port: Number(optional("PORT") ?? 3001),
   databasePath: optional("DATABASE_PATH") ?? "./data/trailin.db",
-  /** Drop folder for the document library (PDF / Markdown / text). */
+  /** Default drop folder for the document library; a folder saved in the app wins. */
   libraryPath: optional("LIBRARY_PATH") ?? "./data/library",
 
   agentProvider: optional("AGENT_PROVIDER") ?? "anthropic",
@@ -25,5 +25,4 @@ export const env = {
       | "production",
     externalUserId: optional("PIPEDREAM_EXTERNAL_USER_ID") ?? "local-user",
   },
-  encryptionKey: optional("ENCRYPTION_KEY"),
 };

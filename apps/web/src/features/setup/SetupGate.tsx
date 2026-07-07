@@ -77,7 +77,7 @@ export function SetupGate({
   }, [complete, onStatusChanged]);
 
   return (
-    <div className="min-h-dvh overflow-y-auto px-5 py-12 sm:px-8">
+    <div className="min-h-dvh overflow-y-auto scroll-stable px-5 py-12 sm:px-8">
       <div className="mx-auto flex w-full max-w-xl flex-col gap-10">
         <div className="flex flex-col gap-3">
           <img src="/logo.svg" alt="" className="h-9 w-fit object-contain" />

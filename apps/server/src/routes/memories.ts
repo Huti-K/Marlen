@@ -13,8 +13,9 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Body: { content?: string } }>("/api/memories", async (req, reply) => {
     try {
-      const entry = await createMemory(req.body?.content ?? "", "user");
-      await resetSessions();
+      const { entry, created } = await createMemory(req.body?.content ?? "", "user");
+      // A dedup hit returns the existing entry unchanged — no need to reset sessions.
+      if (created) await resetSessions();
       return entry;
     } catch (error) {
       return reply.code(400).send({ error: errorMessage(error) });

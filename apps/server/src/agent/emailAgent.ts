@@ -4,14 +4,14 @@ import { eq } from "drizzle-orm";
 import { LANGUAGE_ENGLISH_NAMES } from "@trailin/shared";
 import { db, schema } from "../db/index.js";
 import { listMemories } from "../db/memories.js";
-import {
-  getAgentInstructionsSetting,
-  getEmailWriteSetting,
-  getLanguageSetting,
-} from "../db/settings.js";
+import { getEmailWriteSetting, getLanguageSetting } from "../db/settings.js";
+import { listDocuments } from "../library/store.js";
 import { modelRegistry, resolveActiveModel } from "../llm/registry.js";
 import { loadEmailTools, type EmailToolset } from "../pipedream/mcp.js";
 import { buildKnowledgeTools } from "./knowledgeTools.js";
+
+/** Library titles listed in the system prompt are capped so it can't grow unbounded. */
+const LIBRARY_TOC_LIMIT = 100;
 
 const SYSTEM_PROMPT = `You are Trailin, a personal email assistant. You have tools for the user's
 connected accounts — email (Gmail / Outlook) and possibly other apps — provided through
@@ -26,14 +26,26 @@ Guidelines:
 - Prefer reading and summarizing over acting. Look things up before you claim them.
 - Never send, reply to, forward or delete an email unless the user's request explicitly asks for it.
   When composing, show the draft content in your answer so the user can see exactly what went out.
-- Keep answers short and skimmable. Use bullet lists for inbox summaries: sender — subject — one-line gist.
+- Keep answers short and skimmable, and let plain prose carry most of it. Your replies render as
+  Markdown, so use it — but only where it genuinely helps the reader: **bold** for the few words
+  that matter, bullet or numbered lists for sets of items (inbox summaries: sender — subject —
+  one-line gist), \`code\` for exact values like email addresses or filenames, and tables only for
+  data that is truly tabular. For a short or single-idea answer, a sentence or two beats a decorated
+  one — skip headings, bold and bullets. Never wrap a whole reply in a list or bold half the words.
 - Timestamps from tools are usually UTC; present them in a human-friendly way.
 - You have a long-term memory: saved entries are listed at the end of this prompt. When the
   user asks you to remember something, or states a lasting fact or preference, save it with
-  memory_save. Don't save one-off task details or things already in memory.
-- The user keeps a local document library (PDFs, notes) for you. Use library_search and
-  library_read to ground answers in those documents — say which document you used. When the
-  user refers to "my documents" or something you can't find in email, check the library.`;
+  memory_save. Don't save one-off task details or things already in memory. When a saved fact
+  changes, update the existing entry with memory_update (using the id shown in brackets)
+  instead of saving a second, contradicting entry. Use memory_delete only when the user asks
+  you to forget something. Memory is for short standing facts only — longer-form knowledge
+  (background on a correspondent, a thread summary, research findings) belongs in the library
+  as a note instead: save it with library_write.
+- The user keeps a local document library (PDFs, notes) for you — titles are listed at the end
+  of this prompt. Check it with library_search whenever a question or task could plausibly be
+  covered by one of those documents, not only when the user says "my documents"; read the full
+  match with library_read and say which document you used. On scheduled automation runs, search
+  the library first if the task relates to any listed document.`;
 
 /** The base prompt plus the Settings rules (scheduled runs rely on them too). */
 async function buildSystemPrompt(): Promise<string> {
@@ -53,16 +65,23 @@ async function buildSystemPrompt(): Promise<string> {
   or their emails are written in. Quoted email text and draft emails may keep their own language.`;
   }
 
-  const instructions = await getAgentInstructionsSetting();
-  if (instructions) {
-    prompt += `\n\nStanding instructions from the user (apply them in every conversation):\n${instructions}`;
-  }
-
   const memories = await listMemories();
   if (memories.length > 0) {
-    prompt += `\n\nLong-term memory (saved earlier; the user manages these in Settings):\n${memories
-      .map((m) => `- ${m.content}`)
+    prompt += `\n\nLong-term memory (saved earlier; the user manages these on the Knowledge page):\n${memories
+      .map((m) => `- [${m.id.slice(0, 8)}] ${m.content}`)
       .join("\n")}`;
+  }
+
+  const indexed = (await listDocuments()).filter(
+    (d) => d.status === "indexed" && d.chunkCount > 0,
+  );
+  if (indexed.length > 0) {
+    const shown = indexed.slice(0, LIBRARY_TOC_LIMIT);
+    const lines = shown.map((d) => `- ${d.title} (${d.ext})`);
+    if (indexed.length > shown.length) {
+      lines.push(`… and ${indexed.length - shown.length} more — use library_list.`);
+    }
+    prompt += `\n\nDocument library (search with library_search, read with library_read):\n${lines.join("\n")}`;
   }
   return prompt;
 }

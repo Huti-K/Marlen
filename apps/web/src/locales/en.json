@@ -20,7 +20,7 @@
     },
     "knowledge": {
       "title": "Knowledge",
-      "description": "Documents, memory and standing instructions for your agent."
+      "description": "Documents and memory for your agent."
     },
     "settings": {
       "title": "Settings",
@@ -108,6 +108,12 @@
     "reviewTitle": "Needs your review",
     "reviewHint": "Drafts the agent pre-wrote, live from your mail accounts. Nothing is ever sent from here — you review and send in your mail app.",
     "reviewEmpty": "No drafts waiting. When you or the agent prepare replies, they show up here.",
+    "reviewEmptyFiltered": "No drafts in this period.",
+    "filterPeriod": "Period",
+    "filterToday": "Today",
+    "filter7Days": "Last 7 days",
+    "filter30Days": "Last 30 days",
+    "filterAll": "All",
     "activityTitle": "Agent activity",
     "activityHint": "Results from your scheduled automations — a morning digest lands here.",
     "activityEmptyTitle": "Nothing here yet",
@@ -160,10 +166,13 @@
     "cronHint": "<c>0 8 * * 1-5</c> runs at 08:00 on weekdays.",
     "instruction": "Instruction for the agent",
     "instructionPlaceholder": "Summarize all unread emails from the last 24 hours…",
+    "showInActivity": "Show in agent activity",
+    "showInActivityHint": "Include this automation's runs in the Home activity feed.",
     "create": "Create",
     "emptyTitle": "No automations yet",
     "emptyBody": "Write a standing instruction and choose when it runs.",
     "paused": "paused",
+    "hiddenFromActivity": "Hidden from activity",
     "runNow": "Run now",
     "delete": "Delete",
     "deleteConfirm": "Delete automation \"{{name}}\"?",
@@ -183,8 +192,10 @@
     "deleteConfirm": "Delete this memory?"
   },
   "library": {
-    "copyFolder": "Copy folder path",
-    "folderHint": "Files dropped here are indexed automatically.",
+    "folderLabel": "Library folder path",
+    "changeFolder": "Change folder",
+    "editPath": "Edit path manually",
+    "folderHint": "Files dropped here are indexed automatically. Click “Change folder” to switch to a different one.",
     "upload": "Upload files",
     "rescan": "Rescan",
     "emptyTitle": "No documents yet",
@@ -197,18 +208,13 @@
   },
   "knowledge": {
     "sections": {
-      "instructions": {
-        "title": "Agent instructions",
-        "description": "A standing instruction the assistant follows in every conversation — persona, tone, or house rules it should always apply.",
-        "placeholder": "Always answer briefly. Sign drafts with \"Best, Kadim\"."
-      },
       "memory": {
         "title": "Memory",
-        "description": "Lasting facts and preferences the assistant remembers across conversations — it saves things when you say \"remember …\", and you can edit them here."
+        "description": "What your agent knows: short facts, always available. It saves them when you say \"remember …\", and you can edit them here."
       },
       "library": {
         "title": "Documents",
-        "description": "A local folder of PDFs, Markdown and text files the assistant can search and read. Drop files in or upload them — everything stays on this computer."
+        "description": "What your agent can look up: PDF, Word, Markdown, text, CSV and HTML files it searches and reads on demand. Drop files into the folder or upload them — everything stays on this computer."
       }
     }
   },

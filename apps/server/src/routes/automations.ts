@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import {
   isValidCron,
@@ -14,6 +14,7 @@ interface AutomationBody {
   instruction: string;
   schedule: string;
   enabled?: boolean;
+  showInActivity?: boolean;
 }
 
 export async function automationRoutes(app: FastifyInstance): Promise<void> {
@@ -35,6 +36,9 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       })
       .from(schema.automationRuns)
       .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId))
+      // Hide runs from automations the user has excluded from the activity feed.
+      // leftJoin → a run whose automation was deleted has NULL columns; keep those.
+      .where(or(isNull(schema.automations.showInActivity), eq(schema.automations.showInActivity, true)))
       .orderBy(desc(schema.automationRuns.startedAt))
       .limit(100);
   });
@@ -53,6 +57,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       instruction: instruction.trim(),
       schedule: schedule.trim(),
       enabled: req.body.enabled ?? true,
+      showInActivity: req.body.showInActivity ?? true,
       createdAt: new Date().toISOString(),
     };
     await db.insert(schema.automations).values(automation);
@@ -73,6 +78,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
         updates.schedule = req.body.schedule.trim();
       }
       if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
+      if (req.body.showInActivity !== undefined) updates.showInActivity = req.body.showInActivity;
       if (Object.keys(updates).length === 0) {
         return reply.code(400).send({ error: "nothing to update" });
       }

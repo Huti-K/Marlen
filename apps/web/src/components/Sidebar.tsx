@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   BookOpen,
   CalendarClock,
@@ -15,34 +16,34 @@ import { cn } from "@/lib/utils";
 
 export type View = "home" | "automations" | "knowledge" | "settings";
 
-const NAV: { id: View; icon: LucideIcon }[] = [
-  { id: "home", icon: Inbox },
-  { id: "automations", icon: CalendarClock },
-  { id: "knowledge", icon: BookOpen },
-  { id: "settings", icon: Settings2 },
+const NAV: { id: View; path: string; icon: LucideIcon }[] = [
+  { id: "home", path: "/", icon: Inbox },
+  { id: "automations", path: "/automations", icon: CalendarClock },
+  { id: "knowledge", path: "/knowledge", icon: BookOpen },
+  { id: "settings", path: "/settings", icon: Settings2 },
 ];
 
 interface SidebarProps {
-  active: View;
-  onSelect: (view: View) => void;
   status: AppStatus | null;
   onClose: () => void;
 }
 
-export function Sidebar({ active, onSelect, status, onClose }: SidebarProps) {
+export function Sidebar({ status, onClose }: SidebarProps) {
   const { t } = useTranslation();
+  const location = useLocation();
   const setupIncomplete = status !== null && !isSetupComplete(status);
 
   return (
     <aside className="flex h-dvh w-64 shrink-0 flex-col bg-sidebar">
       <div className="flex items-center gap-2 px-3 pb-3 pt-4">
-        <button 
-          onClick={() => onSelect("home")} 
+        <Link 
+          to="/" 
+          onClick={onClose}
           className="shrink-0"
           title="Go to Homepage"
         >
           <img src="/logo.svg" alt="Trailin" className="h-8 w-auto object-contain transition-opacity hover:opacity-80" />
-        </button>
+        </Link>
         <Button
           variant="ghost"
           size="icon"
@@ -55,12 +56,13 @@ export function Sidebar({ active, onSelect, status, onClose }: SidebarProps) {
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 px-3 pt-4">
-        {NAV.map(({ id, icon: Icon }) => {
-          const isActive = active === id;
+        {NAV.map(({ id, path, icon: Icon }) => {
+          const isActive = location.pathname === path || (path !== "/" && location.pathname.startsWith(path));
           return (
-            <button
+            <Link
               key={id}
-              onClick={() => onSelect(id)}
+              to={path}
+              onClick={onClose}
               aria-current={isActive ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
@@ -71,20 +73,21 @@ export function Sidebar({ active, onSelect, status, onClose }: SidebarProps) {
             >
               <Icon className="h-4 w-4 shrink-0" />
               {t(`views.${id}.title`)}
-            </button>
+            </Link>
           );
         })}
       </nav>
 
       {setupIncomplete && (
         <div className="mt-auto p-3">
-          <button
-            onClick={() => onSelect("settings")}
+          <Link
+            to="/settings"
+            onClick={onClose}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-warning transition-colors hover:bg-secondary"
           >
             <TriangleAlert className="h-4 w-4 shrink-0" />
             {t("sidebar.finishSetup")}
-          </button>
+          </Link>
         </div>
       )}
     </aside>

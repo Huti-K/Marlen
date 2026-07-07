@@ -16,7 +16,7 @@ import { draftRoutes } from "./routes/drafts.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { libraryRoutes } from "./routes/library.js";
 import { startScheduler } from "./automations/scheduler.js";
-import { startLibrary, libraryDir } from "./library/ingest.js";
+import { startLibrary, getLibraryDir } from "./library/ingest.js";
 import { activeModelConfigured } from "./llm/registry.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
 
   // Index the document drop folder and keep watching it.
   await startLibrary((message) => app.log.info(message));
-  app.log.info(`Document library folder: ${libraryDir}`);
+  app.log.info(`Document library folder: ${getLibraryDir()}`);
 
   if (!(await activeModelConfigured())) {
     app.log.warn(

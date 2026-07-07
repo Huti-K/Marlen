@@ -32,6 +32,7 @@ sqlite.exec(`
     instruction TEXT NOT NULL,
     schedule TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
+    show_in_activity INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS automation_runs (
@@ -80,6 +81,12 @@ export const db = drizzle(sqlite, { schema });
 
 try {
   sqlite.exec("ALTER TABLE conversations ADD COLUMN type TEXT NOT NULL DEFAULT 'chat'");
+} catch (e) {
+  // Ignore, column already exists
+}
+
+try {
+  sqlite.exec("ALTER TABLE automations ADD COLUMN show_in_activity INTEGER NOT NULL DEFAULT 1");
 } catch (e) {
   // Ignore, column already exists
 }

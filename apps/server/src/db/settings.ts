@@ -1,21 +1,19 @@
 import { eq } from "drizzle-orm";
 import { isLanguage, type Language } from "@trailin/shared";
 import { db, schema } from "./index.js";
-import { encrypt, decrypt } from "./crypto.js";
 
 /** Simple key/value settings persisted in SQLite. */
 
 export async function getSetting(key: string): Promise<string | undefined> {
   const [row] = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
-  return row?.value ? decrypt(row.value) : undefined;
+  return row?.value;
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  const encryptedValue = encrypt(value);
   await db
     .insert(schema.settings)
-    .values({ key, value: encryptedValue })
-    .onConflictDoUpdate({ target: schema.settings.key, set: { value: encryptedValue } });
+    .values({ key, value })
+    .onConflictDoUpdate({ target: schema.settings.key, set: { value } });
 }
 
 export async function deleteSetting(key: string): Promise<void> {
@@ -40,11 +38,11 @@ export async function getEmailWriteSetting(): Promise<boolean> {
   return (await getSetting(EMAIL_WRITE_SETTING_KEY)) === "true";
 }
 
-export const AGENT_INSTRUCTIONS_SETTING_KEY = "agent.customInstructions";
+export const LIBRARY_FOLDER_SETTING_KEY = "library.folder";
 
-/** Standing instructions the agent follows in every conversation; "" until the user sets one. */
-export async function getAgentInstructionsSetting(): Promise<string> {
-  return (await getSetting(AGENT_INSTRUCTIONS_SETTING_KEY)) ?? "";
+/** The user-chosen library drop folder, or null to fall back to the LIBRARY_PATH env default. */
+export async function getLibraryFolderSetting(): Promise<string | null> {
+  return (await getSetting(LIBRARY_FOLDER_SETTING_KEY)) ?? null;
 }
 
 export const ACCOUNT_COLORS_SETTING_KEY = "account.colors";

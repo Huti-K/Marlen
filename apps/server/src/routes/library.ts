@@ -1,6 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import type { LibraryStatus } from "@trailin/shared";
-import { deleteDocument, libraryDir, saveUpload, scanLibrary } from "../library/ingest.js";
+import {
+  deleteDocument,
+  getLibraryDir,
+  saveUpload,
+  scanLibrary,
+  setLibraryFolder,
+} from "../library/ingest.js";
+import { pickFolder } from "../library/pickFolder.js";
 import { listDocuments } from "../library/store.js";
 import { errorMessage } from "../util.js";
 
@@ -17,11 +24,34 @@ export async function libraryRoutes(app: FastifyInstance): Promise<void> {
   );
 
   const status = async (): Promise<LibraryStatus> => ({
-    folder: libraryDir,
+    folder: getLibraryDir(),
     documents: await listDocuments(),
   });
 
   app.get("/api/library", async () => status());
+
+  app.put<{ Body: { folder?: string } }>("/api/library/folder", async (req, reply) => {
+    try {
+      await setLibraryFolder(req.body?.folder ?? "");
+    } catch (error) {
+      return reply.code(400).send({ error: errorMessage(error) });
+    }
+    return status();
+  });
+
+  // Opens the OS's native folder-picker dialog on the server's machine and,
+  // unless the user cancels, applies the chosen folder — same validation as
+  // the manual PUT above, since setLibraryFolder does the actual switching.
+  app.post("/api/library/folder/pick", async (req, reply) => {
+    try {
+      const picked = await pickFolder();
+      if ("canceled" in picked) return { canceled: true };
+      await setLibraryFolder(picked.path);
+    } catch (error) {
+      return reply.code(400).send({ error: errorMessage(error) });
+    }
+    return status();
+  });
 
   app.post("/api/library/scan", async () => {
     await scanLibrary();

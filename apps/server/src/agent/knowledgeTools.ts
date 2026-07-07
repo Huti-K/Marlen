@@ -1,6 +1,8 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { createMemory } from "../db/memories.js";
-import { libraryDir } from "../library/ingest.js";
+import { formatFileSize } from "@trailin/shared";
+import { createMemory, deleteMemory, updateMemory } from "../db/memories.js";
+import { getLibraryDir, saveNote, SUPPORTED_FORMATS } from "../library/ingest.js";
+import { errorMessage } from "../util.js";
 import {
   getDocument,
   listDocuments,
@@ -22,21 +24,16 @@ const text = (value: string) => ({
   details: undefined,
 });
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
 const memorySave: AgentTool = {
   name: "memory_save",
   label: "Save to memory",
   description:
-    `Save one lasting fact to long-term memory. Saved entries appear in your system prompt ` +
-    `in every future conversation. Use it when the user asks you to remember something or ` +
-    `states a stable fact or preference (people, sign-offs, recurring context). Do not save ` +
-    `one-off task details, whole emails, or things already in memory. The user can review ` +
-    `and edit memory under Settings.`,
+    `Save one short, standing fact to long-term memory — a single self-contained sentence ` +
+    `(people, sign-offs, recurring context). Saved entries appear in your system prompt in ` +
+    `every future conversation, so keep them terse. Do not save one-off task details, whole ` +
+    `emails, or things already in memory. Anything longer-form or document-shaped — ` +
+    `correspondent background, a thread summary, research findings — belongs in the library ` +
+    `instead: use library_write. The user can review and edit memory on the Knowledge page.`,
   parameters: {
     type: "object",
     properties: {
@@ -49,8 +46,70 @@ const memorySave: AgentTool = {
   } as AgentTool["parameters"],
   execute: async (_id, params) => {
     const { content } = params as { content: string };
-    const entry = await createMemory(content, "agent");
-    return text(`Saved to long-term memory: ${entry.content}`);
+    const { entry, created } = await createMemory(content, "agent");
+    return text(
+      created
+        ? `Saved to long-term memory: ${entry.content}`
+        : `Already in memory: ${entry.content}`,
+    );
+  },
+};
+
+const memoryUpdate: AgentTool = {
+  name: "memory_update",
+  label: "Update memory",
+  description:
+    `Update one long-term memory entry when a fact has changed or the user corrects it — ` +
+    `instead of saving a second, contradicting entry. Use the id shown in brackets in the ` +
+    `Long-term memory list in your system prompt.`,
+  parameters: {
+    type: "object",
+    properties: {
+      id: {
+        type: "string",
+        description: "The memory id (the bracketed id from the Long-term memory list).",
+      },
+      content: {
+        type: "string",
+        description: "The corrected fact, as one short self-contained sentence.",
+      },
+    },
+    required: ["id", "content"],
+  } as AgentTool["parameters"],
+  execute: async (_id, params) => {
+    const { id, content } = params as { id: string; content: string };
+    const entry = await updateMemory(id, content);
+    if (!entry) {
+      return text(`No memory found for id ${id} — use the id from the Long-term memory list.`);
+    }
+    return text(`Memory updated: ${entry.content}`);
+  },
+};
+
+const memoryDelete: AgentTool = {
+  name: "memory_delete",
+  label: "Delete memory",
+  description:
+    `Delete one long-term memory entry. Use only when the user asks to forget something or a ` +
+    `fact is clearly obsolete — not to make room for an update, use memory_update for that. ` +
+    `Use the id shown in brackets in the Long-term memory list in your system prompt.`,
+  parameters: {
+    type: "object",
+    properties: {
+      id: {
+        type: "string",
+        description: "The memory id (the bracketed id from the Long-term memory list).",
+      },
+    },
+    required: ["id"],
+  } as AgentTool["parameters"],
+  execute: async (_id, params) => {
+    const { id } = params as { id: string };
+    const deleted = await deleteMemory(id);
+    if (!deleted) {
+      return text(`No memory found for id ${id} — use the id from the Long-term memory list.`);
+    }
+    return text(`Memory deleted.`);
   },
 };
 
@@ -65,8 +124,8 @@ const libraryList: AgentTool = {
     const documents = await listDocuments();
     if (documents.length === 0) {
       return text(
-        `The library is empty. The user can drop PDF, Markdown or text files into ` +
-          `${libraryDir} (or upload them under Settings → Documents).`,
+        `The library is empty. The user can drop ${SUPPORTED_FORMATS} files into ` +
+          `${getLibraryDir()} (or upload them on the Knowledge page).`,
       );
     }
     const lines = documents.map((d) => {
@@ -74,7 +133,7 @@ const libraryList: AgentTool = {
         d.status === "error"
           ? ` — indexing failed: ${d.error ?? "unknown error"}`
           : `, ${Math.max(1, Math.ceil(d.chunkCount / PART_CHUNKS))} part(s)`;
-      return `- ${d.title} (${d.ext}, ${formatSize(d.size)}${state}) — id: ${d.id}`;
+      return `- ${d.title} (${d.ext}, ${formatFileSize(d.size)}${state}) — id: ${d.id}`;
     });
     return text(lines.join("\n"));
   },
@@ -143,6 +202,52 @@ const libraryRead: AgentTool = {
   },
 };
 
+const libraryWrite: AgentTool = {
+  name: "library_write",
+  label: "Write library note",
+  description:
+    `Save longer-form knowledge as a markdown note in the user's library — background on a ` +
+    `correspondent, a thread summary, research findings, anything too long or document-shaped ` +
+    `for memory. Writing the same title again overwrites the note, so use that to update it. ` +
+    `Notes are indexed like any library document: find them later with library_search or read ` +
+    `them with library_read. The user sees the note on the Knowledge page and can edit or ` +
+    `delete it there. Not for one-sentence standing facts — use memory_save for those.`,
+  parameters: {
+    type: "object",
+    properties: {
+      title: {
+        type: "string",
+        description:
+          "A short note title — becomes the file name (reuse an existing note's title to overwrite it).",
+      },
+      content: {
+        type: "string",
+        description: "The note body, as markdown.",
+      },
+    },
+    required: ["title", "content"],
+  } as AgentTool["parameters"],
+  execute: async (_id, params) => {
+    const { title, content } = params as { title: string; content: string };
+    try {
+      const path = await saveNote(title, content);
+      return text(
+        `Saved note to the library at ${path} — it's now searchable with library_search.`,
+      );
+    } catch (error) {
+      return text(errorMessage(error));
+    }
+  },
+};
+
 export function buildKnowledgeTools(): AgentTool[] {
-  return [memorySave, libraryList, librarySearch, libraryRead];
+  return [
+    memorySave,
+    memoryUpdate,
+    memoryDelete,
+    libraryList,
+    librarySearch,
+    libraryRead,
+    libraryWrite,
+  ];
 }

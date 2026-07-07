@@ -159,7 +159,7 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
       </ListRow>
 
       {status.configured && (
-        <div className="animate-in-up" style={{ animationDelay: "75ms" }}>
+        <div className="animate-in-up pt-6 mt-2" style={{ animationDelay: "75ms" }}>
           <Accounts onChanged={onStatusChanged} />
         </div>
       )}

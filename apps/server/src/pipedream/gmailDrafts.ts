@@ -10,6 +10,23 @@ import { proxyRequest } from "./connect.js";
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
+/**
+ * Deep link that opens a specific draft in the Gmail web UI.
+ *
+ * `authuser=<email>` is what makes this survive multiple signed-in Google
+ * accounts: Gmail resolves it to the right account regardless of login order.
+ * We deliberately avoid the `/mail/u/<N>/` path form — `N` is a per-browser
+ * login-order index (not stable), and putting the email there (URL-encoded,
+ * so `@` becomes `%40`) 404s when more than one account is signed in.
+ * `authuser` must sit before the `#` fragment or Gmail's server never sees it.
+ */
+function gmailDraftUrl(accountName: string, messageId: string): string {
+  const auth = accountName.includes("@")
+    ? `?authuser=${encodeURIComponent(accountName)}`
+    : "";
+  return `https://mail.google.com/mail/${auth}#drafts?compose=${messageId}`;
+}
+
 interface DraftsListResponse {
   drafts?: { id: string; message: { id: string; threadId: string } }[];
 }
@@ -31,32 +48,39 @@ export async function listGmailDrafts(
     params: { maxResults: String(limit) },
   })) as DraftsListResponse;
 
-  const drafts: EmailDraft[] = [];
-  for (const entry of list.drafts ?? []) {
-    try {
-      const full = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts/${entry.id}`, {
-        params: { format: "metadata" },
-      })) as DraftGetResponse;
-      const headers = full.message?.payload?.headers ?? [];
-      const header = (name: string) =>
-        headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value;
-      drafts.push({
-        id: entry.id,
-        messageId: entry.message.id,
-        threadId: entry.message.threadId,
-        subject: header("Subject") ?? "",
-        to: header("To") ?? "",
-        date: full.message?.internalDate
-          ? new Date(Number(full.message.internalDate)).toISOString()
-          : "",
-        webUrl: `https://mail.google.com/mail/u/${encodeURIComponent(account.name)}/#drafts?compose=${entry.message.id}`,
-      });
-    } catch {
-      // Skip a single unreadable draft rather than failing the whole list.
-    }
-  }
+  // Fetch each draft's metadata in parallel — these are independent Gmail
+  // round-trips, so serializing them made the Home page wait on the sum of
+  // all of them instead of the slowest one.
+  const settled = await Promise.all(
+    (list.drafts ?? []).map(async (entry): Promise<EmailDraft | null> => {
+      try {
+        const full = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts/${entry.id}`, {
+          params: { format: "metadata" },
+        })) as DraftGetResponse;
+        const headers = full.message?.payload?.headers ?? [];
+        const header = (name: string) =>
+          headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value;
+        return {
+          id: entry.id,
+          messageId: entry.message.id,
+          threadId: entry.message.threadId,
+          subject: header("Subject") ?? "",
+          to: header("To") ?? "",
+          date: full.message?.internalDate
+            ? new Date(Number(full.message.internalDate)).toISOString()
+            : "",
+          webUrl: gmailDraftUrl(account.name, entry.message.id),
+        };
+      } catch {
+        // Skip a single unreadable draft rather than failing the whole list.
+        return null;
+      }
+    }),
+  );
   // Newest first.
-  return drafts.sort((a, b) => b.date.localeCompare(a.date));
+  return settled
+    .filter((d): d is EmailDraft => d !== null)
+    .sort((a, b) => b.date.localeCompare(a.date));
 }
 
 interface MessagePart {

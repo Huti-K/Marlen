@@ -13,6 +13,7 @@ import { rememberLanguage } from "@/lib/i18n";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
+import { useNavLayout, type NavLayout } from "@/lib/useNavLayout";
 import { ConnectionsPanel } from "@/features/connections/ConnectionsPanel";
 import { Providers } from "@/features/settings/Providers";
 import { toast } from "@/lib/toast";
@@ -69,6 +70,35 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
       >
         <LanguagePicker />
       </Section>
+
+      <Section
+        index={3}
+        layout="row"
+        title="Navigation Style"
+        description="Choose between a left sidebar or a floating bottom dock"
+      >
+        <NavLayoutPicker />
+      </Section>
+    </div>
+  );
+}
+
+function NavLayoutPicker() {
+  const [layout, setLayout] = useNavLayout();
+
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1.5">
+      <Select
+        id="settings-nav-layout"
+        aria-label="Navigation Layout"
+        className="w-40"
+        value={layout}
+        onChange={(value) => setLayout(value as NavLayout)}
+        options={[
+          { value: "dock", label: "Bottom Dock" },
+          { value: "sidebar", label: "Left Sidebar" }
+        ]}
+      />
     </div>
   );
 }

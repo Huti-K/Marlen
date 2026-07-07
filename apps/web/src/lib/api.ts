@@ -61,10 +61,6 @@ export const api = {
   setEmailWrite: (allowWrite: boolean) =>
     http<{ allowWrite: boolean }>("PUT", "/api/settings/email-write", { allowWrite }),
 
-  instructions: () => get<{ instructions: string }>("/api/settings/instructions"),
-  setInstructions: (instructions: string) =>
-    http<{ instructions: string }>("PUT", "/api/settings/instructions", { instructions }),
-
   accountColors: () => get<{ colors: AccountColor[] }>("/api/settings/account-colors"),
   setAccountColors: (colors: AccountColor[]) =>
     http<{ colors: AccountColor[] }>("PUT", "/api/settings/account-colors", { colors }),
@@ -110,7 +106,7 @@ export const api = {
     get<ChatMessage[]>(`/api/conversations/${encodeURIComponent(id)}/messages`),
 
   automations: () => get<Automation[]>("/api/automations"),
-  createAutomation: (body: { name: string; instruction: string; schedule: string }) =>
+  createAutomation: (body: { name: string; instruction: string; schedule: string; showInActivity?: boolean }) =>
     http<Automation>("POST", "/api/automations", body),
   updateAutomation: (id: string, body: Partial<Automation>) =>
     http<Automation>("PATCH", `/api/automations/${id}`, body),
@@ -126,6 +122,12 @@ export const api = {
 
   library: () => get<LibraryStatus>("/api/library"),
   libraryScan: () => http<LibraryStatus>("POST", "/api/library/scan"),
+  setLibraryFolder: (folder: string) =>
+    http<LibraryStatus>("PUT", "/api/library/folder", { folder }),
+  // Opens the OS's native folder dialog on the server's machine; the request
+  // stays open until the user picks (fresh status) or dismisses the dialog.
+  pickLibraryFolder: () =>
+    http<LibraryStatus | { canceled: true }>("POST", "/api/library/folder/pick"),
   deleteLibraryDocument: (id: string) =>
     http<LibraryStatus>("DELETE", `/api/library/documents/${id}`),
   // Raw file body (not JSON), so this bypasses the `http` helper.

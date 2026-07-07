@@ -13,7 +13,7 @@
   Ink is the brand (near-black CTAs). Slate blue is the single spot accent.
   No borders at rest anywhere; the only stroke is the a11y focus ring.
 */
-:root {
+:root, .light {
   color-scheme: light;
   --background: oklch(0.986 0.002 255);
   --surface: oklch(0.999 0.001 255);
@@ -125,6 +125,7 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;

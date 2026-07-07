@@ -113,6 +113,8 @@ export interface Automation {
   /** Standard 5-field cron expression, e.g. "0 8 * * 1-5". */
   schedule: string;
   enabled: boolean;
+  /** Whether this automation's runs appear in the Home activity feed. */
+  showInActivity: boolean;
   createdAt: string;
 }
 
@@ -234,6 +236,13 @@ export interface LibraryStatus {
   /** Absolute path of the drop folder on the server's machine. */
   folder: string;
   documents: LibraryDocument[];
+}
+
+/** Human-readable file size, e.g. "600 B", "12.9 KB", "1.4 MB". */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** Server-sent events streamed from POST /api/chat. */

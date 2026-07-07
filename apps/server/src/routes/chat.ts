@@ -4,7 +4,6 @@ import { desc, eq } from "drizzle-orm";
 import type { ChatStreamEvent } from "@trailin/shared";
 import { db, schema } from "../db/index.js";
 import { getOrCreateSession, runPrompt } from "../agent/emailAgent.js";
-import { encrypt, decrypt } from "../db/crypto.js";
 import { errorMessage } from "../util.js";
 
 interface ChatBody {
@@ -26,8 +25,6 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, req.params.id))
       .orderBy(schema.messages.createdAt);
-      
-    msgs = msgs.map((m) => ({ ...m, content: decrypt(m.content) }));
 
     if (msgs.length === 0) {
       // Fallback: check if this ID is actually an old automation run
@@ -112,7 +109,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         id: randomUUID(),
         conversationId,
         role: "user",
-        content: encrypt(message),
+        content: message,
         createdAt: now(),
       });
       let thinkingSent = false;
@@ -133,7 +130,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         id: randomUUID(),
         conversationId,
         role: "assistant",
-        content: encrypt(text),
+        content: text,
         createdAt: now(),
       });
 

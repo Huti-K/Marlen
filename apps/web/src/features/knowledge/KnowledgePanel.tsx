@@ -1,20 +1,31 @@
 import * as React from "react";
-import { Check, Copy, FileText, FolderOpen, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
+import {
+  Check,
+  File,
+  FileCode2,
+  FileSpreadsheet,
+  FileText,
+  FolderOpen,
+  Loader2,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { LibraryDocument, LibraryStatus, MemoryEntry } from "@trailin/shared";
+import { formatFileSize } from "@trailin/shared";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/lib/toast";
 import { cn, errorMessage } from "@/lib/utils";
 
 /**
- * Knowledge page: standing instructions, long-term memory and the document
- * library — everything that grounds and steers the agent, in one place.
+ * Knowledge page: long-term memory and the document library — everything
+ * that grounds the agent, in one place.
  */
 export function KnowledgePanel() {
   const { t } = useTranslation();
@@ -23,14 +34,6 @@ export function KnowledgePanel() {
     <div className="flex flex-col gap-10 pt-4">
       <Section
         index={0}
-        title={t("knowledge.sections.instructions.title")}
-        description={t("knowledge.sections.instructions.description")}
-      >
-        <InstructionsSection />
-      </Section>
-
-      <Section
-        index={1}
         title={t("knowledge.sections.memory.title")}
         description={t("knowledge.sections.memory.description")}
       >
@@ -38,7 +41,7 @@ export function KnowledgePanel() {
       </Section>
 
       <Section
-        index={2}
+        index={1}
         title={t("knowledge.sections.library.title")}
         description={t("knowledge.sections.library.description")}
       >
@@ -85,91 +88,6 @@ function Section({
         </>
       )}
     </section>
-  );
-}
-
-/* ---------------- Agent instructions ---------------- */
-
-function InstructionsSection() {
-  const { t } = useTranslation();
-  // null until the initial GET resolves.
-  const [value, setValue] = React.useState<string | null>(null);
-  const [saved, setSaved] = React.useState("");
-  const [loadError, setLoadError] = React.useState<string | null>(null);
-  const [state, setState] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [error, setError] = React.useState<string | null>(null);
-  const busy = React.useRef(false);
-
-  React.useEffect(() => {
-    api
-      .instructions()
-      .then(({ instructions }) => {
-        setValue(instructions);
-        setSaved(instructions);
-      })
-      .catch((err) => setLoadError(errorMessage(err)));
-  }, []);
-
-  // Auto-save on blur or Cmd/Ctrl+Enter — no Save button. The ref guards
-  // against both firing a save for the same change.
-  const persist = async () => {
-    if (busy.current || value === null) return;
-    const trimmed = value.trim();
-    if (trimmed === saved) return;
-    busy.current = true;
-    setState("saving");
-    setError(null);
-    try {
-      const next = await api.setInstructions(trimmed);
-      setValue(next.instructions);
-      setSaved(next.instructions);
-      setState("saved");
-    } catch (err) {
-      setState("error");
-      setError(errorMessage(err));
-    } finally {
-      busy.current = false;
-    }
-  };
-
-  if (value === null) {
-    return loadError ? <ErrorBanner>{loadError}</ErrorBanner> : <LoadingRow />;
-  }
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Textarea
-        value={value}
-        onChange={(e) => {
-          setValue(e.target.value);
-          // A fresh edit invalidates the last "saved"/"error" readout, but
-          // leave an in-flight save's spinner alone.
-          setState((s) => (s === "saving" ? s : "idle"));
-        }}
-        onBlur={() => void persist()}
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-            e.preventDefault();
-            void persist();
-          }
-        }}
-        placeholder={t("knowledge.sections.instructions.placeholder")}
-        rows={5}
-      />
-      <div className="flex h-4 items-center justify-end gap-1.5 text-xs text-muted-foreground">
-        {state === "saving" ? (
-          <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("common.saving")}
-          </>
-        ) : state === "error" ? (
-          <span className="text-destructive">{error}</span>
-        ) : state === "saved" ? (
-          <>
-            <Check className="h-3.5 w-3.5 text-success" /> {t("common.saved")}
-          </>
-        ) : null}
-      </div>
-    </div>
   );
 }
 
@@ -233,15 +151,13 @@ export function MemorySection() {
 
       {loading ? (
         <LoadingRow />
-      ) : memories.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("memory.empty")}</p>
-      ) : (
+      ) : memories.length > 0 ? (
         <div className="flex flex-col gap-2">
           {memories.map((entry) => (
             <MemoryRow key={entry.id} entry={entry} onChanged={refresh} />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -293,13 +209,19 @@ function MemoryRow({
     setEditing(false);
   };
 
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+
   const remove = async () => {
-    if (!window.confirm(t("memory.deleteConfirm"))) return;
+    setDeleting(true);
     try {
       await api.deleteMemory(entry.id);
       await onChanged();
     } catch (err) {
       toast.error(errorMessage(err));
+      setDeleting(false);
+    } finally {
+      setConfirmOpen(false);
     }
   };
 
@@ -347,30 +269,32 @@ function MemoryRow({
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => void remove()}
+        onClick={() => setConfirmOpen(true)}
         title={t("memory.delete")}
       >
         <Trash2 className="h-4 w-4 text-muted-foreground" />
       </Button>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={t("memory.delete")}
+        description={t("memory.deleteConfirm")}
+        confirmLabel={t("memory.delete")}
+        variant="destructive"
+        busy={deleting}
+        onConfirm={() => void remove()}
+      />
     </div>
   );
 }
 
 /* ---------------- Library ---------------- */
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function LibrarySection() {
   const { t } = useTranslation();
   const [status, setStatus] = React.useState<LibraryStatus | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
-  const [scanning, setScanning] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const refresh = React.useCallback(async () => {
@@ -394,28 +318,6 @@ export function LibrarySection() {
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
 
-  const copyFolder = async () => {
-    if (!status) return;
-    try {
-      await navigator.clipboard.writeText(status.folder);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (err) {
-      toast.error(errorMessage(err));
-    }
-  };
-
-  const rescan = async () => {
-    setScanning(true);
-    try {
-      setStatus(await api.libraryScan());
-    } catch (err) {
-      toast.error(errorMessage(err));
-    } finally {
-      setScanning(false);
-    }
-  };
-
   const upload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     setUploading(true);
@@ -434,12 +336,19 @@ export function LibrarySection() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const remove = async (doc: LibraryDocument) => {
-    if (!window.confirm(t("library.deleteConfirm", { title: doc.title }))) return;
+  const [docToDelete, setDocToDelete] = React.useState<LibraryDocument | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
+
+  const confirmRemove = async () => {
+    if (!docToDelete) return;
+    setDeleting(true);
     try {
-      setStatus(await api.deleteLibraryDocument(doc.id));
+      setStatus(await api.deleteLibraryDocument(docToDelete.id));
     } catch (err) {
       toast.error(errorMessage(err));
+    } finally {
+      setDeleting(false);
+      setDocToDelete(null);
     }
   };
 
@@ -466,48 +375,26 @@ export function LibrarySection() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-2 rounded-lg bg-surface-2 px-3.5 py-2.5">
-          <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-            {status.folder}
-          </code>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => void copyFolder()}
-            title={t("library.copyFolder")}
-          >
-            {copied ? (
-              <Check className="h-4 w-4 text-success" />
-            ) : (
-              <Copy className="h-4 w-4 text-muted-foreground" />
-            )}
-          </Button>
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <LibraryFolderControl folder={status.folder} onStatus={setStatus} />
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.md,.markdown,.txt,.docx,.csv,.html,.htm"
+              className="hidden"
+              onChange={(e) => void upload(e.target.files)}
+            />
+            <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
+              {t("library.upload")}
+            </Button>
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">{t("library.folderHint")}</p>
-      </div>
-
-      <div className="flex items-center justify-end gap-2">
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".pdf,.md,.markdown,.txt"
-          className="hidden"
-          onChange={(e) => void upload(e.target.files)}
-        />
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => void rescan()}
-          disabled={scanning}
-          title={t("library.rescan")}
-        >
-          <RefreshCw className={cn("h-4 w-4 text-muted-foreground", scanning && "animate-spin")} />
-        </Button>
-        <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-          {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
-          {t("library.upload")}
-        </Button>
       </div>
 
       {status.documents.length === 0 ? (
@@ -525,38 +412,247 @@ export function LibrarySection() {
       ) : (
         <div className="flex flex-col gap-2">
           {status.documents.map((doc) => (
-            <DocumentRow key={doc.id} doc={doc} onDelete={() => void remove(doc)} />
+            <DocumentRow key={doc.id} doc={doc} onDelete={() => setDocToDelete(doc)} />
           ))}
         </div>
       )}
+      <ConfirmDialog
+        open={!!docToDelete}
+        onOpenChange={(open) => !open && setDocToDelete(null)}
+        title={t("library.delete")}
+        description={docToDelete ? t("library.deleteConfirm", { title: docToDelete.title }) : ""}
+        confirmLabel={t("library.delete")}
+        variant="destructive"
+        busy={deleting}
+        onConfirm={() => void confirmRemove()}
+      />
     </div>
   );
 }
 
+/**
+ * Two-state drop-folder control. Display state shows the path, truncated so
+ * the end stays visible; "Change folder" opens the OS's native folder dialog
+ * via the server (the request stays open while the dialog is on screen).
+ * Clicking the path itself — or a failed pick (headless/remote setups) —
+ * switches to the inline editable state: Enter or a changed blur saves,
+ * Escape or an unchanged blur reverts. The server re-indexes the new folder.
+ */
+function LibraryFolderControl({
+  folder,
+  onStatus,
+}: {
+  folder: string;
+  onStatus: (status: LibraryStatus) => void;
+}) {
+  const { t } = useTranslation();
+  const [mode, setMode] = React.useState<"display" | "edit">("display");
+  const [draft, setDraft] = React.useState(folder);
+  const [state, setState] = React.useState<"idle" | "saving" | "saved">("idle");
+  const [picking, setPicking] = React.useState(false);
+  const busy = React.useRef(false);
+
+  // Follow the active folder (initial load, refreshes, saves from this row).
+  React.useEffect(() => setDraft(folder), [folder]);
+
+  const startEdit = () => {
+    setDraft(folder);
+    setState("idle");
+    setMode("edit");
+  };
+
+  const pick = async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setPicking(true);
+    try {
+      const next = await api.pickLibraryFolder();
+      // Dialog dismissed — nothing changed, nothing to say.
+      if ("canceled" in next) return;
+      onStatus(next);
+      setDraft(next.folder);
+      setState("saved");
+      setTimeout(() => setState("idle"), 500);
+    } catch (err) {
+      toast.error(errorMessage(err));
+      // No native dialog (headless/remote server) or the pick was rejected —
+      // fall back to typing/pasting the path inline.
+      startEdit();
+    } finally {
+      setPicking(false);
+      busy.current = false;
+    }
+  };
+
+  const revert = () => {
+    setDraft(folder);
+    setState("idle");
+    setMode("display");
+  };
+
+  // Auto-save on Enter or blur — no Save button. The ref guards against Enter
+  // and the follow-up blur both firing a save.
+  const commit = async () => {
+    if (busy.current) return;
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === folder) {
+      revert();
+      return;
+    }
+    busy.current = true;
+    setState("saving");
+    try {
+      // The server validates, switches over and re-indexes; the returned
+      // status already lists the new folder's documents.
+      const next = await api.setLibraryFolder(trimmed);
+      onStatus(next);
+      setDraft(next.folder);
+      setState("saved");
+      // The save itself already took a beat (the server re-indexes the new
+      // folder before responding) — a short flash is enough to register.
+      setTimeout(() => {
+        setMode("display");
+        setState("idle");
+      }, 500);
+    } catch (err) {
+      toast.error(errorMessage(err));
+      setState("idle");
+      // Stay in edit state so the user can correct the path.
+    } finally {
+      busy.current = false;
+    }
+  };
+
+  if (mode === "display") {
+    return (
+      <div className="flex items-center gap-2">
+        <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <button
+          type="button"
+          dir="rtl"
+          onClick={startEdit}
+          disabled={picking}
+          title={folder}
+          aria-label={t("library.editPath")}
+          className="min-w-0 flex-1 cursor-text truncate text-left font-mono text-xs text-muted-foreground hover:text-foreground"
+        >
+          {folder}
+        </button>
+        {state === "saved" && (
+          <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+            <Check className="h-3.5 w-3.5 text-success" /> {t("common.saved")}
+          </span>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="shrink-0"
+          onClick={() => void pick()}
+          disabled={picking}
+        >
+          {picking && <Loader2 className="animate-spin" />}
+          {t("library.changeFolder")}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        autoFocus
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setState((s) => (s === "saving" ? s : "idle"));
+        }}
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void commit();
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            revert();
+          }
+        }}
+        aria-label={t("library.folderLabel")}
+        className="font-mono text-xs"
+        disabled={state === "saving"}
+      />
+      {state === "saving" ? (
+        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("common.saving")}
+        </span>
+      ) : state === "saved" ? (
+        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          <Check className="h-3.5 w-3.5 text-success" /> {t("common.saved")}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Lucide icon for a document's format — grouped by how the file is used, not exact type. */
+function iconForExt(ext: string) {
+  switch (ext.toLowerCase()) {
+    case "pdf":
+    case "md":
+    case "markdown":
+    case "txt":
+      return FileText;
+    case "csv":
+      return FileSpreadsheet;
+    case "html":
+    case "htm":
+      return FileCode2;
+    default:
+      return File;
+  }
+}
+
 function DocumentRow({ doc, onDelete }: { doc: LibraryDocument; onDelete: () => void }) {
   const { t } = useTranslation();
+  const Icon = iconForExt(doc.ext);
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-2 px-3.5 py-3">
+    <div className="group flex items-center justify-between gap-3 rounded-lg bg-surface-2 px-3.5 py-3">
       <div className="flex min-w-0 items-center gap-3">
-        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{doc.title}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="min-w-0 flex-1 truncate text-sm font-medium">{doc.title}</p>
+            <Badge variant="muted" className="shrink-0 text-[11px]">
+              {doc.ext.toUpperCase()}
+            </Badge>
+          </div>
           {doc.status === "error" ? (
             <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
               <Badge variant="destructive" className="shrink-0 text-[11px]">
                 {t("library.error")}
               </Badge>
-              <span className="min-w-0 truncate text-xs text-muted-foreground">{doc.error}</span>
+              <span
+                title={doc.error ?? undefined}
+                className="min-w-0 truncate text-xs text-muted-foreground"
+              >
+                {doc.error}
+              </span>
             </div>
           ) : (
             <p className="truncate text-xs text-muted-foreground">
-              {doc.ext.toUpperCase()} · {formatBytes(doc.size)} ·{" "}
-              {t("library.sectionCount", { count: doc.chunkCount })}
+              {formatFileSize(doc.size)} · {t("library.sectionCount", { count: doc.chunkCount })}
             </p>
           )}
         </div>
       </div>
-      <Button variant="ghost" size="icon" onClick={onDelete} title={t("library.delete")}>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onDelete}
+        title={t("library.delete")}
+        className="shrink-0 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+      >
         <Trash2 className="h-4 w-4 text-muted-foreground" />
       </Button>
     </div>
