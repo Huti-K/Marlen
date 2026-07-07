@@ -16,6 +16,7 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'chat',
     created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS messages (
@@ -45,9 +46,43 @@ sqlite.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS library_documents (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    ext TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    mtime_ms INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    chunk_count INTEGER NOT NULL DEFAULT 0,
+    text_length INTEGER NOT NULL DEFAULT 0,
+    indexed_at TEXT NOT NULL
+  );
+  CREATE VIRTUAL TABLE IF NOT EXISTS library_chunks USING fts5(
+    content,
+    doc_id UNINDEXED,
+    seq UNINDEXED,
+    tokenize = 'unicode61 remove_diacritics 2'
+  );
   CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
   CREATE INDEX IF NOT EXISTS idx_runs_automation ON automation_runs(automation_id);
 `);
 
 export const db = drizzle(sqlite, { schema });
-export { schema };
+
+try {
+  sqlite.exec("ALTER TABLE conversations ADD COLUMN type TEXT NOT NULL DEFAULT 'chat'");
+} catch (e) {
+  // Ignore, column already exists
+}
+
+// Raw handle for the FTS5 table — drizzle can't address virtual tables.
+export { sqlite, schema };

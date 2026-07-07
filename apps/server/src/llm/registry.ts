@@ -2,9 +2,8 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import type { LlmProviderInfo, ModelSettings } from "@trailin/shared";
-import { eq } from "drizzle-orm";
 import { credentialStore } from "../auth/credentialStore.js";
-import { db, schema } from "../db/index.js";
+import { getSetting, setSetting } from "../db/settings.js";
 import { env } from "../env.js";
 
 /**
@@ -15,18 +14,6 @@ import { env } from "../env.js";
 export const modelRegistry = builtinModels({ credentials: credentialStore });
 
 /** ---- active provider/model (persisted in SQLite settings) ---- */
-
-async function getSetting(key: string): Promise<string | undefined> {
-  const [row] = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
-  return row?.value;
-}
-
-async function setSetting(key: string, value: string): Promise<void> {
-  await db
-    .insert(schema.settings)
-    .values({ key, value })
-    .onConflictDoUpdate({ target: schema.settings.key, set: { value } });
-}
 
 export async function getActiveModelIds(): Promise<{ provider: string; model: string }> {
   return {

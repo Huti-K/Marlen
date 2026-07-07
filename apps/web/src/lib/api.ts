@@ -1,4 +1,6 @@
 import type {
+  AccountColor,
+  AccountDrafts,
   AppStatus,
   Automation,
   AutomationRun,
@@ -7,104 +9,135 @@ import type {
   ConnectedAccount,
   ConnectTokenResponse,
   Conversation,
-  EmailApp,
+  Language,
+  LibraryStatus,
   LlmProviderInfo,
   LoginFlowStatus,
+  MemoryEntry,
   ModelSettings,
+  PipedreamApp,
+  PipedreamConfigInput,
+  PipedreamStatus,
+  RunFeedItem,
 } from "@trailin/shared";
 
-async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let message = `${res.status} ${res.statusText}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
-    } catch {
-      // keep the status text
-    }
-    throw new Error(message);
+/** Throws with the server's `error` message when a response is not ok. */
+async function throwOnError(res: Response): Promise<void> {
+  if (res.ok) return;
+  let message = `${res.status} ${res.statusText}`;
+  try {
+    const data = (await res.json()) as { error?: string };
+    if (data.error) message = data.error;
+  } catch {
+    // keep the status text
   }
+  throw new Error(message);
+}
+
+/** Fetch JSON; non-2xx responses throw with the server's `error` message. */
+async function http<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    ...(body !== undefined && {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  });
+  await throwOnError(res);
   return res.json() as Promise<T>;
 }
 
+const get = <T>(url: string) => http<T>("GET", url);
+
 export const api = {
-  status: () => fetch("/api/status").then(json<AppStatus>),
+  status: () => get<AppStatus>("/api/status"),
 
-  llmProviders: () => fetch("/api/llm/providers").then(json<LlmProviderInfo[]>),
-  modelSettings: () => fetch("/api/llm/model").then(json<ModelSettings>),
+  // null until a language has been chosen (first web load initializes it).
+  language: () => get<{ language: Language | null }>("/api/settings/language"),
+  setLanguage: (language: Language) =>
+    http<{ language: Language }>("PUT", "/api/settings/language", { language }),
+
+  emailWrite: () => get<{ allowWrite: boolean }>("/api/settings/email-write"),
+  setEmailWrite: (allowWrite: boolean) =>
+    http<{ allowWrite: boolean }>("PUT", "/api/settings/email-write", { allowWrite }),
+
+  instructions: () => get<{ instructions: string }>("/api/settings/instructions"),
+  setInstructions: (instructions: string) =>
+    http<{ instructions: string }>("PUT", "/api/settings/instructions", { instructions }),
+
+  accountColors: () => get<{ colors: AccountColor[] }>("/api/settings/account-colors"),
+  setAccountColors: (colors: AccountColor[]) =>
+    http<{ colors: AccountColor[] }>("PUT", "/api/settings/account-colors", { colors }),
+
+  llmProviders: () => get<LlmProviderInfo[]>("/api/llm/providers"),
+  modelSettings: () => get<ModelSettings>("/api/llm/model"),
   setModel: (provider: string, model: string) =>
-    fetch("/api/llm/model", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, model }),
-    }).then(json<ModelSettings>),
-  loginStatus: () => fetch("/api/llm/login/status").then(json<LoginFlowStatus>),
+    http<ModelSettings>("PUT", "/api/llm/model", { provider, model }),
+  loginStatus: () => get<LoginFlowStatus>("/api/llm/login/status"),
   loginStart: (providerId: string) =>
-    fetch("/api/llm/login/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerId }),
-    }).then(json<LoginFlowStatus>),
-  loginInput: (value: string) =>
-    fetch("/api/llm/login/input", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
-    }).then(json<{ ok: boolean }>),
+    http<LoginFlowStatus>("POST", "/api/llm/login/start", { providerId }),
+  loginInput: (value: string) => http<{ ok: boolean }>("POST", "/api/llm/login/input", { value }),
   loginSelect: (optionId: string) =>
-    fetch("/api/llm/login/select", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ optionId }),
-    }).then(json<{ ok: boolean }>),
-  loginCancel: () =>
-    fetch("/api/llm/login/cancel", { method: "POST" }).then(json<{ ok: boolean }>),
+    http<{ ok: boolean }>("POST", "/api/llm/login/select", { optionId }),
+  loginCancel: () => http<{ ok: boolean }>("POST", "/api/llm/login/cancel"),
   saveApiKey: (providerId: string, apiKey: string) =>
-    fetch("/api/llm/key", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerId, apiKey }),
-    }).then(json<{ ok: boolean }>),
-  llmLogout: (providerId: string) =>
-    fetch("/api/llm/logout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerId }),
-    }).then(json<{ ok: boolean }>),
+    http<{ ok: boolean }>("POST", "/api/llm/key", { providerId, apiKey }),
+  llmLogout: (providerId: string) => http<{ ok: boolean }>("POST", "/api/llm/logout", { providerId }),
 
-  accounts: () => fetch("/api/accounts").then(json<ConnectedAccount[]>),
-  connectToken: (app: EmailApp) =>
-    fetch("/api/accounts/connect-token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ app }),
-    }).then(json<ConnectTokenResponse>),
-  deleteAccount: (id: string) =>
-    fetch(`/api/accounts/${id}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
+  pipedreamStatus: () => get<PipedreamStatus>("/api/pipedream"),
+  savePipedream: (body: PipedreamConfigInput) =>
+    http<PipedreamStatus>("PUT", "/api/pipedream", body),
+  clearPipedream: () => http<PipedreamStatus>("DELETE", "/api/pipedream"),
+  setPipedreamMode: (useCustom: boolean) =>
+    http<PipedreamStatus>("PUT", "/api/pipedream/mode", { useCustom }),
+  pipedreamAccounts: () => get<ConnectedAccount[]>("/api/pipedream/accounts"),
+  pipedreamApps: (q: string) =>
+    get<PipedreamApp[]>(`/api/pipedream/apps?q=${encodeURIComponent(q)}`),
+  pipedreamConnectToken: (app: string) =>
+    http<ConnectTokenResponse>("POST", "/api/pipedream/accounts/connect-token", { app }),
+  deletePipedreamAccount: (id: string) =>
+    http<{ ok: boolean }>("DELETE", `/api/pipedream/accounts/${id}`),
 
-  conversations: () => fetch("/api/conversations").then(json<Conversation[]>),
-  messages: (conversationId: string) =>
-    fetch(`/api/conversations/${conversationId}/messages`).then(json<ChatMessage[]>),
+  runsFeed: () => get<RunFeedItem[]>("/api/runs"),
+  drafts: () => get<AccountDrafts[]>("/api/drafts"),
+  draftDetail: (accountId: string, draftId: string) =>
+    get<{ body: string; cc: string; bcc: string }>(`/api/drafts/${accountId}/${draftId}`),
+  deleteDraft: (accountId: string, draftId: string) =>
+    http<{ ok: boolean }>("DELETE", `/api/drafts/${accountId}/${draftId}`),
 
-  automations: () => fetch("/api/automations").then(json<Automation[]>),
+  conversations: () => get<Conversation[]>("/api/conversations"),
+  conversationMessages: (id: string) =>
+    get<ChatMessage[]>(`/api/conversations/${encodeURIComponent(id)}/messages`),
+
+  automations: () => get<Automation[]>("/api/automations"),
   createAutomation: (body: { name: string; instruction: string; schedule: string }) =>
-    fetch("/api/automations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then(json<Automation>),
+    http<Automation>("POST", "/api/automations", body),
   updateAutomation: (id: string, body: Partial<Automation>) =>
-    fetch(`/api/automations/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then(json<Automation>),
-  deleteAutomation: (id: string) =>
-    fetch(`/api/automations/${id}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
-  runAutomation: (id: string) =>
-    fetch(`/api/automations/${id}/run`, { method: "POST" }).then(json<{ ok: boolean }>),
-  automationRuns: (id: string) =>
-    fetch(`/api/automations/${id}/runs`).then(json<AutomationRun[]>),
+    http<Automation>("PATCH", `/api/automations/${id}`, body),
+  deleteAutomation: (id: string) => http<{ ok: boolean }>("DELETE", `/api/automations/${id}`),
+  runAutomation: (id: string) => http<{ ok: boolean }>("POST", `/api/automations/${id}/run`),
+  automationRuns: (id: string) => get<AutomationRun[]>(`/api/automations/${id}/runs`),
+
+  memories: () => get<MemoryEntry[]>("/api/memories"),
+  addMemory: (content: string) => http<MemoryEntry>("POST", "/api/memories", { content }),
+  updateMemory: (id: string, content: string) =>
+    http<MemoryEntry>("PUT", `/api/memories/${id}`, { content }),
+  deleteMemory: (id: string) => http<{ ok: boolean }>("DELETE", `/api/memories/${id}`),
+
+  library: () => get<LibraryStatus>("/api/library"),
+  libraryScan: () => http<LibraryStatus>("POST", "/api/library/scan"),
+  deleteLibraryDocument: (id: string) =>
+    http<LibraryStatus>("DELETE", `/api/library/documents/${id}`),
+  // Raw file body (not JSON), so this bypasses the `http` helper.
+  uploadLibraryFile: async (file: File): Promise<LibraryStatus> => {
+    const res = await fetch(`/api/library/files?name=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file,
+    });
+    await throwOnError(res);
+    return res.json() as Promise<LibraryStatus>;
+  },
 };
 
 /**

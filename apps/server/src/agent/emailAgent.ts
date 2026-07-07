@@ -1,19 +1,71 @@
 import { Agent } from "@earendil-works/pi-agent-core";
-import { EMAIL_APPS } from "@trailin/shared";
+import type { Message } from "@earendil-works/pi-ai";
+import { eq } from "drizzle-orm";
+import { LANGUAGE_ENGLISH_NAMES } from "@trailin/shared";
+import { db, schema } from "../db/index.js";
+import { listMemories } from "../db/memories.js";
+import {
+  getAgentInstructionsSetting,
+  getEmailWriteSetting,
+  getLanguageSetting,
+} from "../db/settings.js";
 import { modelRegistry, resolveActiveModel } from "../llm/registry.js";
 import { loadEmailTools, type EmailToolset } from "../pipedream/mcp.js";
+import { buildKnowledgeTools } from "./knowledgeTools.js";
 
 const SYSTEM_PROMPT = `You are Trailin, a personal email assistant. You have tools for the user's
-Gmail and Outlook accounts, provided through Pipedream Connect.
+connected accounts — email (Gmail / Outlook) and possibly other apps — provided through
+Pipedream Connect.
 
 Guidelines:
+- Several accounts may be connected. Every tool's description says which account it acts as
+  ("Acts as the connected account: …"); with more than one account of the same app, tool names
+  carry an account suffix (e.g. gmail-find-email__work). Pick the account the user means; when
+  it's ambiguous and the action matters (sending, deleting), ask instead of guessing.
+- If you have no email tools, tell the user to finish the email setup under Settings → Connect email.
 - Prefer reading and summarizing over acting. Look things up before you claim them.
 - Never send, reply to, forward or delete an email unless the user's request explicitly asks for it.
   When composing, show the draft content in your answer so the user can see exactly what went out.
-- If a tool responds with a Pipedream connect link (the account is not linked yet), surface that URL
-  to the user and tell them to connect the account in the Connections tab.
 - Keep answers short and skimmable. Use bullet lists for inbox summaries: sender — subject — one-line gist.
-- Timestamps from tools are usually UTC; present them in a human-friendly way.`;
+- Timestamps from tools are usually UTC; present them in a human-friendly way.
+- You have a long-term memory: saved entries are listed at the end of this prompt. When the
+  user asks you to remember something, or states a lasting fact or preference, save it with
+  memory_save. Don't save one-off task details or things already in memory.
+- The user keeps a local document library (PDFs, notes) for you. Use library_search and
+  library_read to ground answers in those documents — say which document you used. When the
+  user refers to "my documents" or something you can't find in email, check the library.`;
+
+/** The base prompt plus the Settings rules (scheduled runs rely on them too). */
+async function buildSystemPrompt(): Promise<string> {
+  let prompt = SYSTEM_PROMPT;
+
+  if (!(await getEmailWriteSetting())) {
+    prompt += `
+- Read-only mode is on: you only have tools that read, search or create drafts. You cannot send,
+  delete or change anything. If the user asks for such an action, explain that read-only mode can
+  be turned off under Settings → Connect email.`;
+  }
+
+  const language = (await getLanguageSetting()) ?? "en";
+  if (language !== "en") {
+    prompt += `
+- Always answer in ${LANGUAGE_ENGLISH_NAMES[language]}, no matter what language the user's message
+  or their emails are written in. Quoted email text and draft emails may keep their own language.`;
+  }
+
+  const instructions = await getAgentInstructionsSetting();
+  if (instructions) {
+    prompt += `\n\nStanding instructions from the user (apply them in every conversation):\n${instructions}`;
+  }
+
+  const memories = await listMemories();
+  if (memories.length > 0) {
+    prompt += `\n\nLong-term memory (saved earlier; the user manages these in Settings):\n${memories
+      .map((m) => `- ${m.content}`)
+      .join("\n")}`;
+  }
+  return prompt;
+}
 
 export interface AgentSession {
   agent: Agent;
@@ -22,14 +74,15 @@ export interface AgentSession {
 
 const sessions = new Map<string, AgentSession>();
 
-async function buildAgent(toolset: EmailToolset): Promise<Agent> {
+async function buildAgent(toolset: EmailToolset, history: Message[] = []): Promise<Agent> {
   return new Agent({
     initialState: {
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: await buildSystemPrompt(),
       // Active model comes from Settings (SQLite), falling back to .env.
       model: await resolveActiveModel(),
-      tools: toolset.tools,
-      messages: [],
+      // Email tools from Pipedream plus the local memory/library tools.
+      tools: [...toolset.tools, ...buildKnowledgeTools()],
+      messages: history,
     },
     // Route model calls through the registry so stored credentials apply
     // (subscription OAuth with auto-refresh, saved API keys, then env vars).
@@ -37,13 +90,59 @@ async function buildAgent(toolset: EmailToolset): Promise<Agent> {
   });
 }
 
+/**
+ * Rebuild a conversation's prior turns from the message log, so continuing an
+ * older conversation (after a restart or session reset) keeps the agent's
+ * memory. Tool calls aren't persisted — the seeded context is text-only.
+ */
+async function loadHistory(conversationId: string): Promise<Message[]> {
+  const rows = await db
+    .select()
+    .from(schema.messages)
+    .where(eq(schema.messages.conversationId, conversationId))
+    .orderBy(schema.messages.createdAt);
+  if (rows.length === 0) return [];
+
+  const model = await resolveActiveModel();
+  const zeroUsage = () => ({
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  });
+
+  const messages: Message[] = [];
+  for (const row of rows) {
+    const content = row.content.trim();
+    if (!content) continue;
+    const timestamp = Date.parse(row.createdAt) || Date.now();
+    if (row.role === "user") {
+      messages.push({ role: "user", content, timestamp });
+    } else {
+      messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: content }],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: zeroUsage(),
+        stopReason: "stop",
+        timestamp,
+      });
+    }
+  }
+  return messages;
+}
+
 /** One pi Agent per conversation; context lives in process memory. */
 export async function getOrCreateSession(conversationId: string): Promise<AgentSession> {
   const existing = sessions.get(conversationId);
   if (existing) return existing;
 
-  const toolset = await loadEmailTools(EMAIL_APPS);
-  const session: AgentSession = { agent: await buildAgent(toolset), toolset };
+  const [toolset, history] = await Promise.all([loadEmailTools(), loadHistory(conversationId)]);
+  const session: AgentSession = { agent: await buildAgent(toolset, history), toolset };
   sessions.set(conversationId, session);
   return session;
 }
@@ -64,12 +163,13 @@ export async function disposeSession(conversationId: string): Promise<void> {
 
 /** Create a throwaway session (used by scheduled automations). */
 export async function createEphemeralSession(): Promise<AgentSession> {
-  const toolset = await loadEmailTools(EMAIL_APPS);
+  const toolset = await loadEmailTools();
   return { agent: await buildAgent(toolset), toolset };
 }
 
 export interface RunHandlers {
   onTextDelta?: (delta: string) => void;
+  onThinking?: () => void;
   onToolStart?: (toolName: string) => void;
   onToolEnd?: (toolName: string, isError: boolean) => void;
 }
@@ -97,6 +197,8 @@ export async function runPrompt(
           if (!inner.type || String(inner.type).startsWith("text")) {
             text += inner.delta;
             handlers.onTextDelta?.(inner.delta);
+          } else if (String(inner.type).startsWith("thinking")) {
+            handlers.onThinking?.();
           }
         }
         break;
@@ -119,6 +221,11 @@ export async function runPrompt(
   } finally {
     if (typeof unsubscribe === "function") unsubscribe();
   }
+
+  // pi doesn't throw on provider failures (missing credentials, refused
+  // requests); it records them on the state. Surface them to the caller.
+  const failure = session.agent.state.errorMessage;
+  if (failure) throw new Error(failure);
 
   return text.trim();
 }

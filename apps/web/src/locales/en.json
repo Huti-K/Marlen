@@ -1,0 +1,270 @@
+{
+  "app": {
+    "skipToContent": "Skip to content",
+    "openMenu": "Open menu",
+    "openChat": "Open chat",
+    "closeChat": "Close chat"
+  },
+  "views": {
+    "chat": {
+      "title": "Chat",
+      "description": "Ask about your inbox, or tell the agent to draft, label, or clean up mail."
+    },
+    "home": {
+      "title": "Home",
+      "description": "Drafts waiting for your review, and what the agent has been doing."
+    },
+    "automations": {
+      "title": "Automations",
+      "description": "Run the agent on a schedule with a standing instruction."
+    },
+    "knowledge": {
+      "title": "Knowledge",
+      "description": "Documents, memory and standing instructions for your agent."
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Your AI, email connections, and language."
+    }
+  },
+  "sidebar": {
+    "closeMenu": "Close menu",
+    "finishSetup": "Finish setup",
+    "lightMode": "Light mode",
+    "darkMode": "Dark mode"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "dismiss": "Dismiss",
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "submit": "Submit"
+  },
+  "chat": {
+    "newConversation": "New conversation",
+    "history": "History",
+    "noConversations": "No conversations yet.",
+    "untitled": "(untitled)",
+    "thinking": "Thinking…",
+    "emptyTitle": "Ask your inbox anything",
+    "emptyBody": "The agent can search, label, and draft across your connected accounts.",
+    "placeholder": "Message your email agent…",
+    "send": "Send message",
+    "resize": "Resize chat panel"
+  },
+  "connections": {
+    "customToggle": "Use my own Pipedream project",
+    "customToggleOn": "Email runs through the Pipedream project configured below.",
+    "builtinInUse": "Email runs through Trailin's built-in Pipedream.",
+    "builtinMissing": "This build has no built-in Pipedream — turn this on and add your own below.",
+    "writeToggle": "Allow sending & changes",
+    "writeToggleOff": "Read-only: the AI can read, search and create drafts — it can never send, delete or change anything.",
+    "writeToggleOn": "The AI may send emails and make changes (labels, archiving, deleting) when you ask it to.",
+    "addAccount": "Add a new Account",
+    "searchProviders": "Search providers… (Gmail, Outlook, Zoho Mail, …)",
+    "noProvidersFound": "No providers found for “{{q}}”.",
+    "setupTitle": "One-time setup: connect Trailin to Pipedream",
+    "setupIntro": "Trailin uses <pd>Pipedream</pd>, a free service, to link your email accounts safely — as many as you like, also several from the same provider. It needs three values from your own Pipedream workspace, copied once:",
+    "setupStep1": "Create a free Pipedream account.",
+    "setupStep2": "Under Settings → API, create an OAuth client and copy its Client ID and Client Secret below.",
+    "setupStep3": "Create a project (any name) and paste its URL — or the proj_… id — below.",
+    "openPipedream": "Open pipedream.com",
+    "openApiSettings": "Open API settings",
+    "openProjects": "Open projects",
+    "clientId": "Client ID",
+    "clientSecret": "Client secret",
+    "clientSecretKeepPlaceholder": "•••••• (leave empty to keep)",
+    "project": "Project URL or ID",
+    "saveVerify": "Save & verify",
+    "verified": "Checked with Pipedream before saving.",
+    "removeSaved": "Clear",
+    "removeSavedConfirm": "Remove the Pipedream credentials saved in the app?",
+    "emailAccounts": "Connected accounts",
+    "noAccounts": "No email accounts connected yet. Use the buttons above — you can connect several accounts per provider.",
+    "connectApp": "Connect {{app}}",
+    "finishConnecting": "Finish connecting in the tab that opened — this list updates by itself. Connect again to add another account.",
+    "healthy": "healthy",
+    "unhealthy": "unhealthy",
+    "disconnect": "Disconnect",
+    "disconnectConfirm": "Disconnect this account?",
+    "projectFooter": "Pipedream project <code>{{projectId}}</code> · {{environment}} · {{source}}",
+    "sourceSettings": "saved in app",
+    "sourceEnv": "from .env",
+    "edit": "Edit",
+    "accountColor": "Account color",
+    "customColor": "Custom color",
+    "colorPresets": "Color presets"
+  },
+  "home": {
+    "hint": "Everything your agent prepared for you, in one place.",
+    "setupBanner": "Trailin isn't fully set up — the agent can't reach your mail yet.",
+    "setupBannerCta": "Finish setup",
+    "reviewTitle": "Needs your review",
+    "reviewHint": "Drafts the agent pre-wrote, live from your mail accounts. Nothing is ever sent from here — you review and send in your mail app.",
+    "reviewEmpty": "No drafts waiting. When you or the agent prepare replies, they show up here.",
+    "activityTitle": "Agent activity",
+    "activityHint": "Results from your scheduled automations — a morning digest lands here.",
+    "activityEmptyTitle": "Nothing here yet",
+    "activityEmptyBody": "Put your inbox on autopilot: a standing instruction runs on a schedule and reports here.",
+    "activityNoRunsBody": "Your automations haven't produced results yet — run one now or wait for its schedule.",
+    "createAutomation": "Create an automation",
+    "viewAutomations": "View automations",
+    "deletedAutomation": "Deleted automation"
+  },
+  "drafts": {
+    "noSubject": "(no subject)",
+    "to": "To:",
+    "cc": "Cc:",
+    "open": "Open in Gmail",
+    "discard": "Discard draft",
+    "discardConfirm": "Discard this draft? It is removed from your mail account.",
+    "emptyBodyText": "(empty body)"
+  },
+  "automations": {
+    "new": "New automation",
+    "edit": "Edit",
+    "save": "Save",
+    "create": "Create",
+    "formTitle": "New automation",
+    "formHint": "Give the agent a standing instruction and choose when it runs.",
+    "name": "Name",
+    "namePlaceholder": "Morning digest",
+    "schedule": "Schedule",
+    "frequency": {
+      "daily": "Every day",
+      "weekdays": "On weekdays",
+      "custom": "Choose days",
+      "date": "Specific date"
+    },
+    "time": "Time",
+    "month": "Month",
+    "day": "Day",
+    "customDaysRequired": "Pick at least one day.",
+    "dateOnceHint": "Runs once on this date, then turns off automatically.",
+    "advancedToggle": "Advanced: edit as cron",
+    "simpleToggle": "Back to the simple schedule",
+    "advancedLossNote": "The custom cron expression was replaced by the schedule above.",
+    "scheduleLabel": {
+      "daily": "Every day · {{time}}",
+      "weekdays": "Weekdays · {{time}}",
+      "custom": "{{days}} · {{time}}",
+      "date": "{{date}} · {{time}}"
+    },
+    "cronInvalid": "Doesn’t look like a standard 5-field cron — checked on create.",
+    "cronHint": "<c>0 8 * * 1-5</c> runs at 08:00 on weekdays.",
+    "instruction": "Instruction for the agent",
+    "instructionPlaceholder": "Summarize all unread emails from the last 24 hours…",
+    "create": "Create",
+    "emptyTitle": "No automations yet",
+    "emptyBody": "Write a standing instruction and choose when it runs.",
+    "paused": "paused",
+    "runNow": "Run now",
+    "delete": "Delete",
+    "deleteConfirm": "Delete automation \"{{name}}\"?",
+    "recentRuns": "Recent runs",
+    "noRuns": "No runs yet.",
+    "runStatus": {
+      "running": "running",
+      "success": "success",
+      "error": "error"
+    }
+  },
+  "memory": {
+    "addPlaceholder": "Add something Trailin should remember…",
+    "savedByAgent": "saved by the agent",
+    "empty": "Nothing remembered yet. Tell the agent \"remember …\" in chat, or add it here.",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this memory?"
+  },
+  "library": {
+    "copyFolder": "Copy folder path",
+    "folderHint": "Files dropped here are indexed automatically.",
+    "upload": "Upload files",
+    "rescan": "Rescan",
+    "emptyTitle": "No documents yet",
+    "emptyBody": "Drop files into the folder above or upload them.",
+    "error": "error",
+    "delete": "Delete",
+    "deleteConfirm": "Delete \"{{title}}\"? The file is also removed from the folder.",
+    "sectionCount_one": "{{count}} section",
+    "sectionCount_other": "{{count}} sections"
+  },
+  "knowledge": {
+    "sections": {
+      "instructions": {
+        "title": "Agent instructions",
+        "description": "A standing instruction the assistant follows in every conversation — persona, tone, or house rules it should always apply.",
+        "placeholder": "Always answer briefly. Sign drafts with \"Best, Kadim\"."
+      },
+      "memory": {
+        "title": "Memory",
+        "description": "Lasting facts and preferences the assistant remembers across conversations — it saves things when you say \"remember …\", and you can edit them here."
+      },
+      "library": {
+        "title": "Documents",
+        "description": "A local folder of PDFs, Markdown and text files the assistant can search and read. Drop files in or upload them — everything stays on this computer."
+      }
+    }
+  },
+  "setup": {
+    "title": "Welcome to Trailin",
+    "intro": "Your mail, handled by an agent you can talk to. Two things and you're in:",
+    "stepAiTitle": "Sign in to your AI",
+    "stepAiDescription": "Use a subscription you already have (Claude, Copilot, ChatGPT) or paste an API key. Your sign-in stays on this computer.",
+    "aiDone": "Signed in — using {{model}}.",
+    "stepEmailTitle": "Connect an email account",
+    "stepEmailDescription": "Link Gmail or Outlook so the agent can see your mail. You can add more accounts later.",
+    "pipedreamMissingBody": "This build has no built-in email bridge. Add your own free Pipedream project in Settings → Email — a one-time, three-field setup.",
+    "openSettings": "Open settings",
+    "advancedLink": "Advanced: use my own Pipedream project",
+    "allSetTitle": "You're all set",
+    "allSetBody": "The agent can now read your mail, draft replies, and answer your questions.",
+    "openApp": "Open Trailin",
+    "skip": "Skip for now — I'll look around first"
+  },
+  "settings": {
+    "sections": {
+      "ai": {
+        "title": "AI & model",
+        "description": "The AI that reads and answers your mail. Sign in with a subscription you already have (Claude, Copilot, ChatGPT) or use an API key — your sign-in stays on this computer."
+      },
+      "email": {
+        "title": "Email",
+        "description": "Connected accounts, what the AI is allowed to do, and how Trailin links to your mail."
+      },
+      "language": {
+        "title": "Language",
+        "description": "Used for the app and for the assistant's answers, in chat and in automations."
+      }
+    },
+    "provider": "Provider",
+    "model": "Model",
+    "signInFirst": "Sign in to a provider above, then choose its model here.",
+    "usingModel": "Using <model>{{model}}</model>",
+    "loadingProviders": "Loading providers…",
+    "addApiKey": "Add API key",
+    "addApiKeyTitle": "Add an API key",
+    "chooseProvider": "Choose a provider…",
+    "apiKeyPlaceholder": "Paste API key for {{provider}}, then press Enter…",
+    "providerStatus": {
+      "subscription": "Signed in",
+      "storedKey": "API key saved",
+      "env": "Using {{key}}",
+      "envFallback": "environment key",
+      "none": "Not signed in"
+    },
+    "modelCount_one": "{{count}} model",
+    "modelCount_other": "{{count}} models",
+    "signedInWith": "Signed in with {{provider}}.",
+    "signingInWith": "Signing in with {{provider}}…",
+    "openSignInPage": "Open sign-in page",
+    "enterCodeAt": "Enter this code at <uri>{{uri}}</uri>",
+    "loginInputPlaceholder": "Paste the code / redirect URL if it doesn't finish…"
+  }
+}

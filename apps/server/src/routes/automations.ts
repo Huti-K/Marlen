@@ -21,6 +21,24 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     return db.select().from(schema.automations).orderBy(desc(schema.automations.createdAt));
   });
 
+  /** Cross-automation run feed for the Digest view. */
+  app.get("/api/runs", async () => {
+    return db
+      .select({
+        id: schema.automationRuns.id,
+        automationId: schema.automationRuns.automationId,
+        status: schema.automationRuns.status,
+        result: schema.automationRuns.result,
+        startedAt: schema.automationRuns.startedAt,
+        finishedAt: schema.automationRuns.finishedAt,
+        automationName: schema.automations.name,
+      })
+      .from(schema.automationRuns)
+      .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId))
+      .orderBy(desc(schema.automationRuns.startedAt))
+      .limit(100);
+  });
+
   app.post<{ Body: AutomationBody }>("/api/automations", async (req, reply) => {
     const { name, instruction, schedule } = req.body ?? {};
     if (!name?.trim() || !instruction?.trim() || !schedule?.trim()) {

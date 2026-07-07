@@ -1,33 +1,33 @@
 import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn("rounded-xl border bg-card text-card-foreground shadow-sm", className)}
-      {...props}
-    />
-  );
+// The shared elevated container. Wraps `.surface`/`.surface-soft` (index.css)
+// with a standard padding scale so call sites stop picking their own.
+const cardVariants = cva("", {
+  variants: {
+    tone: {
+      flat: "surface shadow-sm",
+      soft: "surface-soft",
+    },
+    padding: {
+      sm: "p-3",
+      md: "p-4",
+      lg: "p-5",
+    },
+  },
+  defaultVariants: {
+    tone: "flat",
+    padding: "md",
+  },
+});
+
+export interface CardProps
+  extends React.HTMLAttributes<HTMLElement>,
+    VariantProps<typeof cardVariants> {
+  as?: React.ElementType;
 }
 
-export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col space-y-1.5 p-5", className)} {...props} />;
-}
-
-export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className={cn("font-semibold leading-none tracking-tight", className)} {...props} />
-  );
-}
-
-export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("text-sm text-muted-foreground", className)} {...props} />;
-}
-
-export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-5 pt-0", className)} {...props} />;
-}
-
-export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex items-center p-5 pt-0", className)} {...props} />;
+export function Card({ className, tone, padding, as: Comp = "div", ...props }: CardProps) {
+  return <Comp className={cn(cardVariants({ tone, padding }), className)} {...props} />;
 }

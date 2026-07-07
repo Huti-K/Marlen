@@ -1,0 +1,270 @@
+{
+  "app": {
+    "skipToContent": "Zum Inhalt springen",
+    "openMenu": "Menü öffnen",
+    "openChat": "Chat öffnen",
+    "closeChat": "Chat schließen"
+  },
+  "views": {
+    "chat": {
+      "title": "Chat",
+      "description": "Stellen Sie Fragen zu Ihrem Posteingang oder lassen Sie den Assistenten Entwürfe schreiben, E-Mails beschriften oder aufräumen."
+    },
+    "home": {
+      "title": "Start",
+      "description": "Entwürfe, die auf Ihre Prüfung warten, und was der Assistent zuletzt getan hat."
+    },
+    "automations": {
+      "title": "Automatisierungen",
+      "description": "Lässt den Assistenten nach einem festen Zeitplan mit einer festen Anweisung laufen."
+    },
+    "knowledge": {
+      "title": "Wissen",
+      "description": "Dokumente, Erinnerungen und feste Anweisungen für Ihren Assistenten."
+    },
+    "settings": {
+      "title": "Einstellungen",
+      "description": "Ihre KI, E-Mail-Verbindungen und Sprache."
+    }
+  },
+  "sidebar": {
+    "closeMenu": "Menü schließen",
+    "finishSetup": "Einrichtung abschließen",
+    "lightMode": "Heller Modus",
+    "darkMode": "Dunkler Modus"
+  },
+  "common": {
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "dismiss": "Schließen",
+    "loading": "Wird geladen…",
+    "saving": "Wird gespeichert…",
+    "saved": "Gespeichert",
+    "retry": "Erneut versuchen",
+    "refresh": "Aktualisieren",
+    "signIn": "Anmelden",
+    "signOut": "Abmelden",
+    "submit": "Absenden"
+  },
+  "chat": {
+    "newConversation": "Neue Unterhaltung",
+    "history": "Verlauf",
+    "noConversations": "Noch keine Unterhaltungen.",
+    "untitled": "(ohne Titel)",
+    "thinking": "Denkt nach…",
+    "emptyTitle": "Fragen Sie Ihren Posteingang alles",
+    "emptyBody": "Der Assistent kann in Ihren verbundenen Konten suchen, E-Mails beschriften und Entwürfe schreiben.",
+    "placeholder": "Schreiben Sie Ihrem E-Mail-Assistenten…",
+    "send": "Nachricht senden",
+    "resize": "Chat-Fenster in der Breite anpassen"
+  },
+  "connections": {
+    "customToggle": "Eigenes Pipedream-Projekt verwenden",
+    "customToggleOn": "E-Mail läuft über das unten konfigurierte Pipedream-Projekt.",
+    "builtinInUse": "E-Mail läuft über das eingebaute Pipedream von Trailin.",
+    "builtinMissing": "Diese Version enthält kein eingebautes Pipedream — aktivieren Sie dies und fügen Sie unten Ihre eigenen Zugangsdaten hinzu.",
+    "writeToggle": "Senden & Änderungen erlauben",
+    "writeToggleOff": "Nur Lesen: Die KI kann lesen, suchen und Entwürfe erstellen — niemals senden, löschen oder etwas ändern.",
+    "writeToggleOn": "Die KI darf auf Ihre Anweisung E-Mails senden und Änderungen vornehmen (Labels, Archivieren, Löschen).",
+    "addAccount": "Neues Konto hinzufügen",
+    "searchProviders": "Anbieter suchen… (Gmail, Outlook, Zoho Mail, …)",
+    "noProvidersFound": "Keine Anbieter für „{{q}}“ gefunden.",
+    "setupTitle": "Einmalige Einrichtung: Trailin mit Pipedream verbinden",
+    "setupIntro": "Trailin nutzt <pd>Pipedream</pd>, einen kostenlosen Dienst, um Ihre E-Mail-Konten sicher zu verbinden — so viele Sie möchten, auch mehrere vom selben Anbieter. Dafür werden drei Werte aus Ihrem eigenen Pipedream-Workspace benötigt, die Sie einmalig kopieren:",
+    "setupStep1": "Erstellen Sie ein kostenloses Pipedream-Konto.",
+    "setupStep2": "Erstellen Sie unter Settings → API einen OAuth-Client und kopieren Sie dessen Client ID und Client Secret unten hinein.",
+    "setupStep3": "Erstellen Sie ein Projekt (beliebiger Name) und fügen Sie dessen URL — oder die proj_…-ID — unten ein.",
+    "openPipedream": "pipedream.com öffnen",
+    "openApiSettings": "API-Einstellungen öffnen",
+    "openProjects": "Projekte öffnen",
+    "clientId": "Client ID",
+    "clientSecret": "Client Secret",
+    "clientSecretKeepPlaceholder": "•••••• (leer lassen, um es beizubehalten)",
+    "project": "Projekt-URL oder -ID",
+    "saveVerify": "Speichern & prüfen",
+    "verified": "Wird vor dem Speichern bei Pipedream geprüft.",
+    "removeSaved": "Leeren",
+    "removeSavedConfirm": "Die in der App gespeicherten Pipedream-Zugangsdaten entfernen?",
+    "emailAccounts": "Verbundene Konten",
+    "noAccounts": "Noch keine E-Mail-Konten verbunden. Nutzen Sie die Schaltflächen oben — Sie können mehrere Konten pro Anbieter verbinden.",
+    "connectApp": "{{app}} verbinden",
+    "finishConnecting": "Schließen Sie die Verbindung im geöffneten Tab ab — diese Liste aktualisiert sich von selbst. Verbinden Sie erneut, um ein weiteres Konto hinzuzufügen.",
+    "healthy": "OK",
+    "unhealthy": "gestört",
+    "disconnect": "Trennen",
+    "disconnectConfirm": "Dieses Konto trennen?",
+    "projectFooter": "Pipedream-Projekt <code>{{projectId}}</code> · {{environment}} · {{source}}",
+    "sourceSettings": "in der App gespeichert",
+    "sourceEnv": "aus .env",
+    "edit": "Bearbeiten",
+    "accountColor": "Kontofarbe",
+    "customColor": "Eigene Farbe",
+    "colorPresets": "Farbvorlagen"
+  },
+  "home": {
+    "hint": "Alles, was Ihr Assistent für Sie vorbereitet hat, an einem Ort.",
+    "setupBanner": "Trailin ist noch nicht fertig eingerichtet — der Assistent erreicht Ihre E-Mails noch nicht.",
+    "setupBannerCta": "Einrichtung abschließen",
+    "reviewTitle": "Wartet auf Ihre Prüfung",
+    "reviewHint": "Vom Assistenten vorgeschriebene Entwürfe, live aus Ihren Mail-Konten. Von hier wird nie etwas gesendet — Sie prüfen und senden in Ihrer Mail-App.",
+    "reviewEmpty": "Keine Entwürfe offen. Wenn Sie oder der Assistent Antworten vorbereiten, erscheinen sie hier.",
+    "activityTitle": "Aktivität des Assistenten",
+    "activityHint": "Ergebnisse Ihrer geplanten Automatisierungen — eine Morgen-Übersicht landet hier.",
+    "activityEmptyTitle": "Noch nichts hier",
+    "activityEmptyBody": "Stellen Sie Ihren Posteingang auf Autopilot: Eine feste Anweisung läuft nach Zeitplan und berichtet hier.",
+    "activityNoRunsBody": "Ihre Automatisierungen haben noch keine Ergebnisse — führen Sie eine jetzt aus oder warten Sie auf den Zeitplan.",
+    "createAutomation": "Automatisierung erstellen",
+    "viewAutomations": "Automatisierungen ansehen",
+    "deletedAutomation": "Gelöschte Automatisierung"
+  },
+  "drafts": {
+    "noSubject": "(kein Betreff)",
+    "to": "An:",
+    "cc": "Cc:",
+    "open": "In Gmail öffnen",
+    "discard": "Entwurf verwerfen",
+    "discardConfirm": "Diesen Entwurf verwerfen? Er wird aus Ihrem Mail-Konto entfernt.",
+    "emptyBodyText": "(leerer Inhalt)"
+  },
+  "automations": {
+    "new": "Neue Automatisierung",
+    "edit": "Bearbeiten",
+    "save": "Speichern",
+    "create": "Erstellen",
+    "formTitle": "Neue Automatisierung",
+    "formHint": "Geben Sie dem Assistenten eine feste Anweisung und wählen Sie, wann sie läuft.",
+    "name": "Name",
+    "namePlaceholder": "Morgen-Übersicht",
+    "schedule": "Zeitplan",
+    "frequency": {
+      "daily": "Jeden Tag",
+      "weekdays": "An Werktagen",
+      "custom": "Tage wählen",
+      "date": "Bestimmtes Datum"
+    },
+    "time": "Uhrzeit",
+    "month": "Monat",
+    "day": "Tag",
+    "customDaysRequired": "Wählen Sie mindestens einen Tag.",
+    "dateOnceHint": "Läuft einmal an diesem Datum und schaltet sich danach automatisch aus.",
+    "advancedToggle": "Erweitert: als Cron bearbeiten",
+    "simpleToggle": "Zurück zum einfachen Zeitplan",
+    "advancedLossNote": "Der eigene Cron-Ausdruck wurde durch den Zeitplan oben ersetzt.",
+    "scheduleLabel": {
+      "daily": "Täglich · {{time}}",
+      "weekdays": "Werktags · {{time}}",
+      "custom": "{{days}} · {{time}}",
+      "date": "{{date}} · {{time}}"
+    },
+    "cronInvalid": "Sieht nicht wie ein Standard-Cron-Ausdruck mit 5 Feldern aus — wird beim Erstellen geprüft.",
+    "cronHint": "<c>0 8 * * 1-5</c> läuft werktags um 08:00 Uhr.",
+    "instruction": "Anweisung für den Assistenten",
+    "instructionPlaceholder": "Fasse die ungelesenen E-Mails der letzten 24 Stunden zusammen…",
+    "create": "Erstellen",
+    "emptyTitle": "Noch keine Automatisierungen",
+    "emptyBody": "Schreiben Sie eine feste Anweisung und wählen Sie, wann sie läuft.",
+    "paused": "pausiert",
+    "runNow": "Jetzt ausführen",
+    "delete": "Löschen",
+    "deleteConfirm": "Automatisierung \"{{name}}\" löschen?",
+    "recentRuns": "Letzte Ausführungen",
+    "noRuns": "Noch keine Ausführungen.",
+    "runStatus": {
+      "running": "läuft",
+      "success": "erfolgreich",
+      "error": "Fehler"
+    }
+  },
+  "memory": {
+    "addPlaceholder": "Etwas hinzufügen, das sich Trailin merken soll…",
+    "savedByAgent": "vom Assistenten gespeichert",
+    "empty": "Noch keine Erinnerungen. Sagen Sie dem Assistenten im Chat „Merke dir …“, oder fügen Sie hier eine hinzu.",
+    "delete": "Löschen",
+    "deleteConfirm": "Diese Erinnerung löschen?"
+  },
+  "library": {
+    "copyFolder": "Ordnerpfad kopieren",
+    "folderHint": "Hier abgelegte Dateien werden automatisch indiziert.",
+    "upload": "Dateien hochladen",
+    "rescan": "Erneut scannen",
+    "emptyTitle": "Noch keine Dokumente",
+    "emptyBody": "Legen Sie Dateien in den Ordner oben ab oder laden Sie sie hoch.",
+    "error": "Fehler",
+    "delete": "Löschen",
+    "deleteConfirm": "\"{{title}}\" löschen? Die Datei wird auch aus dem Ordner entfernt.",
+    "sectionCount_one": "{{count}} Abschnitt",
+    "sectionCount_other": "{{count}} Abschnitte"
+  },
+  "knowledge": {
+    "sections": {
+      "instructions": {
+        "title": "Anweisungen für den Assistenten",
+        "description": "Eine feste Anweisung, der der Assistent in jeder Unterhaltung folgt — etwa Persona, Tonfall oder feste Regeln.",
+        "placeholder": "Antworte immer kurz. Unterschreibe Entwürfe mit „Beste Grüße, Kadim“."
+      },
+      "memory": {
+        "title": "Erinnerungen",
+        "description": "Dauerhafte Fakten und Vorlieben, an die sich der Assistent über Unterhaltungen hinweg erinnert — er merkt sich Dinge, wenn Sie „Merke dir …“ sagen, und Sie können sie hier bearbeiten."
+      },
+      "library": {
+        "title": "Dokumente",
+        "description": "Ein lokaler Ordner mit PDF-, Markdown- und Textdateien, die der Assistent durchsuchen und lesen kann. Legen Sie Dateien hinein oder laden Sie sie hoch — alles bleibt auf diesem Computer."
+      }
+    }
+  },
+  "setup": {
+    "title": "Willkommen bei Trailin",
+    "intro": "Ihre E-Mails, erledigt von einem Assistenten, mit dem Sie sprechen können. Zwei Schritte, dann sind Sie drin:",
+    "stepAiTitle": "Bei Ihrer KI anmelden",
+    "stepAiDescription": "Nutzen Sie ein vorhandenes Abo (Claude, Copilot, ChatGPT) oder fügen Sie einen API-Schlüssel ein. Ihre Anmeldung bleibt auf diesem Computer.",
+    "aiDone": "Angemeldet — verwendet {{model}}.",
+    "stepEmailTitle": "E-Mail-Konto verbinden",
+    "stepEmailDescription": "Verbinden Sie Gmail oder Outlook, damit der Assistent Ihre Post sehen kann. Weitere Konten können Sie später hinzufügen.",
+    "pipedreamMissingBody": "Diese Version enthält keine eingebaute E-Mail-Brücke. Fügen Sie unter Einstellungen → E-Mail Ihr eigenes kostenloses Pipedream-Projekt hinzu — eine einmalige Einrichtung mit drei Feldern.",
+    "openSettings": "Einstellungen öffnen",
+    "advancedLink": "Erweitert: eigenes Pipedream-Projekt verwenden",
+    "allSetTitle": "Alles bereit",
+    "allSetBody": "Der Assistent kann jetzt Ihre Post lesen, Antworten entwerfen und Ihre Fragen beantworten.",
+    "openApp": "Trailin öffnen",
+    "skip": "Später — ich sehe mich erst um"
+  },
+  "settings": {
+    "sections": {
+      "ai": {
+        "title": "KI & Modell",
+        "description": "Die KI, die Ihre Post liest und beantwortet. Melden Sie sich mit einem vorhandenen Abo an (Claude, Copilot, ChatGPT) oder nutzen Sie einen API-Schlüssel — Ihre Anmeldung bleibt auf diesem Computer."
+      },
+      "email": {
+        "title": "E-Mail",
+        "description": "Verbundene Konten, was die KI tun darf und wie Trailin mit Ihrer Post verbunden ist."
+      },
+      "language": {
+        "title": "Sprache",
+        "description": "Gilt für die App und für die Antworten des Assistenten, im Chat und in Automatisierungen."
+      }
+    },
+    "provider": "Anbieter",
+    "model": "Modell",
+    "signInFirst": "Melden Sie sich oben bei einem Anbieter an und wählen Sie dann hier dessen Modell.",
+    "usingModel": "Verwendet <model>{{model}}</model>",
+    "loadingProviders": "Anbieter werden geladen…",
+    "addApiKey": "API-Schlüssel hinzufügen",
+    "addApiKeyTitle": "API-Schlüssel hinzufügen",
+    "chooseProvider": "Anbieter wählen…",
+    "apiKeyPlaceholder": "API-Schlüssel für {{provider}} einfügen und Enter drücken…",
+    "providerStatus": {
+      "subscription": "Angemeldet",
+      "storedKey": "API-Schlüssel gespeichert",
+      "env": "Verwendet {{key}}",
+      "envFallback": "Umgebungsvariable",
+      "none": "Nicht angemeldet"
+    },
+    "modelCount_one": "{{count}} Modell",
+    "modelCount_other": "{{count}} Modelle",
+    "signedInWith": "Angemeldet bei {{provider}}.",
+    "signingInWith": "Anmeldung bei {{provider}}…",
+    "openSignInPage": "Anmeldeseite öffnen",
+    "enterCodeAt": "Geben Sie diesen Code ein unter <uri>{{uri}}</uri>",
+    "loginInputPlaceholder": "Code / Weiterleitungs-URL einfügen, falls der Vorgang nicht automatisch abschließt…"
+  }
+}

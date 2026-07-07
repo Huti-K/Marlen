@@ -14,10 +14,7 @@ import {
   startLogin,
 } from "../llm/loginFlow.js";
 import { resetSessions } from "../agent/emailAgent.js";
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { errorMessage } from "../util.js";
 
 export async function llmRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/llm/providers", async () => listProviders());

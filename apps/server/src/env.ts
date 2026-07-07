@@ -8,10 +8,14 @@ function optional(name: string): string | undefined {
 export const env = {
   port: Number(optional("PORT") ?? 3001),
   databasePath: optional("DATABASE_PATH") ?? "./data/trailin.db",
+  /** Drop folder for the document library (PDF / Markdown / text). */
+  libraryPath: optional("LIBRARY_PATH") ?? "./data/library",
 
   agentProvider: optional("AGENT_PROVIDER") ?? "anthropic",
   agentModel: optional("AGENT_MODEL") ?? "claude-opus-4-8",
 
+  // Fallbacks only — credentials saved in the app (Settings → Connect email)
+  // take precedence; see pipedream/connect.ts.
   pipedream: {
     clientId: optional("PIPEDREAM_CLIENT_ID"),
     clientSecret: optional("PIPEDREAM_CLIENT_SECRET"),
@@ -21,17 +25,5 @@ export const env = {
       | "production",
     externalUserId: optional("PIPEDREAM_EXTERNAL_USER_ID") ?? "local-user",
   },
+  encryptionKey: optional("ENCRYPTION_KEY"),
 };
-
-export function pipedreamConfigured(): boolean {
-  const { clientId, clientSecret, projectId } = env.pipedream;
-  return Boolean(clientId && clientSecret && projectId);
-}
-
-export function assertPipedreamConfigured(): void {
-  if (!pipedreamConfigured()) {
-    throw new Error(
-      "Pipedream Connect is not configured. Set PIPEDREAM_CLIENT_ID, PIPEDREAM_CLIENT_SECRET and PIPEDREAM_PROJECT_ID in .env (see .env.example).",
-    );
-  }
-}

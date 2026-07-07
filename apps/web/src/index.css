@@ -41,7 +41,8 @@
   --destructive-foreground: oklch(0.99 0.004 255);
 
   --ring: oklch(0.53 0.11 256);
-  --sidebar: oklch(0.971 0.003 255);
+  /* Clean white nav rail — sits a touch brighter than the canvas, no border needed. */
+  --sidebar: oklch(1 0 0);
 
   --radius: 0.7rem;
   --grain-opacity: 0.018;
@@ -92,9 +93,6 @@
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-sidebar: var(--sidebar);
-  /* Back-compat: any lingering `card` utility resolves to an elevated surface. */
-  --color-card: var(--surface);
-  --color-card-foreground: var(--foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -131,6 +129,12 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv11", "ss01";
+  }
+  button, [role="button"] {
+    cursor: pointer;
+  }
+  button:disabled, [role="button"]:disabled {
+    cursor: not-allowed;
   }
   time,
   .tabular {
@@ -214,6 +218,14 @@
   .tint-danger {
     background: color-mix(in oklch, var(--destructive) 14%, transparent);
     color: var(--destructive);
+  }
+}
+
+@layer utilities {
+  /* Reserve the scrollbar's width up front so its appearance/disappearance
+     never shifts the content next to it. */
+  .scroll-stable {
+    scrollbar-gutter: stable;
   }
 }
 

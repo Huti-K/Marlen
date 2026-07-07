@@ -1,51 +1,75 @@
 import * as React from "react";
-import { CalendarClock, ChevronDown, ChevronUp, Loader2, Play, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronUp, Loader2, MessageSquareShare, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import type { Automation, AutomationRun } from "@trailin/shared";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/ui/markdown";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FormField } from "@/components/ui/form-field";
+import { LinkButton } from "@/components/ui/link-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog } from "@/components/ui/dialog";
+import { toast } from "@/lib/toast";
+import { cn, errorMessage } from "@/lib/utils";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  DEFAULT_PRESET,
+  buildCron,
+  daysInMonth,
+  monthDayLabel,
+  monthName,
+  parseCron,
+  weekdayName,
+  weekdayShortName,
+  type SchedulePreset,
+} from "@/features/automations/schedule";
 
-const EXAMPLES = [
-  { label: "Morning digest", schedule: "0 8 * * 1-5", instruction: "Summarize all unread emails from the last 24 hours across my accounts. Group by account, flag anything urgent." },
-  { label: "Weekly cleanup report", schedule: "0 18 * * 5", instruction: "List newsletters and promotional emails received this week that I never opened, so I can decide what to unsubscribe from." },
-];
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-// Format check for a standard 5-field cron expression (min hour dom month dow).
+// Soft format hint for the common numeric 5-field cron form. The server
+// (node-cron) is the authority and accepts more — names, 6 fields — so this
+// only drives the inline hint, never blocks submission.
 const CRON_FIELD = /^(\*|\d+)(-\d+)?(\/\d+)?(,(\*|\d+)(-\d+)?(\/\d+)?)*$/;
-function isValidCron(expr: string): boolean {
+function looksLikeCron(expr: string): boolean {
   const parts = expr.trim().split(/\s+/);
   return parts.length === 5 && parts.every((p) => CRON_FIELD.test(p));
 }
 
 export function AutomationsPanel() {
+  const { t, i18n } = useTranslation();
   const [automations, setAutomations] = React.useState<Automation[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
   const [showForm, setShowForm] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", schedule: "0 8 * * *", instruction: "" });
-  const cronValid = isValidCron(form.schedule);
+  const [form, setForm] = React.useState({ name: "", instruction: "" });
+  const [preset, setPreset] = React.useState<SchedulePreset>(DEFAULT_PRESET);
+  const [cron, setCron] = React.useState("");
+  const [advanced, setAdvanced] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  // Shown once when leaving Advanced discards a cron the picker can't express.
+  const [lossNote, setLossNote] = React.useState(false);
+
+  const schedule = advanced ? cron : buildCron(preset);
+  const cronValid = looksLikeCron(cron);
+  const scheduleValid = advanced
+    ? cronValid
+    : preset.frequency !== "custom" || preset.weekdays.length > 0;
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
       setAutomations(await api.automations());
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -55,156 +79,380 @@ export function AutomationsPanel() {
     void refresh();
   }, [refresh]);
 
-  const create = async () => {
+  const resetForm = () => {
+    setForm({ name: "", instruction: "" });
+    setPreset(DEFAULT_PRESET);
+    setCron("");
+    setAdvanced(false);
+    setLossNote(false);
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    setShowForm(open);
+    if (!open) {
+      resetForm();
+      setEditingId(null);
+    }
+  };
+
+  const toggleAdvanced = () => {
+    if (!advanced) {
+      // Carry the picker's schedule into the cron field.
+      setCron(buildCron(preset));
+      setAdvanced(true);
+      setLossNote(false);
+      return;
+    }
+    // Back to the picker: adopt the cron when it's expressible, else keep the
+    // previous preset and say that the custom cron is being replaced.
+    const parsed = parseCron(cron);
+    if (parsed) {
+      setPreset(parsed);
+      setLossNote(false);
+    } else {
+      setLossNote(cron.trim() !== "");
+    }
+    setAdvanced(false);
+  };
+
+  const save = async () => {
     setSaving(true);
-    setError(null);
     try {
-      await api.createAutomation(form);
-      setForm({ name: "", schedule: "0 8 * * *", instruction: "" });
-      setShowForm(false);
+      if (editingId) {
+        await api.updateAutomation(editingId, { ...form, schedule });
+      } else {
+        await api.createAutomation({ ...form, schedule });
+      }
+      handleOpenChange(false);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(errorMessage(err));
     } finally {
       setSaving(false);
     }
   };
 
+  const remove = async () => {
+    if (!editingId) return;
+    setSaving(true);
+    try {
+      await api.deleteAutomation(editingId);
+      handleOpenChange(false);
+      setConfirmDelete(false);
+      await refresh();
+    } catch (err) {
+      toast.error(errorMessage(err));
+      setSaving(false);
+    }
+  };
+
+  const openForEdit = (automation: Automation) => {
+    setForm({ name: automation.name, instruction: automation.instruction });
+    const parsed = parseCron(automation.schedule);
+    if (parsed) {
+      setPreset(parsed);
+      setCron("");
+      setAdvanced(false);
+    } else {
+      setPreset(DEFAULT_PRESET);
+      setCron(automation.schedule);
+      setAdvanced(true);
+    }
+    setEditingId(automation.id);
+    setShowForm(true);
+  };
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pt-4">
       <div className="flex items-center justify-end">
-        <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-          <Plus /> New automation
+        <Button size="sm" onClick={() => setShowForm(true)}>
+          <Plus /> {t("automations.new")}
         </Button>
       </div>
 
-      {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>New automation</CardTitle>
-            <CardDescription>
-              The schedule is a standard cron expression (minute hour day month weekday).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-2">
-              {EXAMPLES.map((example) => (
-                <Button
-                  key={example.label}
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    setForm({
-                      name: example.label,
-                      schedule: example.schedule,
-                      instruction: example.instruction,
-                    })
-                  }
-                >
-                  {example.label}
-                </Button>
-              ))}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="automation-name">Name</Label>
-                <Input
-                  id="automation-name"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Morning digest"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="automation-schedule">Schedule (cron)</Label>
-                <Input
-                  id="automation-schedule"
-                  value={form.schedule}
-                  onChange={(e) => setForm({ ...form, schedule: e.target.value })}
-                  placeholder="0 8 * * 1-5"
-                  aria-invalid={!cronValid}
-                  className={cn(
-                    "font-mono tabular",
-                    !cronValid &&
-                      form.schedule.trim() &&
-                      "border-destructive focus-visible:ring-destructive",
-                  )}
-                />
-                {form.schedule.trim() && !cronValid ? (
-                  <p className="text-xs text-destructive">
-                    Needs five space-separated fields: minute hour day month weekday.
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-mono">0 8 * * 1-5</span> runs at 08:00 on weekdays.
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="automation-instruction">Instruction for the agent</Label>
-              <Textarea
-                id="automation-instruction"
-                value={form.instruction}
-                onChange={(e) => setForm({ ...form, instruction: e.target.value })}
-                placeholder="Summarize all unread emails from the last 24 hours…"
-                rows={3}
-              />
-            </div>
-            <div className="flex gap-2">
+      <Dialog
+        open={showForm}
+        onOpenChange={handleOpenChange}
+        title={t("automations.formTitle")}
+        description={t("automations.formHint")}
+        footer={
+          <div className="flex w-full items-center justify-between">
+            {editingId ? (
               <Button
-                onClick={() => void create()}
-                disabled={saving || !form.name.trim() || !form.instruction.trim() || !cronValid}
+                variant="ghost"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setConfirmDelete(true)}
+              >
+                {t("automations.delete")}
+              </Button>
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={() => handleOpenChange(false)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                onClick={() => void save()}
+                disabled={
+                  saving ||
+                  !form.name.trim() ||
+                  !form.instruction.trim() ||
+                  !schedule.trim() ||
+                  !scheduleValid
+                }
               >
                 {saving && <Loader2 className="animate-spin" />}
-                Create
-              </Button>
-              <Button variant="ghost" onClick={() => setShowForm(false)}>
-                Cancel
+                {editingId ? t("automations.save") : t("automations.create")}
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        }
+      >
+        <FormField id="automation-name" label={t("automations.name")}>
+          <Input
+            id="automation-name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder={t("automations.namePlaceholder")}
+          />
+        </FormField>
 
-      {error && (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </p>
-      )}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="automation-frequency">{t("automations.schedule")}</Label>
+          {advanced ? (
+            <>
+              <Input
+                id="automation-cron"
+                value={cron}
+                onChange={(e) => setCron(e.target.value)}
+                placeholder="0 8 * * 1-5"
+                aria-invalid={!cronValid}
+                className={cn(
+                  "font-mono tabular",
+                  !cronValid && cron.trim() && "text-destructive",
+                )}
+              />
+              {cron.trim() && !cronValid ? (
+                <p className="text-xs text-destructive">{t("automations.cronInvalid")}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  <Trans
+                    i18nKey="automations.cronHint"
+                    components={{ c: <span className="font-mono" /> }}
+                  />
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="w-44">
+                  <Select
+                    id="automation-frequency"
+                    value={preset.frequency}
+                    onChange={(value) =>
+                      setPreset({ ...preset, frequency: value as SchedulePreset["frequency"] })
+                    }
+                    options={[
+                      { value: "daily", label: t("automations.frequency.daily") },
+                      { value: "weekdays", label: t("automations.frequency.weekdays") },
+                      { value: "custom", label: t("automations.frequency.custom") },
+                      { value: "date", label: t("automations.frequency.date") },
+                    ]}
+                  />
+                </div>
+                <Input
+                  type="time"
+                  value={preset.time}
+                  onChange={(e) => setPreset({ ...preset, time: e.target.value || "08:00" })}
+                  className="w-28 tabular-nums"
+                  aria-label={t("automations.time")}
+                />
+              </div>
+
+              {preset.frequency === "custom" && (
+                <>
+                  <WeekdayToggle
+                    value={preset.weekdays}
+                    onChange={(weekdays) => setPreset({ ...preset, weekdays })}
+                    locale={i18n.language}
+                  />
+                  {preset.weekdays.length === 0 && (
+                    <p className="text-xs text-warning">{t("automations.customDaysRequired")}</p>
+                  )}
+                </>
+              )}
+
+              {preset.frequency === "date" && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="w-36">
+                    <Select
+                      id="automation-month"
+                      aria-label={t("automations.month")}
+                      value={String(preset.month)}
+                      onChange={(value) => {
+                        const month = Number(value);
+                        const maxDay = daysInMonth(month);
+                        setPreset((p) => ({ ...p, month, day: Math.min(p.day, maxDay) }));
+                      }}
+                      options={Array.from({ length: 12 }, (_, i) => i + 1).map((m) => ({
+                        value: String(m),
+                        label: monthName(m, i18n.language),
+                      }))}
+                    />
+                  </div>
+                  <div className="w-20">
+                    <Select
+                      id="automation-day"
+                      aria-label={t("automations.day")}
+                      value={String(preset.day)}
+                      onChange={(value) => setPreset({ ...preset, day: Number(value) })}
+                      options={Array.from({ length: daysInMonth(preset.month) }, (_, i) => ({
+                        value: String(i + 1),
+                        label: String(i + 1),
+                      }))}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {lossNote && !advanced && (
+            <p className="text-xs text-warning">{t("automations.advancedLossNote")}</p>
+          )}
+          {!advanced && preset.frequency === "date" && (
+            <p className="text-xs text-muted-foreground">{t("automations.dateOnceHint")}</p>
+          )}
+          <LinkButton onClick={toggleAdvanced}>
+            {advanced ? t("automations.simpleToggle") : t("automations.advancedToggle")}
+          </LinkButton>
+        </div>
+
+        <FormField id="automation-instruction" label={t("automations.instruction")}>
+          <Textarea
+            id="automation-instruction"
+            value={form.instruction}
+            onChange={(e) => setForm({ ...form, instruction: e.target.value })}
+            placeholder={t("automations.instructionPlaceholder")}
+            rows={3}
+          />
+        </FormField>
+      </Dialog>
 
       {loading ? (
-        [0, 1].map((i) => (
-          <Card key={i} className="p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex flex-col gap-2">
-                <Skeleton className="h-4 w-44" />
-                <Skeleton className="h-3 w-64" />
+        <div className="flex flex-col gap-3">
+          {[0, 1].map((i) => (
+            <Card key={i} padding="lg">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-4 w-44" />
+                  <Skeleton className="h-3 w-64" />
+                </div>
+                <Skeleton className="h-8 w-24 rounded-md" />
               </div>
-              <Skeleton className="h-8 w-24 rounded-md" />
-            </div>
-          </Card>
-        ))
+            </Card>
+          ))}
+        </div>
       ) : automations.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
-            <div className="grid h-11 w-11 place-items-center rounded-xl bg-secondary text-muted-foreground">
-              <CalendarClock className="h-5 w-5" />
-            </div>
-            <p className="text-sm font-medium">No automations yet</p>
-            <p className="max-w-xs text-pretty text-xs text-muted-foreground">
-              Give the agent a standing instruction and a schedule — a weekday-morning inbox
-              digest is a good first one.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={CalendarClock}
+          title={t("automations.emptyTitle")}
+          description={t("automations.emptyBody")}
+        />
       ) : (
-        automations.map((automation, i) => (
-          <div key={automation.id} className="animate-in-up" style={{ animationDelay: `${i * 55}ms` }}>
-            <AutomationCard automation={automation} onChanged={refresh} />
-          </div>
-        ))
+        <div className="flex flex-col gap-3">
+          {automations.map((automation, i) => (
+            <div
+              key={automation.id}
+              className="animate-in-up"
+              style={{ animationDelay: `${i * 55}ms` }}
+            >
+              <AutomationCard automation={automation} onChanged={refresh} onEdit={() => openForEdit(automation)} />
+            </div>
+          ))}
+        </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={t("automations.delete")}
+        description={t("automations.deleteConfirm", { name: form.name })}
+        confirmLabel={t("automations.delete")}
+        variant="destructive"
+        busy={saving}
+        onConfirm={() => void remove()}
+      />
+    </div>
+  );
+}
+
+/** "Weekdays · 08:00"-style label; null when the cron isn't picker-shaped. */
+function scheduleLabel(
+  schedule: string,
+  t: ReturnType<typeof useTranslation>["t"],
+  locale: string,
+): string | null {
+  const preset = parseCron(schedule);
+  if (!preset) return null;
+  switch (preset.frequency) {
+    case "daily":
+      return t("automations.scheduleLabel.daily", { time: preset.time });
+    case "weekdays":
+      return t("automations.scheduleLabel.weekdays", { time: preset.time });
+    case "custom":
+      return t("automations.scheduleLabel.custom", {
+        days: preset.weekdays.map((d) => weekdayShortName(d, locale)).join(", "),
+        time: preset.time,
+      });
+    case "date":
+      return t("automations.scheduleLabel.date", {
+        date: monthDayLabel(preset.month, preset.day, locale),
+        time: preset.time,
+      });
+  }
+}
+
+/** Multi-select day-of-week chips, Mon→Sun, used by the "custom" schedule. */
+function WeekdayToggle({
+  value,
+  onChange,
+  locale,
+}: {
+  value: number[];
+  onChange: (next: number[]) => void;
+  locale: string;
+}) {
+  const toggle = (day: number) => {
+    onChange(
+      value.includes(day)
+        ? value.filter((d) => d !== day)
+        : [...value, day].sort((a, b) => a - b),
+    );
+  };
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {WEEKDAY_ORDER.map((day) => {
+        const active = value.includes(day);
+        return (
+          <button
+            key={day}
+            type="button"
+            onClick={() => toggle(day)}
+            aria-pressed={active}
+            aria-label={weekdayName(day, locale)}
+            className={cn(
+              "h-8 min-w-8 rounded-full px-2.5 text-xs font-medium transition-colors",
+              active
+                ? "bg-primary text-primary-foreground"
+                : "bg-surface-2 text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {weekdayShortName(day, locale)}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -212,13 +460,18 @@ export function AutomationsPanel() {
 function AutomationCard({
   automation,
   onChanged,
+  onEdit,
 }: {
   automation: Automation;
   onChanged: () => Promise<void>;
+  onEdit: () => void;
 }) {
+  const { t, i18n } = useTranslation();
   const [runs, setRuns] = React.useState<AutomationRun[] | null>(null);
   const [expanded, setExpanded] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+
+  const label = scheduleLabel(automation.schedule, t, i18n.language);
 
   const loadRuns = React.useCallback(async () => {
     setRuns(await api.automationRuns(automation.id).catch(() => []));
@@ -227,6 +480,13 @@ function AutomationCard({
   React.useEffect(() => {
     if (expanded) void loadRuns();
   }, [expanded, loadRuns]);
+
+  // Keep polling while a run is in flight so "running" resolves on screen.
+  React.useEffect(() => {
+    if (!expanded || !runs?.some((r) => r.status === "running")) return;
+    const timer = setInterval(() => void loadRuns(), 2000);
+    return () => clearInterval(timer);
+  }, [expanded, runs, loadRuns]);
 
   const toggle = async (enabled: boolean) => {
     setBusy(true);
@@ -250,85 +510,120 @@ function AutomationCard({
     }
   };
 
-  const remove = async () => {
-    if (!window.confirm(`Delete automation "${automation.name}"?`)) return;
-    await api.deleteAutomation(automation.id);
-    await onChanged();
-  };
-
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+    <Card padding="lg">
+      <div className="flex items-start justify-between gap-3">
+        <div 
+          className="min-w-0 flex-1 cursor-pointer rounded-md transition-opacity hover:opacity-80"
+          onClick={onEdit}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === "Enter" && onEdit()}
+        >
+            <div className="flex flex-wrap items-center gap-2 text-base font-semibold tracking-tight">
               {automation.name}
-              <Badge variant="outline" className="font-mono text-[11px]">
-                {automation.schedule}
+              <Badge
+                variant="muted"
+                className={cn("text-[11px]", !label && "font-mono")}
+                title={automation.schedule}
+              >
+                {label ?? automation.schedule}
               </Badge>
-              {!automation.enabled && <Badge variant="secondary">paused</Badge>}
-            </CardTitle>
-            <CardDescription className="mt-1 line-clamp-2">
+              {!automation.enabled && <Badge variant="warning">{t("automations.paused")}</Badge>}
+            </div>
+            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
               {automation.instruction}
-            </CardDescription>
+            </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 pt-0.5">
             <Switch
               checked={automation.enabled}
               onCheckedChange={(v) => void toggle(v)}
               disabled={busy}
+              aria-label={t("automations.paused")}
             />
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-4 pt-1">
+          <button
+            className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? <ChevronUp className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
+            {t("automations.recentRuns")}
+          </button>
+          
+          <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => void runNow()} disabled={busy}>
-              <Play /> Run now
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => void remove()} title="Delete">
-              <Trash2 className="h-4 w-4 text-muted-foreground" />
+              <Play className="h-3.5 w-3.5 mr-1.5" /> {t("automations.runNow")}
             </Button>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <button
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => setExpanded((v) => !v)}
-        >
-          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          Recent runs
-        </button>
         {expanded && (
           <div className="mt-2 flex flex-col gap-2">
             {!runs ? (
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             ) : runs.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No runs yet.</p>
+              <p className="text-xs text-muted-foreground">{t("automations.noRuns")}</p>
             ) : (
               runs.map((run) => (
-                <div key={run.id} className="rounded-md border bg-muted/40 p-2.5">
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={
-                        run.status === "success"
-                          ? "success"
-                          : run.status === "error"
-                            ? "destructive"
-                            : "secondary"
-                      }
-                    >
-                      {run.status}
-                    </Badge>
-                    <time dateTime={run.startedAt} className="text-xs text-muted-foreground">
-                      {new Date(run.startedAt).toLocaleString()}
-                    </time>
-                  </div>
-                  {run.result && (
-                    <p className="mt-1.5 whitespace-pre-wrap text-xs">{run.result}</p>
-                  )}
-                </div>
+                <RunItem key={run.id} run={run} />
               ))
             )}
           </div>
         )}
-      </CardContent>
     </Card>
+  );
+}
+
+function RunItem({ run }: { run: AutomationRun }) {
+  const { t, i18n } = useTranslation();
+  const [expanded, setExpanded] = React.useState(false);
+  const hasResult = !!run.result;
+
+  return (
+    <div className="rounded-lg bg-surface-2 p-3">
+      <div 
+        className={cn("flex items-center gap-2", hasResult && "cursor-pointer")}
+        onClick={() => hasResult && setExpanded(!expanded)}
+      >
+        {hasResult && (
+           expanded ? <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+        )}
+        <Badge
+          variant={
+            run.status === "success"
+              ? "success"
+              : run.status === "error"
+                ? "destructive"
+                : "muted"
+          }
+        >
+          {t(`automations.runStatus.${run.status}`)}
+        </Badge>
+        <div className="ml-auto flex items-center gap-2">
+          <time dateTime={run.startedAt} className="text-xs text-muted-foreground">
+            {new Date(run.startedAt).toLocaleString(i18n.language)}
+          </time>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            title="Go to chat"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.dispatchEvent(new CustomEvent("trailin:show-chat"));
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent("trailin:open-chat", { detail: run.id }));
+              }, 100);
+            }}
+          >
+            <MessageSquareShare className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+      {expanded && hasResult && <Markdown content={run.result} className="mt-2 text-xs" />}
+    </div>
   );
 }

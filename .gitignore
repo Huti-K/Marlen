@@ -4,7 +4,12 @@ dist/
 .env
 .env.*
 !.env.example
-**/data/*.db
-**/data/*.db-*
+# Runtime state: SQLite DB + stored credentials (auth.json)
+apps/server/data/
+.claude/settings.local.json
 .DS_Store
 *.log
+*.db
+*.db-wal
+*.db-shm
+*.db-journal

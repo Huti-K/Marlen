@@ -1,33 +1,35 @@
 import * as React from "react";
-import { ExternalLink, Inbox, Loader2, Mail, RefreshCw, Trash2 } from "lucide-react";
-import { EMAIL_APPS, EMAIL_APP_LABELS, type ConnectedAccount, type EmailApp } from "@trailin/shared";
+import { Check, ExternalLink, Loader2, Pencil, X } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
+import type { PipedreamStatus } from "@trailin/shared";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
+import { Card } from "@/components/ui/card";
+import { FormField } from "@/components/ui/form-field";
+import { ListRow } from "@/components/ui/list-row";
+import { IconButton } from "@/components/ui/icon-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Accounts } from "@/features/connections/Accounts";
+import { toast } from "@/lib/toast";
+import { errorMessage } from "@/lib/utils";
 
-export function ConnectionsPanel() {
-  const [accounts, setAccounts] = React.useState<ConnectedAccount[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [connecting, setConnecting] = React.useState<EmailApp | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => void }) {
+  const { t } = useTranslation();
+  const [status, setStatus] = React.useState<PipedreamStatus | null>(null);
+  const [editing, setEditing] = React.useState(false);
+  // Only for the initial fetch — every error after that is a toast, not a blocking state.
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
-      setAccounts(await api.accounts());
+      setStatus(await api.pipedreamStatus());
+      setLoadError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
+      setLoadError(errorMessage(err));
     }
   }, []);
 
@@ -35,123 +37,301 @@ export function ConnectionsPanel() {
     void refresh();
   }, [refresh]);
 
-  const connect = async (app: EmailApp) => {
-    setConnecting(app);
-    setError(null);
+  const afterChange = React.useCallback(async () => {
+    setEditing(false);
+    await refresh();
+    onStatusChanged?.();
+  }, [refresh, onStatusChanged]);
+
+  const toggleMode = async (useCustom: boolean) => {
     try {
-      const { connectLinkUrl } = await api.connectToken(app);
-      window.open(connectLinkUrl, "_blank", "noopener,noreferrer");
+      setStatus(await api.setPipedreamMode(useCustom));
+      onStatusChanged?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setConnecting(null);
+      toast.error(errorMessage(err));
     }
   };
 
-  const remove = async (id: string) => {
-    if (!window.confirm("Disconnect this account?")) return;
+  const [allowWrite, setAllowWrite] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    api
+      .emailWrite()
+      .then((r) => setAllowWrite(r.allowWrite))
+      .catch((err) => toast.error(errorMessage(err)));
+  }, []);
+
+  const toggleWrite = async (next: boolean) => {
     try {
-      await api.deleteAccount(id);
-      await refresh();
+      setAllowWrite((await api.setEmailWrite(next)).allowWrite);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(errorMessage(err));
+    }
+  };
+
+  if (!status) {
+    return loadError ? (
+      <div className="flex flex-col items-start gap-2">
+        <ErrorBanner>{loadError}</ErrorBanner>
+        <Button variant="ghost" size="sm" onClick={() => void refresh()}>
+          {t("common.retry")}
+        </Button>
+      </div>
+    ) : (
+      <LoadingRow />
+    );
+  }
+
+  const custom = status.mode === "custom";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <ListRow className="animate-in-up py-2.5" style={{ animationDelay: "0ms" }}>
+        <div className="min-w-0">
+          <Label htmlFor="pd-custom-toggle" className="text-sm font-medium">
+            {t("connections.customToggle")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {custom
+              ? t("connections.customToggleOn")
+              : status.builtinAvailable
+                ? t("connections.builtinInUse")
+                : t("connections.builtinMissing")}
+          </p>
+        </div>
+        <Switch
+          id="pd-custom-toggle"
+          checked={custom}
+          onCheckedChange={(next) => void toggleMode(next)}
+        />
+      </ListRow>
+
+      {custom && (
+        <div className="animate-in-up" style={{ animationDelay: "25ms" }}>
+          {!status.configured || editing ? (
+            <SetupWizard
+              status={status}
+              onSaved={afterChange}
+              onClose={status.configured ? () => setEditing(false) : undefined}
+            />
+          ) : (
+            <ListRow className="py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-xs text-muted-foreground">
+                  <Trans
+                    i18nKey="connections.projectFooter"
+                    values={{
+                      projectId: status.projectId,
+                      environment: status.environment,
+                      source:
+                        status.source === "env"
+                          ? t("connections.sourceEnv")
+                          : t("connections.sourceSettings"),
+                    }}
+                    components={{ code: <span className="font-mono" /> }}
+                  />
+                </p>
+              </div>
+              <IconButton onClick={() => setEditing(true)} aria-label={t("connections.edit")}>
+                <Pencil className="h-4 w-4" />
+              </IconButton>
+            </ListRow>
+          )}
+        </div>
+      )}
+
+      <ListRow className="animate-in-up py-2.5" style={{ animationDelay: "50ms" }}>
+        <div className="min-w-0">
+          <Label htmlFor="pd-write-toggle" className="text-sm font-medium">
+            {t("connections.writeToggle")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {allowWrite
+              ? t("connections.writeToggleOn")
+              : t("connections.writeToggleOff")}
+          </p>
+        </div>
+        <Switch
+          id="pd-write-toggle"
+          checked={allowWrite ?? false}
+          disabled={allowWrite === null}
+          onCheckedChange={(next) => void toggleWrite(next)}
+        />
+      </ListRow>
+
+      {status.configured && (
+        <div className="animate-in-up" style={{ animationDelay: "75ms" }}>
+          <Accounts onChanged={onStatusChanged} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- One-time Pipedream setup ---------------- */
+
+const GUIDE_STEPS = [
+  { key: "setupStep1", url: "https://pipedream.com", labelKey: "openPipedream" },
+  { key: "setupStep2", url: "https://pipedream.com/settings/api", labelKey: "openApiSettings" },
+  { key: "setupStep3", url: "https://pipedream.com/projects", labelKey: "openProjects" },
+] as const;
+
+function SetupWizard({
+  status,
+  onSaved,
+  onClose,
+}: {
+  status: PipedreamStatus;
+  onSaved: () => Promise<void>;
+  onClose?: () => void;
+}) {
+  const { t } = useTranslation();
+  const [clientId, setClientId] = React.useState(status.clientId ?? "");
+  const [clientSecret, setClientSecret] = React.useState("");
+  const [project, setProject] = React.useState(status.projectId ?? "");
+  const [busy, setBusy] = React.useState<"save" | "remove" | null>(null);
+  const [confirmRemove, setConfirmRemove] = React.useState(false);
+
+  // A saved-in-app secret can be kept by leaving the field empty.
+  const canKeepSecret = status.source === "settings";
+  const canSave = Boolean(clientId.trim() && project.trim() && (clientSecret.trim() || canKeepSecret));
+
+  const save = async () => {
+    setBusy("save");
+    try {
+      await api.savePipedream({
+        clientId: clientId.trim(),
+        clientSecret: clientSecret.trim() || undefined,
+        project: project.trim(),
+      });
+      await onSaved();
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeSaved = async () => {
+    setBusy("remove");
+    try {
+      await api.clearPipedream();
+      await onSaved();
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setBusy(null);
+      setConfirmRemove(false);
     }
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Connect an email account</CardTitle>
-          <CardDescription>
-            The OAuth flow runs on a Pipedream-hosted page. After finishing it, come back and
-            hit refresh — the agent picks up new accounts on the next conversation.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {EMAIL_APPS.map((app) => (
-            <Button key={app} onClick={() => void connect(app)} disabled={connecting !== null}>
-              {connecting === app ? <Loader2 className="animate-spin" /> : <ExternalLink />}
-              Connect {EMAIL_APP_LABELS[app]}
+    <Card padding="md" className="animate-in-up flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1.5">
+          <p className="text-sm font-medium">{t("connections.setupTitle")}</p>
+          <p className="text-xs text-muted-foreground">
+            <Trans
+              i18nKey="connections.setupIntro"
+              components={{
+                pd: (
+                  <a
+                    href="https://pipedream.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent underline"
+                  />
+                ),
+              }}
+            />
+          </p>
+        </div>
+        {onClose && (
+          <IconButton onClick={onClose} aria-label={t("common.close")}>
+            <X className="h-4 w-4" />
+          </IconButton>
+        )}
+      </div>
+
+      <ol className="flex flex-col gap-2">
+        {GUIDE_STEPS.map((step, i) => (
+          <li key={step.key} className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              <span className="mr-1.5 font-medium tabular-nums text-foreground">{i + 1}.</span>
+              {t(`connections.${step.key}`)}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() => window.open(step.url, "_blank", "noopener,noreferrer")}
+            >
+              <ExternalLink /> {t(`connections.${step.labelKey}`)}
             </Button>
-          ))}
-          <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
-            <RefreshCw className={loading ? "animate-spin" : ""} />
-            Refresh
+          </li>
+        ))}
+      </ol>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField id="pd-client-id" label={t("connections.clientId")}>
+          <Input
+            id="pd-client-id"
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            className="font-mono"
+            autoComplete="off"
+          />
+        </FormField>
+        <FormField id="pd-client-secret" label={t("connections.clientSecret")}>
+          <Input
+            id="pd-client-secret"
+            type="password"
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            placeholder={canKeepSecret ? t("connections.clientSecretKeepPlaceholder") : ""}
+            className="font-mono"
+            autoComplete="off"
+          />
+        </FormField>
+        <FormField id="pd-project" label={t("connections.project")} className="sm:col-span-2">
+          <Input
+            id="pd-project"
+            value={project}
+            onChange={(e) => setProject(e.target.value)}
+            placeholder="https://pipedream.com/@…/projects/proj_…  /  proj_…"
+            className="font-mono"
+            autoComplete="off"
+          />
+        </FormField>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 pt-2">
+        {status.source === "settings" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfirmRemove(true)}
+            disabled={busy !== null}
+          >
+            {busy === "remove" && <Loader2 className="animate-spin" />}
+            {t("connections.removeSaved")}
           </Button>
-        </CardContent>
-      </Card>
-
-      {error && (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </p>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Connected accounts</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <ul className="flex flex-col divide-y">
-              {[0, 1].map((i) => (
-                <li key={i} className="flex items-center justify-between gap-3 py-3">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-4 w-4" />
-                    <div className="flex flex-col gap-1.5">
-                      <Skeleton className="h-3.5 w-40" />
-                      <Skeleton className="h-3 w-16" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-5 w-16" />
-                </li>
-              ))}
-            </ul>
-          ) : accounts.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-8 text-center">
-              <div className="grid h-11 w-11 place-items-center rounded-xl bg-secondary text-muted-foreground">
-                <Inbox className="h-5 w-5" />
-              </div>
-              <p className="text-sm font-medium">No accounts connected</p>
-              <p className="max-w-xs text-pretty text-xs text-muted-foreground">
-                Connect Gmail or Outlook above so the agent can read and act on your mail.
-              </p>
-            </div>
-          ) : (
-            <ul className="flex flex-col divide-y">
-              {accounts.map((account, i) => (
-                <li
-                  key={account.id}
-                  className="animate-in-up flex items-center justify-between gap-3 py-3"
-                  style={{ animationDelay: `${i * 45}ms` }}
-                >
-                  <div className="flex items-center gap-3">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{account.name}</p>
-                      <p className="text-xs text-muted-foreground">{account.app}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={account.healthy ? "success" : "destructive"}>
-                      {account.healthy ? "healthy" : "unhealthy"}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void remove(account.id)}
-                      title="Disconnect"
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+        )}
+        <Button size="sm" onClick={() => void save()} disabled={!canSave || busy !== null}>
+          {busy === "save" ? <Loader2 className="animate-spin" /> : <Check />}
+          {t("connections.saveVerify")}
+        </Button>
+      </div>
+      <ConfirmDialog
+        open={confirmRemove}
+        onOpenChange={setConfirmRemove}
+        title={t("connections.removeSaved")}
+        description={t("connections.removeSavedConfirm")}
+        confirmLabel={t("connections.removeSaved")}
+        variant="destructive"
+        busy={busy === "remove"}
+        onConfirm={() => void removeSaved()}
+      />
+    </Card>
   );
 }
+

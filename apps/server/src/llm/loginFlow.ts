@@ -1,6 +1,7 @@
 import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import type { LoginFlowStatus } from "@trailin/shared";
 import { credentialStore } from "../auth/credentialStore.js";
+import { errorMessage } from "../util.js";
 
 /**
  * Manages the single in-flight OAuth login. pi-ai's login flows are
@@ -91,11 +92,7 @@ export function startLogin(
     })
     .catch((error) => {
       f.status.done = true;
-      f.status.error = abort.signal.aborted
-        ? "Login cancelled."
-        : error instanceof Error
-          ? error.message
-          : String(error);
+      f.status.error = abort.signal.aborted ? "Login cancelled." : errorMessage(error);
       log.warn(`[llm-auth:${providerId}] login failed: ${f.status.error}`);
     });
 
