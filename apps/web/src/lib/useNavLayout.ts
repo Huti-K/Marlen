@@ -4,8 +4,8 @@ export type NavLayout = "dock" | "sidebar";
 
 export function useNavLayout() {
   const [layout, setLayout] = React.useState<NavLayout>(() => {
-    if (typeof window === "undefined") return "dock";
-    return (localStorage.getItem("trailin-nav-layout") as NavLayout) || "dock";
+    if (typeof window === "undefined") return "sidebar";
+    return (localStorage.getItem("trailin-nav-layout") as NavLayout) || "sidebar";
   });
 
   React.useEffect(() => {
