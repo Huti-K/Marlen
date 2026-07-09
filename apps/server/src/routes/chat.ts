@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import type { ChatStreamEvent } from "@trailin/shared";
 import { db, schema } from "../db/index.js";
 import { getOrCreateSession, runPrompt } from "../agent/emailAgent.js";
+import { emitServerEvent } from "../events.js";
 import { errorMessage } from "../util.js";
 
 interface ChatBody {
@@ -98,6 +99,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           title: message.slice(0, 80),
           createdAt: now(),
         });
+        emitServerEvent("conversations");
       }
       send({ type: "conversation", conversationId });
 
@@ -133,6 +135,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         content: text,
         createdAt: now(),
       });
+      emitServerEvent("conversations");
 
       send({ type: "done", text });
     } catch (error) {

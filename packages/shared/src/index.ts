@@ -1,15 +1,33 @@
 /**
- * Suggested email apps, shown before the user searches the full catalog
- * (Pipedream app registry slugs — any app can be connected).
+ * Suggested email apps, shown before the user searches the full catalog.
+ * These are the mail providers Pipedream exposes as Connect apps; any other
+ * app (mail or not) is a search away. `imap` is the catch-all for any other
+ * mailbox that speaks IMAP.
  */
-export const EMAIL_APPS = ["gmail", "microsoft_outlook"] as const;
+export const EMAIL_APPS = ["gmail", "microsoft_outlook", "zoho_mail", "imap"] as const;
 export type EmailApp = (typeof EMAIL_APPS)[number];
 
 export const EMAIL_APP_LABELS: Record<EmailApp, string> = {
   gmail: "Gmail",
   // Microsoft Graph — covers outlook.com and Microsoft 365 / Exchange Online.
   microsoft_outlook: "Outlook / Microsoft 365",
+  zoho_mail: "Zoho Mail",
+  imap: "IMAP (any other provider)",
 };
+
+/**
+ * A small teaser of popular non-email integrations, shown under the email apps
+ * so the picker makes clear Trailin connects far more than mail. The full
+ * catalog (2,000+ apps) is always a search away.
+ */
+export const POPULAR_APPS = [
+  "notion",
+  "slack_bot",
+  "google_calendar",
+  "google_drive",
+  "github",
+  "todoist",
+] as const;
 
 /** One entry of Pipedream's app catalog. */
 export interface PipedreamApp {
@@ -70,6 +88,8 @@ export interface ConnectedAccount {
   app: string;
   /** Display name of the app, e.g. "Gmail". */
   appName?: string;
+  /** App logo URL from Pipedream's catalog, for the account row icon. */
+  imgSrc?: string;
   /** Usually the account's email address. */
   name: string;
   healthy: boolean;
@@ -84,10 +104,25 @@ export interface AccountColor {
   hex: string;
 }
 
+/**
+ * A user-written note on a connected account describing what it's for. Unlike
+ * the app/name (which come from Pipedream), this is app-local and, crucially,
+ * fed to the agent as tool context so it knows why the connection exists
+ * (e.g. a Notion account connected "to save meeting notes").
+ */
+export interface AccountDescription {
+  /** Pipedream account id. */
+  accountId: string;
+  /** Free-text purpose, e.g. "Save meeting notes here". */
+  text: string;
+}
+
 export interface ConnectTokenResponse {
   token: string;
   connectLinkUrl: string;
   expiresAt: string;
+  /** Pipedream external user id; the browser Connect SDK needs it to start the flow. */
+  externalUserId: string;
 }
 
 export interface Conversation {
@@ -193,13 +228,24 @@ export interface AppStatus {
   modelConfigured: boolean;
   /** Connected email accounts (0 when Pipedream is unconfigured or unreachable). */
   emailAccounts: number;
+  /**
+   * Whether `emailAccounts` is a real answer: true when the account list was
+   * actually fetched, or when Pipedream isn't configured at all (0 is a real
+   * answer then too). False only when Pipedream IS configured but listing
+   * accounts failed — a transient outage, not a setup problem.
+   */
+  emailAccountsKnown: boolean;
   provider: string;
   model: string;
+  /** True when the server is running in dev-only demo mode (seeded fake data). */
+  demo?: boolean;
 }
 
-/** The app is usable once the model has credentials and an email account is linked. */
+/** The app is usable once the model has credentials and an email account is linked.
+ *  An unknown account count (provider unreachable) never counts as incomplete —
+ *  only a confirmed zero does. */
 export function isSetupComplete(status: AppStatus): boolean {
-  return status.modelConfigured && status.emailAccounts > 0;
+  return status.modelConfigured && (status.emailAccounts > 0 || !status.emailAccountsKnown);
 }
 
 /** One long-term memory entry, shown in the agent's system prompt. */
@@ -243,6 +289,19 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Topics broadcast over GET /api/events when server-side data changes. */
+export type ServerEventTopic =
+  | "runs"           // automation run started/finished (activity feed, run history)
+  | "drafts"         // a Gmail draft was created or deleted
+  | "memories"       // agent memory saved/updated/deleted
+  | "library"        // library document written/changed
+  | "conversations"  // chat/automation conversation list changed
+  | "automations";   // automation definitions created/updated/deleted
+
+export interface ServerEvent {
+  topic: ServerEventTopic;
 }
 
 /** Server-sent events streamed from POST /api/chat. */

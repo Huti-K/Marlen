@@ -6,7 +6,7 @@ export function Input({ className, type, ...props }: React.InputHTMLAttributes<H
   return (
     <input
       type={type}
-      className={cn("field flex h-9 w-full px-3 py-1 text-sm", className)}
+      className={cn("field flex h-9 w-full px-3 py-1 text-base md:text-sm", className)}
       {...props}
     />
   );

@@ -1,15 +1,16 @@
 import * as React from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, Link } from "react-router-dom";
-import { History, Menu, MessagesSquare, Moon, Sun, X, SquarePen } from "lucide-react";
+import { History, Menu, MessagesSquare, Moon, Sun, X, Plus, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isLanguage, isSetupComplete, type AppStatus } from "@trailin/shared";
 import { Sidebar } from "@/components/Sidebar";
 import { DockNav } from "@/components/DockNav";
-import { ChatPanel } from "@/features/chat/ChatPanel";
+import { ChatPanel, HistoryList } from "@/features/chat/ChatPanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
 import { AutomationsPanel } from "@/features/automations/AutomationsPanel";
 import { KnowledgePanel } from "@/features/knowledge/KnowledgePanel";
 import { HomePanel } from "@/features/home/HomePanel";
+import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showcase — delete with its route
 import { SetupGate } from "@/features/setup/SetupGate";
 import { Toaster } from "@/components/ui/toaster";
 import { LoadingRow } from "@/components/ui/feedback";
@@ -19,6 +20,7 @@ import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useNavLayout } from "@/lib/useNavLayout";
+import { CursorTooltip } from "@/components/ui/cursor-tooltip";
 
 /** Set once setup finished (or was skipped); an established app never re-gates. */
 const SETUP_DISMISSED_KEY = "trailin-setup-dismissed";
@@ -45,6 +47,20 @@ function useServerLanguage() {
   }, [i18n]);
 }
 
+/** Seed the server's timezone from the browser on first run — no visible setting for it. */
+function useServerTimezone() {
+  React.useEffect(() => {
+    api
+      .timezone()
+      .then(({ timezone }) => {
+        if (timezone) return;
+        const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (detected) void api.setTimezone(detected).catch(() => {});
+      })
+      .catch(() => {});
+  }, []);
+}
+
 function useTheme() {
   const [theme, setTheme] = React.useState<"light" | "dark">(() => {
     if (typeof window === "undefined") return "light";
@@ -67,7 +83,8 @@ export default function App() {
   const navigate = useNavigate();
   
   const currentPath = location.pathname.split("/")[1] || "home";
-  const view = (["home", "automations", "knowledge", "settings"].includes(currentPath) ? currentPath : "home");
+  const onChatRoute = currentPath === "chat";
+  const view = (["home", "chat", "automations", "knowledge", "settings"].includes(currentPath) ? currentPath : "home");
   const [status, setStatus] = React.useState<AppStatus | null>(null);
   // "pending" until the first status answer decides between gate and app.
   const [gate, setGate] = React.useState<"pending" | "open" | "closed">(() =>
@@ -76,6 +93,12 @@ export default function App() {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [chatOpen, setChatOpen] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
+  // Mirrors the ChatPanel's open conversation so the Chat tab's history rail can highlight it.
+  const [activeConversationId, setActiveConversationId] = React.useState<string | undefined>();
+  const [historyCollapsed, setHistoryCollapsed] = React.useState(
+    () => typeof window !== "undefined" && localStorage.getItem("trailin-chat-history-collapsed") === "true",
+  );
+  const [historyQuery, setHistoryQuery] = React.useState("");
   const [theme, toggleTheme] = useTheme();
   const [navLayout] = useNavLayout();
   const { width: chatWidth, onPointerDown: onChatResizeStart } = useResizableWidth({
@@ -86,6 +109,7 @@ export default function App() {
     edge: "right",
   });
   useServerLanguage();
+  useServerTimezone();
 
   const refreshStatus = React.useCallback(() => {
     api
@@ -124,6 +148,17 @@ export default function App() {
     setGate((g) => (g === "pending" ? (complete ? "closed" : "open") : g));
   }, [status]);
 
+  // Entering/leaving the Chat tab resets the history rail's drawer/toggle state,
+  // so it never carries a stale "open" into the other layout.
+  React.useEffect(() => {
+    setHistoryOpen(false);
+    setHistoryQuery("");
+  }, [onChatRoute]);
+
+  React.useEffect(() => {
+    localStorage.setItem("trailin-chat-history-collapsed", String(historyCollapsed));
+  }, [historyCollapsed]);
+
   const select = (next: string) => {
     navigate(next === "home" ? "/" : `/${next}`);
     setMobileOpen(false);
@@ -153,10 +188,13 @@ export default function App() {
     );
   }
 
-  const meta = {
-    title: t(`views.${view}.title` as any),
-    description: t(`views.${view}.description` as any),
-  };
+  const meta =
+    currentPath === "showcase" // DEV showcase — remove this branch with the route
+      ? { title: "UI Showcase", description: "Component gallery & theme lab (dev only)" }
+      : {
+          title: t(`views.${view}.title` as any),
+          description: t(`views.${view}.description` as any),
+        };
 
   return (
     <div
@@ -196,7 +234,7 @@ export default function App() {
 
       <main
         id="main-content"
-        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+        className={cn("flex min-w-0 flex-1 flex-col overflow-hidden", onChatRoute && "hidden")}
       >
         <header className="flex shrink-0 items-center gap-4 px-5 py-5 sm:px-8">
           {navLayout === "dock" && (
@@ -214,6 +252,7 @@ export default function App() {
               }}
               className="shrink-0 md:hidden"
               aria-label={t("app.openMenu")}
+              data-tooltip={t("app.openMenu")}
             >
               <Menu />
             </Button>
@@ -228,6 +267,7 @@ export default function App() {
             onClick={toggleTheme}
             className="ml-auto shrink-0"
             aria-label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
+            data-tooltip={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
           >
             {theme === "dark" ? <Sun /> : <Moon />}
           </Button>
@@ -240,6 +280,7 @@ export default function App() {
             }}
             className="shrink-0 md:hidden"
             aria-label={t("app.openChat")}
+            data-tooltip={t("app.openChat")}
           >
             <MessagesSquare />
           </Button>
@@ -261,14 +302,20 @@ export default function App() {
             )}
           >
             <Routes>
+              {/* The full-page Chat tab is rendered by the persistent chat instance below,
+                  not here — this route just keeps the URL valid so it isn't redirected home. */}
+              <Route path="/chat" element={<></>} />
               <Route path="/settings" element={<SettingsPanel onStatusChanged={refreshStatus} />} />
               <Route path="/automations" element={<AutomationsPanel />} />
               <Route path="/knowledge" element={<KnowledgePanel />} />
+              {/* DEV showcase / theme lab — delete this line and the ShowcasePanel file to remove. */}
+              <Route path="/showcase" element={<ShowcasePanel />} />
               <Route 
                 path="/" 
                 element={
                   <HomePanel
                     setupIncomplete={status !== null && !isSetupComplete(status)}
+                    offline={status !== null && status.pipedreamConfigured && !status.emailAccountsKnown}
                     onNavigate={select}
                   />
                 } 
@@ -279,17 +326,23 @@ export default function App() {
         </div>
       </main>
 
-      {/* Chat backdrop — mobile only, chat is a slide-over there */}
-      {chatOpen && (
+      {/* Chat backdrop — mobile slide-over (panel mode only) */}
+      {!onChatRoute && chatOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
           onClick={() => setChatOpen(false)}
         />
       )}
 
-      {/* Drag handle — desktop only. In dock mode the chat floats (fixed, doesn't
-          shift the page), so the handle floats at its left edge too; in sidebar mode
-          the chat is in flow, so the handle sits in the flow beside it. */}
+      {/* History-rail backdrop — full-page Chat tab on mobile, where the rail is a drawer */}
+      {onChatRoute && historyOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+          onClick={() => setHistoryOpen(false)}
+        />
+      )}
+
+      {/* Drag handle — desktop panel mode only. Hidden in the full-page Chat tab (the chat fills its column). */}
       <div
         onPointerDown={onChatResizeStart}
         role="separator"
@@ -297,6 +350,7 @@ export default function App() {
         aria-label={t("chat.resize")}
         className={cn(
           "group z-40 hidden cursor-col-resize touch-none items-center justify-center md:flex",
+          onChatRoute && "md:hidden",
           navLayout === "dock"
             ? "fixed inset-y-0 right-[var(--chat-width)] w-4"
             : "w-2 shrink-0",
@@ -305,57 +359,214 @@ export default function App() {
         <div className="h-8 w-1 rounded-full bg-foreground/10 transition-colors group-hover:bg-foreground/30 group-active:bg-accent/60" />
       </div>
 
-      {/* Chat — floating overlay on desktop (fixed, so it never shifts the page's centering), slide-over on mobile */}
+      {/* Chat — ONE persistent instance for both surfaces: the full-page Chat tab
+          (in flow, flex-1, history rail on the left) and the floating overlay /
+          slide-over on every other page. It is a single node in the tree, so
+          switching tabs never remounts it or drops an in-flight stream. */}
       <div
         className={cn(
-          "fixed inset-y-0 right-0 flex w-full max-w-sm flex-col transition-transform duration-200 ease-out md:w-[var(--chat-width)] md:max-w-none md:translate-x-0",
-          chatOpen ? "z-50 translate-x-0" : "z-40 translate-x-full md:translate-x-0",
-          navLayout === "dock" ? "md:fixed md:z-40 md:py-4 md:pr-4 md:pointer-events-none" : "md:static md:z-auto",
+          "flex flex-col min-h-0 min-w-0 overflow-hidden",
+          onChatRoute
+            ? "static z-auto min-w-0 flex-1 translate-x-0"
+            : cn(
+                "fixed inset-y-0 right-0 w-full max-w-sm transition-transform duration-200 ease-out md:w-[var(--chat-width)] md:max-w-none md:translate-x-0",
+                chatOpen ? "z-50 translate-x-0" : "z-40 translate-x-full md:translate-x-0",
+                navLayout === "dock"
+                  ? "md:fixed md:z-40 md:py-4 md:pr-4 md:pointer-events-none"
+                  : "md:static md:z-auto",
+              ),
         )}
         style={{ "--chat-width": `${chatWidth}px` } as React.CSSProperties}
       >
-        <div className={cn(
-          "flex flex-1 flex-col overflow-hidden pointer-events-auto",
-          navLayout === "dock" ? "md:bg-white dark:md:bg-sidebar md:rounded-2xl" : "h-full bg-sidebar"
-        )}>
-          <div className="flex shrink-0 items-center gap-2.5 px-5 pb-4 pt-6">
-          <p className="text-sm font-semibold tracking-tight">{t("views.chat.title")}</p>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => window.dispatchEvent(new CustomEvent("trailin:new-chat"))}
-            className="ml-auto"
-            aria-label={t("chat.newConversation")}
-            title={t("chat.newConversation")}
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-1 overflow-hidden pointer-events-auto",
+            onChatRoute
+              ? "flex-row bg-surface"
+              : cn(
+                  "flex-col",
+                  navLayout === "dock"
+                    ? "md:bg-white dark:md:bg-sidebar md:rounded-2xl"
+                    : "bg-sidebar",
+                ),
+          )}
+        >
+          {/* History rail — Chat tab only. Static column on desktop, slide-over drawer on mobile. */}
+          {onChatRoute && (
+            <div
+              className={cn(
+                "fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-background transition-transform duration-200 ease-out md:static md:z-auto md:w-64 md:translate-x-0",
+                historyOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+                historyCollapsed && "md:hidden",
+              )}
+            >
+              <div className="flex shrink-0 items-center gap-2.5 px-4 pb-3 pt-6">
+                <p className="text-sm font-semibold tracking-tight">{t("chat.history")}</p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent("trailin:new-chat"));
+                    setHistoryOpen(false);
+                  }}
+                  className="ml-auto"
+                  aria-label={t("chat.newConversation")}
+                  data-tooltip={t("chat.newConversation")}
+                >
+                  <Plus />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setHistoryCollapsed(true)}
+                  className="hidden md:inline-flex"
+                  aria-label={t("chat.collapseHistory")}
+                  data-tooltip={t("chat.collapseHistory")}
+                >
+                  <PanelLeftClose />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setHistoryOpen(false)}
+                  className="md:hidden"
+                  aria-label={t("common.close")}
+                  data-tooltip={t("common.close")}
+                >
+                  <X />
+                </Button>
+              </div>
+              <div className="px-4 pb-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={historyQuery}
+                    onChange={(e) => setHistoryQuery(e.target.value)}
+                    placeholder={t("chat.searchPlaceholder")}
+                    aria-label={t("chat.searchPlaceholder")}
+                    className="field w-full py-2 pl-9 pr-8 text-base md:text-sm focus:outline-none"
+                  />
+                  {historyQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setHistoryQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={t("common.close")}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-2 pb-4">
+                <HistoryList
+                  activeId={activeConversationId}
+                  query={historyQuery}
+                  onPick={(id) => {
+                    window.dispatchEvent(new CustomEvent("trailin:open-chat", { detail: id }));
+                    setHistoryOpen(false);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Chat column — always present; the stable slot that owns the ChatPanel instance. */}
+          <div
+            className={cn(
+              "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+              // In dock mode the floating nav sits over the bottom-center, so lift the input clear of it.
+              onChatRoute && navLayout === "dock" && "pb-24",
+            )}
           >
-            <SquarePen />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setHistoryOpen((open) => !open)}
-            className={cn(historyOpen && "text-foreground")}
-            aria-label={t("chat.history")}
-          >
-            <History />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setChatOpen(false)}
-            className="md:hidden"
-            aria-label={t("app.closeChat")}
-          >
-            <X />
-          </Button>
-          </div>
-          <div className="min-h-0 flex-1 px-5 pb-5">
-            <ChatPanel historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} />
+            <div className="flex shrink-0 items-center gap-2.5 px-5 pb-4 pt-6">
+              {/* Full-page tab has no app header, so mobile users still need a way into the nav drawer. */}
+              {onChatRoute && navLayout === "sidebar" && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setMobileOpen(true)}
+                  className="shrink-0 md:hidden"
+                  aria-label={t("app.openMenu")}
+                  data-tooltip={t("app.openMenu")}
+                >
+                  <Menu />
+                </Button>
+              )}
+              {/* Reopen the collapsed history rail (desktop). */}
+              {onChatRoute && historyCollapsed && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setHistoryCollapsed(false)}
+                  className="hidden shrink-0 md:inline-flex"
+                  aria-label={t("chat.showHistory")}
+                  data-tooltip={t("chat.showHistory")}
+                >
+                  <PanelLeftOpen />
+                </Button>
+              )}
+              <p className="text-sm font-semibold tracking-tight">{t("views.chat.title")}</p>
+              {onChatRoute && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleTheme}
+                  className="ml-auto shrink-0"
+                  aria-label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
+                  data-tooltip={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
+                >
+                  {theme === "dark" ? <Sun /> : <Moon />}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => window.dispatchEvent(new CustomEvent("trailin:new-chat"))}
+                className={cn(!onChatRoute && "ml-auto", onChatRoute && "md:hidden")}
+                aria-label={t("chat.newConversation")}
+                data-tooltip={t("chat.newConversation")}
+              >
+                <Plus />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setHistoryOpen((open) => !open)}
+                className={cn(historyOpen && "text-foreground", onChatRoute && "md:hidden")}
+                aria-label={t("chat.history")}
+                data-tooltip={t("chat.history")}
+              >
+                <History />
+              </Button>
+              {!onChatRoute && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setChatOpen(false)}
+                  className="md:hidden"
+                  aria-label={t("app.closeChat")}
+                  data-tooltip={t("app.closeChat")}
+                >
+                  <X />
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-col min-h-0 flex-1 px-5 pb-5 overflow-hidden">
+              <ChatPanel
+                historyOpen={historyOpen}
+                setHistoryOpen={setHistoryOpen}
+                layout={onChatRoute ? "page" : "panel"}
+                onConversationChange={setActiveConversationId}
+              />
+            </div>
           </div>
         </div>
       </div>
 
       <Toaster />
+      <CursorTooltip />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   setSetting,
 } from "../db/settings.js";
 import { env } from "../env.js";
+import { emitServerEvent } from "../events.js";
 import { errorMessage } from "../util.js";
 import * as store from "./store.js";
 
@@ -288,6 +289,8 @@ async function doScan(): Promise<ScanSummary> {
     else summary.failed += 1;
   }
   if (settling) scheduleScan(QUIESCENCE_RESCAN_MS);
+  // Every (re)index funnels through here — notes, uploads, external drops.
+  if (summary.indexed || summary.failed || summary.removed) emitServerEvent("library");
   return summary;
 }
 
@@ -417,5 +420,6 @@ export async function deleteDocument(id: string): Promise<boolean> {
   if (!doc) return false;
   await rm(join(libraryDir, doc.path), { force: true });
   store.removeDocument(id);
+  emitServerEvent("library");
   return true;
 }

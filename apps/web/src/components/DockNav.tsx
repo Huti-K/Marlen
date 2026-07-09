@@ -4,6 +4,8 @@ import {
   BookOpen,
   CalendarClock,
   Inbox,
+  MessagesSquare,
+  Palette,
   Settings2,
   TriangleAlert,
   type LucideIcon,
@@ -12,10 +14,11 @@ import { useTranslation } from "react-i18next";
 import { isSetupComplete, type AppStatus } from "@trailin/shared";
 import { cn } from "@/lib/utils";
 
-export type View = "home" | "automations" | "knowledge" | "settings";
+export type View = "home" | "chat" | "automations" | "knowledge" | "settings";
 
 const NAV: { id: View; path: string; icon: LucideIcon }[] = [
   { id: "home", path: "/", icon: Inbox },
+  { id: "chat", path: "/chat", icon: MessagesSquare },
   { id: "automations", path: "/automations", icon: CalendarClock },
   { id: "knowledge", path: "/knowledge", icon: BookOpen },
   { id: "settings", path: "/settings", icon: Settings2 },
@@ -65,6 +68,21 @@ export function DockNav({ status, theme }: DockNavProps) {
             </Link>
           );
         })}
+
+        {/* DEV showcase — delete this block with the /showcase route. */}
+        <Link
+          to="/showcase"
+          aria-current={location.pathname.startsWith("/showcase") ? "page" : undefined}
+          title="Showcase"
+          className={cn(
+            "group relative flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium transition-all duration-200",
+            location.pathname.startsWith("/showcase")
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+          )}
+        >
+          <Palette className="h-4 w-4 shrink-0" />
+        </Link>
 
         {setupIncomplete && (
           <>

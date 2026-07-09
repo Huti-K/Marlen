@@ -1,6 +1,7 @@
 import * as React from "react";
 import {
   Check,
+  ExternalLink,
   File,
   FileCode2,
   FileSpreadsheet,
@@ -20,7 +21,9 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Section } from "@/components/ui/section-header";
 import { toast } from "@/lib/toast";
+import { useServerEvents } from "@/lib/serverEvents";
 import { cn, errorMessage } from "@/lib/utils";
 
 /**
@@ -34,6 +37,7 @@ export function KnowledgePanel() {
     <div className="flex flex-col gap-10 pt-4">
       <Section
         index={0}
+        className="animate-in-up"
         title={t("knowledge.sections.memory.title")}
         description={t("knowledge.sections.memory.description")}
       >
@@ -42,6 +46,7 @@ export function KnowledgePanel() {
 
       <Section
         index={1}
+        className="animate-in-up"
         title={t("knowledge.sections.library.title")}
         description={t("knowledge.sections.library.description")}
       >
@@ -51,45 +56,6 @@ export function KnowledgePanel() {
   );
 }
 
-function Section({
-  title,
-  description,
-  children,
-  index = 0,
-  layout = "stack",
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-  index?: number;
-  layout?: "stack" | "row";
-}) {
-  const header = (
-    <div className="flex min-w-0 flex-col gap-1">
-      <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-      <p className="text-sm text-muted-foreground">{description}</p>
-    </div>
-  );
-
-  return (
-    <section
-      className="animate-in-up flex flex-col gap-4"
-      style={{ animationDelay: `${index * 70}ms` }}
-    >
-      {layout === "row" ? (
-        <div className="flex items-center justify-between gap-4">
-          {header}
-          {children}
-        </div>
-      ) : (
-        <>
-          {header}
-          {children}
-        </>
-      )}
-    </section>
-  );
-}
 
 /* ---------------- Memory ---------------- */
 
@@ -114,6 +80,12 @@ export function MemorySection() {
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Agent saved/updated/deleted a memory: refetch without the loading gate,
+  // which would swap the list for a spinner mid-view.
+  useServerEvents(["memories"], () => {
+    void api.memories().then(setMemories).catch(() => {});
+  });
 
   const add = async () => {
     const content = draft.trim();
@@ -317,6 +289,9 @@ export function LibrarySection() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
+
+  // The agent wrote a note, or the folder scan picked up changes.
+  useServerEvents(["library"], () => void refresh());
 
   const upload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
@@ -595,37 +570,75 @@ function LibraryFolderControl({
   );
 }
 
-/** Lucide icon for a document's format — grouped by how the file is used, not exact type. */
-function iconForExt(ext: string) {
+/**
+ * Icon + colour tint for a document's file type, grouped by how the file is used.
+ * The tint class is one of the design-system tint-* classes from index.css.
+ */
+function fileTypeMeta(ext: string): {
+  Icon: typeof File;
+  tintClass: string;
+  badgeColor: string;
+} {
   switch (ext.toLowerCase()) {
     case "pdf":
+      return { Icon: FileText, tintClass: "tint-danger", badgeColor: "bg-[oklch(0.55_0.17_27/0.12)] text-[oklch(0.55_0.17_27)]" };
     case "md":
     case "markdown":
+      return { Icon: FileCode2, tintClass: "tint-accent", badgeColor: "bg-[oklch(0.53_0.11_256/0.12)] text-[oklch(0.53_0.11_256)]" };
     case "txt":
-      return FileText;
+      return { Icon: FileText, tintClass: "tint-neutral", badgeColor: "bg-surface-2 text-muted-foreground" };
+    case "docx":
+      return { Icon: FileText, tintClass: "tint-accent", badgeColor: "bg-[oklch(0.53_0.11_256/0.12)] text-[oklch(0.53_0.11_256)]" };
     case "csv":
-      return FileSpreadsheet;
+      return { Icon: FileSpreadsheet, tintClass: "tint-success", badgeColor: "bg-[oklch(0.55_0.1_155/0.14)] text-[oklch(0.55_0.1_155)]" };
     case "html":
     case "htm":
-      return FileCode2;
+      return { Icon: FileCode2, tintClass: "tint-warning", badgeColor: "bg-[oklch(0.62_0.11_70/0.16)] text-[oklch(0.62_0.11_70)]" };
     default:
-      return File;
+      return { Icon: File, tintClass: "tint-neutral", badgeColor: "bg-surface-2 text-muted-foreground" };
   }
 }
 
 function DocumentRow({ doc, onDelete }: { doc: LibraryDocument; onDelete: () => void }) {
   const { t } = useTranslation();
-  const Icon = iconForExt(doc.ext);
+  const { Icon, tintClass, badgeColor } = fileTypeMeta(doc.ext);
+  const canOpen = doc.status === "indexed";
   return (
-    <div className="group flex items-center justify-between gap-3 rounded-lg bg-surface-2 px-3.5 py-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <div className="group flex items-center justify-between gap-3 rounded-lg bg-surface-2 px-3.5 py-3 transition-colors hover:bg-[color-mix(in_oklch,var(--surface-2)_80%,var(--accent)_5%)]">
+      <button
+        type="button"
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-3 text-left",
+          canOpen ? "cursor-pointer" : "cursor-default",
+        )}
+        onClick={() => canOpen && api.openLibraryDocument(doc.id)}
+        title={canOpen ? t("library.openDocument") : undefined}
+      >
+        <div
+          className={cn(
+            "grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-transform",
+            tintClass,
+            canOpen && "group-hover:scale-105",
+          )}
+        >
+          <Icon className="h-4.5 w-4.5" />
+        </div>
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <p className="min-w-0 flex-1 truncate text-sm font-medium">{doc.title}</p>
-            <Badge variant="muted" className="shrink-0 text-[11px]">
+          <div className="flex items-center gap-2">
+            <p className={cn(
+              "min-w-0 flex-1 truncate text-sm font-medium",
+              canOpen && "group-hover:text-accent",
+            )}>
+              {doc.title}
+            </p>
+            <span
+              className={cn(
+                "inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-wide uppercase",
+                badgeColor,
+              )}
+            >
               {doc.ext.toUpperCase()}
-            </Badge>
+            </span>
           </div>
           {doc.status === "error" ? (
             <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
@@ -645,16 +658,29 @@ function DocumentRow({ doc, onDelete }: { doc: LibraryDocument; onDelete: () => 
             </p>
           )}
         </div>
+      </button>
+      <div className="flex shrink-0 items-center gap-1">
+        {canOpen && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => api.openLibraryDocument(doc.id)}
+            title={t("library.openDocument")}
+            className="shrink-0 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+          >
+            <ExternalLink className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          title={t("library.delete")}
+          className="shrink-0 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+        >
+          <Trash2 className="h-4 w-4 text-muted-foreground" />
+        </Button>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onDelete}
-        title={t("library.delete")}
-        className="shrink-0 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-      >
-        <Trash2 className="h-4 w-4 text-muted-foreground" />
-      </Button>
     </div>
   );
 }

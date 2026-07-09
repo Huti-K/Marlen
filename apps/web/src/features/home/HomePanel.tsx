@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DraftRow } from "@/features/home/DraftRow";
 import { Markdown } from "@/components/ui/markdown";
+import { useServerEvents } from "@/lib/serverEvents";
 import { errorMessage } from "@/lib/utils";
 
 /** Widening windows for the "Needs your review" drafts filter; defaults to "today". */
@@ -53,9 +54,12 @@ const cache: {
  */
 export function HomePanel({
   setupIncomplete,
+  offline,
   onNavigate,
 }: {
   setupIncomplete: boolean;
+  /** Pipedream is configured but the last account list couldn't be fetched. */
+  offline: boolean;
   onNavigate: (view: View) => void;
 }) {
   const { t } = useTranslation();
@@ -79,12 +83,15 @@ export function HomePanel({
     if (a.status === "fulfilled") setAutomations((cache.automations = a.value));
     if (c.status === "fulfilled") setColors((cache.colors = c.value.colors));
     const failed = results.find((x) => x.status === "rejected");
-    if (failed) setError(errorMessage(failed.reason));
+    setError(failed ? errorMessage(failed.reason) : null);
   }, []);
 
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  // Refetch in place when the agent or an automation changes data server-side.
+  useServerEvents(["runs", "drafts", "automations"], () => void load());
 
   // No top-level loading gate: each section renders its own <LoadingRow /> while
   // its data is null, so the fast local reads (runs/automations) paint straight
@@ -93,15 +100,21 @@ export function HomePanel({
     <div className="flex flex-col gap-10 pt-1">
 
 
-      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {error && !offline && <ErrorBanner>{error}</ErrorBanner>}
 
-      {setupIncomplete && (
+      {setupIncomplete ? (
         <div className="tint-warning flex flex-wrap items-center justify-between gap-3 rounded-lg p-3.5">
           <p className="text-sm">{t("home.setupBanner")}</p>
           <Button size="sm" onClick={() => onNavigate("settings")}>
             {t("home.setupBannerCta")}
           </Button>
         </div>
+      ) : (
+        offline && (
+          <div className="tint-warning flex items-center gap-3 rounded-lg p-3.5">
+            <p className="text-sm">{t("home.offlineBanner")}</p>
+          </div>
+        )
       )}
 
       <ReviewSection drafts={drafts} colors={colors} onChanged={() => void load()} />

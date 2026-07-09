@@ -3,6 +3,8 @@ import cron, { type ScheduledTask } from "node-cron";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { createEphemeralSession, runPrompt } from "../agent/emailAgent.js";
+import { getTimezoneSetting } from "../db/settings.js";
+import { emitServerEvent } from "../events.js";
 import { errorMessage } from "../util.js";
 
 const tasks = new Map<string, ScheduledTask>();
@@ -38,6 +40,7 @@ export async function runAutomation(automationId: string): Promise<void> {
     result: "",
     startedAt: new Date().toISOString(),
   });
+  emitServerEvent("runs");
 
   let session;
   try {
@@ -48,9 +51,10 @@ export async function runAutomation(automationId: string): Promise<void> {
       type: "automation",
       createdAt: new Date().toISOString(),
     });
+    emitServerEvent("conversations");
     // Let's set the type to 'automation' manually via raw query since drizzle schema update is not strictly needed for insert if we don't map it.
     // Actually, we need to map it in schema.ts so Drizzle can insert it.
-    
+
     session = await createEphemeralSession();
     const instructionMessage = `Scheduled automation "${automation.name}". Execute this instruction now and report the outcome:\n\n${automation.instruction}`;
     
@@ -71,11 +75,13 @@ export async function runAutomation(automationId: string): Promise<void> {
       content: text,
       createdAt: new Date().toISOString(),
     });
+    emitServerEvent("conversations");
 
     await db
       .update(schema.automationRuns)
       .set({ status: "success", result: text, finishedAt: new Date().toISOString() })
       .where(eq(schema.automationRuns.id, runId));
+    emitServerEvent("runs");
   } catch (error) {
     await db
       .update(schema.automationRuns)
@@ -85,6 +91,7 @@ export async function runAutomation(automationId: string): Promise<void> {
         finishedAt: new Date().toISOString(),
       })
       .where(eq(schema.automationRuns.id, runId));
+    emitServerEvent("runs");
   } finally {
     await session?.toolset.close().catch(() => {});
   }
@@ -98,12 +105,18 @@ export async function runAutomation(automationId: string): Promise<void> {
   }
 }
 
-function schedule(automation: { id: string; schedule: string }): void {
-  const task = cron.schedule(automation.schedule, () => {
-    runAutomation(automation.id).catch((error) =>
-      console.error(`[scheduler] automation ${automation.id} failed:`, error),
-    );
-  });
+async function schedule(automation: { id: string; schedule: string }): Promise<void> {
+  // "0 6 * * *" should mean 6am in the user's timezone, not the server's.
+  const timezone = (await getTimezoneSetting()) ?? undefined;
+  const task = cron.schedule(
+    automation.schedule,
+    () => {
+      runAutomation(automation.id).catch((error) =>
+        console.error(`[scheduler] automation ${automation.id} failed:`, error),
+      );
+    },
+    timezone ? { timezone } : undefined,
+  );
   tasks.set(automation.id, task);
 }
 
@@ -124,7 +137,7 @@ export async function refreshSchedule(automationId: string): Promise<void> {
     .from(schema.automations)
     .where(eq(schema.automations.id, automationId));
   if (automation?.enabled && isValidCron(automation.schedule)) {
-    schedule(automation);
+    await schedule(automation);
   }
 }
 
@@ -133,7 +146,7 @@ export async function startScheduler(): Promise<void> {
   const all = await db.select().from(schema.automations);
   for (const automation of all) {
     if (automation.enabled && isValidCron(automation.schedule)) {
-      schedule(automation);
+      await schedule(automation);
     }
   }
   console.log(`[scheduler] ${tasks.size} automation(s) scheduled`);

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { MemoryEntry } from "@trailin/shared";
+import { emitServerEvent } from "../events.js";
 import { db, schema } from "./index.js";
 
 /**
@@ -61,6 +62,7 @@ export async function createMemory(
     updatedAt: now,
   };
   await db.insert(schema.memories).values(entry);
+  emitServerEvent("memories");
   return { entry, created: true };
 }
 
@@ -94,6 +96,7 @@ export async function updateMemory(
     .update(schema.memories)
     .set({ content: trimmed, updatedAt: new Date().toISOString() })
     .where(eq(schema.memories.id, id));
+  emitServerEvent("memories");
   const [row] = await db.select().from(schema.memories).where(eq(schema.memories.id, id));
   if (!row) return null;
   return row as MemoryEntry;
@@ -103,5 +106,6 @@ export async function deleteMemory(idOrPrefix: string): Promise<boolean> {
   const id = await resolveMemoryId(idOrPrefix);
   if (!id) return false;
   await db.delete(schema.memories).where(eq(schema.memories.id, id));
+  emitServerEvent("memories");
   return true;
 }

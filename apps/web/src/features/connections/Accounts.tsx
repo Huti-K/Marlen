@@ -1,10 +1,11 @@
 import * as React from "react";
-import { ExternalLink, Inbox, Loader2, Mail, Trash2 } from "lucide-react";
+import { Inbox, Loader2, Mail, Pencil, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   EMAIL_APPS,
   EMAIL_APP_LABELS,
   type AccountColor,
+  type AccountDescription,
   type ConnectedAccount,
   type EmailApp,
   type PipedreamApp,
@@ -20,13 +21,77 @@ import { ListRow } from "@/components/ui/list-row";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/lib/toast";
-import { errorMessage } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
-/** Suggested first — the full catalog is a search away. */
-const SUGGESTED_APPS: PipedreamApp[] = EMAIL_APPS.map((slug) => ({
-  slug,
-  name: EMAIL_APP_LABELS[slug],
-}));
+
+/** App logo from Pipedream, falling back to a generic mail glyph. */
+function AppIcon({ src, className }: { src?: string; className?: string }) {
+  const [failed, setFailed] = React.useState(false);
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt=""
+        onError={() => setFailed(true)}
+        className={cn("h-4 w-4 shrink-0 object-contain", className)}
+      />
+    );
+  }
+  return <Mail className={cn("h-4 w-4 shrink-0 text-muted-foreground", className)} />;
+}
+
+/** One selectable app in the picker — a grey listbox row. */
+function PickerRow({
+  app,
+  busy,
+  onConnect,
+}: {
+  app: PipedreamApp;
+  busy: string | null;
+  onConnect: (slug: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onConnect(app.slug)}
+      disabled={busy !== null}
+      className="group flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2.5 text-left transition hover:brightness-95 disabled:opacity-50 dark:hover:brightness-110"
+    >
+      <AppIcon src={app.imgSrc} className="h-5 w-5" />
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">{app.name}</span>
+      {busy === app.slug ? (
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+      ) : (
+        <Plus className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      )}
+    </button>
+  );
+}
+
+/** A labelled group of picker rows (e.g. "Popular email apps"). */
+function PickerSection({
+  heading,
+  apps,
+  busy,
+  onConnect,
+}: {
+  heading: string;
+  apps: PipedreamApp[];
+  busy: string | null;
+  onConnect: (slug: string) => void;
+}) {
+  if (apps.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {heading}
+      </p>
+      {apps.map((app) => (
+        <PickerRow key={app.slug} app={app} busy={busy} onConnect={onConnect} />
+      ))}
+    </div>
+  );
+}
 
 function appLabel(account: ConnectedAccount): string {
   if (account.appName) return account.appName;
@@ -62,24 +127,24 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const { t } = useTranslation();
   const [accounts, setAccounts] = React.useState<ConnectedAccount[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
-  const [polling, setPolling] = React.useState(false);
+  const [connecting, setConnecting] = React.useState(false);
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [results, setResults] = React.useState<PipedreamApp[] | null>(SUGGESTED_APPS);
+  const [results, setResults] = React.useState<PipedreamApp[] | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [removing, setRemoving] = React.useState(false);
   const [colors, setColors] = React.useState<AccountColor[]>([]);
-  // Account ids at the moment a connect tab was opened; polling stops on change.
-  const snapshot = React.useRef<string>("");
+  const [descriptions, setDescriptions] = React.useState<AccountDescription[]>([]);
+  const [editingNote, setEditingNote] = React.useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = React.useState("");
+  // Set when Enter/Escape already resolved the edit, so the blur that fires as
+  // the input unmounts doesn't save a second time (or override a cancel).
+  const noteHandled = React.useRef(false);
 
   // Debounced catalog search; empty query shows the e-mail suggestions.
   React.useEffect(() => {
     if (!pickerOpen) return;
     const q = query.trim();
-    if (!q) {
-      setResults(SUGGESTED_APPS);
-      return;
-    }
     setResults(null);
     const timer = setTimeout(() => {
       api
@@ -89,7 +154,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
           toast.error(errorMessage(err));
           setResults([]);
         });
-    }, 300);
+    }, q ? 300 : 0);
     return () => clearTimeout(timer);
   }, [query, pickerOpen]);
 
@@ -111,6 +176,16 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
       return saved;
     } catch {
       return [] as AccountColor[];
+    }
+  }, []);
+
+  const loadDescriptions = React.useCallback(async () => {
+    try {
+      const { descriptions: saved } = await api.accountDescriptions();
+      setDescriptions(saved);
+      return saved;
+    } catch {
+      return [] as AccountDescription[];
     }
   }, []);
 
@@ -140,37 +215,42 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   );
 
   React.useEffect(() => {
-    void Promise.all([load(), loadColors()]).then(([accts, saved]) => {
+    void Promise.all([load(), loadColors(), loadDescriptions()]).then(([accts, saved]) => {
       if (accts && saved) void ensureColors(accts, saved);
     });
-  }, [load, loadColors, ensureColors]);
-
-  React.useEffect(() => {
-    if (!polling) return;
-    const timer = setInterval(() => {
-      void load().then((next) => {
-        if (next && JSON.stringify(next.map((a) => a.id)) !== snapshot.current) {
-          setPolling(false);
-          onChanged?.();
-        }
-      });
-    }, 3000);
-    const giveUp = setTimeout(() => setPolling(false), 180_000);
-    return () => {
-      clearInterval(timer);
-      clearTimeout(giveUp);
-    };
-  }, [polling, load, onChanged]);
+  }, [load, loadColors, loadDescriptions, ensureColors]);
 
   const connect = async (app: string) => {
     setBusy(app);
     try {
-      const { connectLinkUrl } = await api.pipedreamConnectToken(app);
-      snapshot.current = JSON.stringify((accounts ?? []).map((a) => a.id));
-      window.open(connectLinkUrl, "_blank", "noopener,noreferrer");
+      // Lazy-loaded: the Connect SDK is only needed when linking an account,
+      // so it stays out of the initial bundle.
+      const { createFrontendClient } = await import("@pipedream/sdk/browser");
+      const token = await api.pipedreamConnectToken(app);
+      const pd = createFrontendClient({
+        externalUserId: token.externalUserId,
+        tokenCallback: async () => ({
+          token: token.token,
+          connectLinkUrl: token.connectLinkUrl,
+          expiresAt: new Date(token.expiresAt),
+        }),
+      });
       setPickerOpen(false);
       setQuery("");
-      setPolling(true);
+      setConnecting(true);
+      await pd.connectAccount({
+        app,
+        token: token.token,
+        onSuccess: () => {
+          setConnecting(false);
+          void load().then(() => onChanged?.());
+        },
+        onError: (err) => {
+          setConnecting(false);
+          toast.error(err.message);
+        },
+        onClose: () => setConnecting(false),
+      });
     } catch (err) {
       toast.error(errorMessage(err));
     } finally {
@@ -209,6 +289,28 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const colorFor = (accountId: string): AccountColor | undefined =>
     colors.find((c) => c.accountId === accountId);
 
+  const noteFor = (accountId: string) =>
+    descriptions.find((d) => d.accountId === accountId)?.text ?? "";
+
+  const saveNote = async (accountId: string, text: string) => {
+    const trimmed = text.trim();
+    const next = descriptions.filter((d) => d.accountId !== accountId);
+    if (trimmed) next.push({ accountId, text: trimmed });
+    setDescriptions(next);
+    setEditingNote(null);
+    try {
+      await api.setAccountDescriptions(next);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  };
+
+  // Split the pre-search suggestions into "email apps" and "everything else",
+  // so the picker shows email providers plus a taste of the wider catalog.
+  const isEmailApp = (slug: string) => (EMAIL_APPS as readonly string[]).includes(slug);
+  const emailResults = (results ?? []).filter((a) => isEmailApp(a.slug));
+  const moreResults = (results ?? []).filter((a) => !isEmailApp(a.slug));
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
@@ -221,7 +323,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
             onClick={() => setPickerOpen((open) => !open)}
             disabled={busy !== null}
           >
-            {busy ? <Loader2 className="animate-spin" /> : <ExternalLink />}
+            {busy ? <Loader2 className="animate-spin" /> : <Plus />}
             {t("connections.addAccount")}
           </Button>
         </div>
@@ -235,42 +337,46 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
               autoFocus
             />
             {!results ? (
-              <div className="flex flex-col gap-1.5 py-1">
+              <div className="flex flex-col gap-1.5 py-0.5">
                 {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} className="h-8 w-full rounded-md" />
+                  <Skeleton key={i} className="h-11 w-full rounded-lg" />
                 ))}
               </div>
             ) : results.length === 0 ? (
               <p className="px-1 py-2 text-xs text-muted-foreground">
                 {t("connections.noProvidersFound", { q: query.trim() })}
               </p>
-            ) : (
-              <div className="flex flex-col">
+            ) : query.trim() ? (
+              <div className="flex max-h-80 flex-col gap-1.5 overflow-y-auto py-0.5">
                 {results.map((app) => (
-                  <button
-                    key={app.slug}
-                    type="button"
-                    onClick={() => void connect(app.slug)}
-                    disabled={busy !== null}
-                    className="flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-secondary disabled:opacity-50"
-                  >
-                    <span className="flex min-w-0 items-center gap-2.5">
-                      <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate font-medium">{app.name}</span>
-                    </span>
-                    {busy === app.slug ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </button>
+                  <PickerRow key={app.slug} app={app} busy={busy} onConnect={connect} />
                 ))}
               </div>
+            ) : (
+              <div className="flex max-h-80 flex-col gap-4 overflow-y-auto py-0.5">
+                <PickerSection
+                  heading={t("connections.suggestedHeading")}
+                  apps={emailResults}
+                  busy={busy}
+                  onConnect={connect}
+                />
+                {moreResults.length > 0 && (
+                  <PickerSection
+                    heading={t("connections.moreAppsHeading")}
+                    apps={moreResults}
+                    busy={busy}
+                    onConnect={connect}
+                  />
+                )}
+              </div>
             )}
+            <p className="px-1 pt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              {t("connections.anyAppHint")}
+            </p>
           </Card>
         )}
 
-        {polling && (
+        {connecting && (
           <p className="text-xs text-muted-foreground">{t("connections.finishConnecting")}</p>
         )}
 
@@ -304,16 +410,58 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                     color={colorFor(account.id)?.hex ?? "#616161"}
                     onSelect={(hex) => void updateColor(account.id, hex)}
                   />
-                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <AppIcon src={account.imgSrc} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{account.name}</p>
                     <p className="text-xs text-muted-foreground">{appLabel(account)}</p>
+                    {editingNote === account.id ? (
+                      <Input
+                        autoFocus
+                        className="mt-1.5 h-7 text-xs"
+                        placeholder={t("connections.notePlaceholder")}
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            noteHandled.current = true;
+                            void saveNote(account.id, noteDraft);
+                          } else if (e.key === "Escape") {
+                            noteHandled.current = true;
+                            setEditingNote(null);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (noteHandled.current) {
+                            noteHandled.current = false;
+                            return;
+                          }
+                          void saveNote(account.id, noteDraft);
+                        }}
+                      />
+                    ) : (
+                      noteFor(account.id) && (
+                        <p className="mt-0.5 truncate text-xs italic text-muted-foreground">
+                          {noteFor(account.id)}
+                        </p>
+                      )
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant={account.healthy ? "success" : "destructive"}>
                     {account.healthy ? t("connections.healthy") : t("connections.unhealthy")}
                   </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setNoteDraft(noteFor(account.id));
+                      setEditingNote(account.id);
+                    }}
+                    title={t("connections.editNote")}
+                  >
+                    <Pencil className="h-4 w-4 text-muted-foreground" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

@@ -3,15 +3,11 @@ import type { Message } from "@earendil-works/pi-ai";
 import { eq } from "drizzle-orm";
 import { LANGUAGE_ENGLISH_NAMES } from "@trailin/shared";
 import { db, schema } from "../db/index.js";
-import { listMemories } from "../db/memories.js";
-import { getEmailWriteSetting, getLanguageSetting } from "../db/settings.js";
-import { listDocuments } from "../library/store.js";
+import { getEmailWriteSetting, getLanguageSetting, getTimezoneSetting } from "../db/settings.js";
 import { modelRegistry, resolveActiveModel } from "../llm/registry.js";
 import { loadEmailTools, type EmailToolset } from "../pipedream/mcp.js";
-import { buildKnowledgeTools } from "./knowledgeTools.js";
-
-/** Library titles listed in the system prompt are capped so it can't grow unbounded. */
-const LIBRARY_TOC_LIMIT = 100;
+import { buildDelegateTool } from "./delegate.js";
+import { buildKnowledgeContext, buildKnowledgeTools } from "./knowledgeTools.js";
 
 const SYSTEM_PROMPT = `You are Trailin, a personal email assistant. You have tools for the user's
 connected accounts — email (Gmail / Outlook) and possibly other apps — provided through
@@ -46,6 +42,14 @@ Guidelines:
   "studies show"); when something isn't known, say so instead of inventing plausible filler. Match the
   user's own voice in email drafts and keep summaries neutral, and don't add opinions or personality that
   aren't theirs.
+- When you compose something that gets read as finished writing — an email draft, or a digest/summary
+  that pulls several items together — don't ship your first pass. Reread it once as if you were hunting
+  for the AI tells above, plus: forced groups of three, "not just X but Y" parallelisms, "-ing" tails
+  that fake depth ("…ensuring…", "…highlighting…"), false ranges ("from X to Y" where X and Y aren't a
+  real scale), synonym-cycling the same noun, bolded inline-header lists, and generic upbeat closers.
+  Fix what you find, then give only the finished version. Do this silently in the same turn: the reader
+  sees the final draft or digest, never the rough pass or notes about it. Skip it for short
+  conversational replies, where the first pass is already fine.
 - Timestamps from tools are usually UTC; present them in a human-friendly way.
 - You have a long-term memory: saved entries are listed at the end of this prompt. When the
   user asks you to remember something, or states a lasting fact or preference, save it with
@@ -59,7 +63,28 @@ Guidelines:
   of this prompt. Check it with library_search whenever a question or task could plausibly be
   covered by one of those documents, not only when the user says "my documents"; read the full
   match with library_read and say which document you used. On scheduled automation runs, search
-  the library first if the task relates to any listed document.`;
+  the library first if the task relates to any listed document.
+- Ground every email draft in real context: before drafting a reply, read the full thread (not just
+  the newest message), and pull anything relevant from memory or the library (who the correspondent
+  is, prior agreements, standing facts) so the draft is specific and consistent with what was
+  already said.
+- For work that spans many independent lookups (a digest over many threads, several senders'
+  histories, cross-checking documents), fan the lookups out with the delegate tool and synthesize
+  the workers' reports instead of doing every lookup serially yourself.`;
+
+/** e.g. "Thu, Jul 9, 2026, 10:31" — rendered in the given IANA timezone. */
+function formatNow(timezone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
+}
 
 /** The base prompt plus the Settings rules (scheduled runs rely on them too). */
 async function buildSystemPrompt(): Promise<string> {
@@ -79,24 +104,12 @@ async function buildSystemPrompt(): Promise<string> {
   or their emails are written in. Quoted email text and draft emails may keep their own language.`;
   }
 
-  const memories = await listMemories();
-  if (memories.length > 0) {
-    prompt += `\n\nLong-term memory (saved earlier; the user manages these on the Knowledge page):\n${memories
-      .map((m) => `- [${m.id.slice(0, 8)}] ${m.content}`)
-      .join("\n")}`;
-  }
+  const timezone = (await getTimezoneSetting()) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  prompt += `
+- Current date and time: ${formatNow(timezone)} (${timezone}). The user lives in this timezone —
+  present all times in it and interpret relative dates ("today", "next Monday") against it.`;
 
-  const indexed = (await listDocuments()).filter(
-    (d) => d.status === "indexed" && d.chunkCount > 0,
-  );
-  if (indexed.length > 0) {
-    const shown = indexed.slice(0, LIBRARY_TOC_LIMIT);
-    const lines = shown.map((d) => `- ${d.title} (${d.ext})`);
-    if (indexed.length > shown.length) {
-      lines.push(`… and ${indexed.length - shown.length} more — use library_list.`);
-    }
-    prompt += `\n\nDocument library (search with library_search, read with library_read):\n${lines.join("\n")}`;
-  }
+  prompt += await buildKnowledgeContext();
   return prompt;
 }
 
@@ -113,8 +126,10 @@ async function buildAgent(toolset: EmailToolset, history: Message[] = []): Promi
       systemPrompt: await buildSystemPrompt(),
       // Active model comes from Settings (SQLite), falling back to .env.
       model: await resolveActiveModel(),
-      // Email tools from Pipedream plus the local memory/library tools.
-      tools: [...toolset.tools, ...buildKnowledgeTools()],
+      // Email tools from Pipedream, the local memory/library tools, and the
+      // delegate fan-out tool for spreading independent lookups across
+      // parallel background workers.
+      tools: [...toolset.tools, ...buildKnowledgeTools(), buildDelegateTool(toolset)],
       messages: history,
     },
     // Route model calls through the registry so stored credentials apply
@@ -172,7 +187,12 @@ async function loadHistory(conversationId: string): Promise<Message[]> {
 /** One pi Agent per conversation; context lives in process memory. */
 export async function getOrCreateSession(conversationId: string): Promise<AgentSession> {
   const existing = sessions.get(conversationId);
-  if (existing) return existing;
+  if (existing) {
+    // The current date/time (and memory/library context) can go stale on a
+    // long-lived session — recompute the system prompt before every prompt.
+    existing.agent.state.systemPrompt = await buildSystemPrompt();
+    return existing;
+  }
 
   const [toolset, history] = await Promise.all([loadEmailTools(), loadHistory(conversationId)]);
   const session: AgentSession = { agent: await buildAgent(toolset, history), toolset };
@@ -200,65 +220,5 @@ export async function createEphemeralSession(): Promise<AgentSession> {
   return { agent: await buildAgent(toolset), toolset };
 }
 
-export interface RunHandlers {
-  onTextDelta?: (delta: string) => void;
-  onThinking?: () => void;
-  onToolStart?: (toolName: string) => void;
-  onToolEnd?: (toolName: string, isError: boolean) => void;
-}
-
-/**
- * Run one prompt through the agent, forwarding streaming events to the
- * handlers. Resolves with the assistant's final text for this turn.
- */
-export async function runPrompt(
-  session: AgentSession,
-  prompt: string,
-  handlers: RunHandlers = {},
-): Promise<string> {
-  let text = "";
-
-  const unsubscribe = session.agent.subscribe((event) => {
-    const e = event as Record<string, unknown>;
-    switch (e.type) {
-      case "message_update": {
-        const inner = e.assistantMessageEvent as
-          | { type?: string; delta?: unknown }
-          | undefined;
-        if (inner && typeof inner.delta === "string") {
-          // Forward only visible text; thinking deltas keep their own type.
-          if (!inner.type || String(inner.type).startsWith("text")) {
-            text += inner.delta;
-            handlers.onTextDelta?.(inner.delta);
-          } else if (String(inner.type).startsWith("thinking")) {
-            handlers.onThinking?.();
-          }
-        }
-        break;
-      }
-      case "tool_execution_start": {
-        const name = (e.toolName ?? e.name ?? "tool") as string;
-        handlers.onToolStart?.(name);
-        break;
-      }
-      case "tool_execution_end": {
-        const name = (e.toolName ?? e.name ?? "tool") as string;
-        handlers.onToolEnd?.(name, Boolean(e.isError));
-        break;
-      }
-    }
-  });
-
-  try {
-    await session.agent.prompt(prompt);
-  } finally {
-    if (typeof unsubscribe === "function") unsubscribe();
-  }
-
-  // pi doesn't throw on provider failures (missing credentials, refused
-  // requests); it records them on the state. Surface them to the caller.
-  const failure = session.agent.state.errorMessage;
-  if (failure) throw new Error(failure);
-
-  return text.trim();
-}
+// Re-exported so existing callers (scheduler.ts, routes/chat.ts) keep working.
+export { runPrompt, type RunHandlers } from "./run.js";

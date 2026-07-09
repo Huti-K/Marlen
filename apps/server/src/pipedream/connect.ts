@@ -5,7 +5,9 @@ import type {
   PipedreamApp,
   PipedreamStatus,
 } from "@trailin/shared";
+import { EMAIL_APPS, POPULAR_APPS } from "@trailin/shared";
 import { deleteSetting, getSetting, setSetting } from "../db/settings.js";
+import { getDemoAccounts } from "../demo/accounts.js";
 import { env } from "../env.js";
 
 /**
@@ -100,6 +102,7 @@ export async function getConnectConfig(): Promise<ConnectConfig | null> {
 }
 
 export async function pipedreamConfigured(): Promise<boolean> {
+  if (env.demoMode) return true;
   return (await getConnectConfig()) !== null;
 }
 
@@ -157,6 +160,13 @@ function buildClient(config: ConnectConfig): PipedreamClient {
 }
 
 async function getClient(): Promise<{ pd: PipedreamClient; config: ConnectConfig }> {
+  // Single choke point: every function that ever talks to Pipedream (proxy
+  // requests, account listing/deletion, connect tokens, app search) routes
+  // through here, so this is where demo mode refuses to make a live call —
+  // even if real credentials happen to be configured too.
+  if (env.demoMode) {
+    throw new Error("Demo mode: Pipedream is disabled, nothing calls out to it.");
+  }
   const config = await getConnectConfig();
   if (!config) {
     throw new Error(
@@ -206,11 +216,13 @@ export async function createConnectToken(app: string): Promise<ConnectTokenRespo
     connectLinkUrl: url.toString(),
     expiresAt:
       res.expiresAt instanceof Date ? res.expiresAt.toISOString() : String(res.expiresAt),
+    externalUserId: config.externalUserId,
   };
 }
 
 /** All connected accounts, any app, any number per app. */
 export async function listAccounts(): Promise<ConnectedAccount[]> {
+  if (env.demoMode) return getDemoAccounts();
   const { pd, config } = await getClient();
   const page = await pd.accounts.list({ externalUserId: config.externalUserId });
 
@@ -218,7 +230,7 @@ export async function listAccounts(): Promise<ConnectedAccount[]> {
   for await (const account of page) {
     const a = account as {
       id: string;
-      app?: { nameSlug?: string; name?: string };
+      app?: { nameSlug?: string; name?: string; imgSrc?: string };
       name?: string;
       healthy?: boolean;
       createdAt?: string | Date;
@@ -227,6 +239,7 @@ export async function listAccounts(): Promise<ConnectedAccount[]> {
       id: a.id,
       app: a.app?.nameSlug ?? "unknown",
       appName: a.app?.name,
+      imgSrc: a.app?.imgSrc,
       name: a.name ?? a.app?.name ?? a.id,
       healthy: a.healthy ?? true,
       createdAt:
@@ -249,6 +262,45 @@ export async function searchApps(query: string): Promise<PipedreamApp[]> {
     if (apps.length >= 10) break;
   }
   return apps;
+}
+
+/** Nicer display names for a few apps whose catalog name is awkward. */
+const DEFAULT_APP_NAME_OVERRIDES: Record<string, string> = {
+  slack_bot: "Slack",
+};
+
+async function resolveApp(
+  pd: PipedreamClient,
+  slug: string,
+): Promise<PipedreamApp | null> {
+  // A slug query isn't guaranteed to rank the exact app first, so pull a few
+  // and pick the exact slug match.
+  const page = await pd.apps.list({ q: slug, limit: 5 });
+  for await (const app of page) {
+    const a = app as { nameSlug?: string; name?: string; imgSrc?: string };
+    if (a.nameSlug === slug && a.name) {
+      return { slug: a.nameSlug, name: DEFAULT_APP_NAME_OVERRIDES[slug] ?? a.name, imgSrc: a.imgSrc };
+    }
+  }
+  return null;
+}
+
+// The suggested set never changes at runtime; resolve it once per process.
+let defaultAppsCache: PipedreamApp[] | null = null;
+
+/**
+ * The picker's pre-search suggestions: the email providers first, then a few
+ * popular integrations so it's clear any of Pipedream's 2,000+ apps can be
+ * connected — the full catalog is a search away.
+ */
+export async function getDefaultApps(): Promise<PipedreamApp[]> {
+  if (defaultAppsCache) return defaultAppsCache;
+  const { pd } = await getClient();
+  const slugs: string[] = [...EMAIL_APPS, ...POPULAR_APPS];
+  const resolved = await Promise.all(slugs.map((slug) => resolveApp(pd, slug)));
+  // Drop any that didn't resolve; keep the order defined above.
+  defaultAppsCache = resolved.filter((a): a is PipedreamApp => a !== null);
+  return defaultAppsCache;
 }
 
 export async function deleteAccount(accountId: string): Promise<void> {

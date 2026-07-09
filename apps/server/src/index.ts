@@ -15,8 +15,10 @@ import { settingsRoutes } from "./routes/settings.js";
 import { draftRoutes } from "./routes/drafts.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { libraryRoutes } from "./routes/library.js";
+import { eventRoutes } from "./routes/events.js";
 import { startScheduler } from "./automations/scheduler.js";
 import { seedDefaultAutomations } from "./automations/defaults.js";
+import { seedDemoData } from "./demo/seed.js";
 import { startLibrary, getLibraryDir } from "./library/ingest.js";
 import { activeModelConfigured } from "./llm/registry.js";
 
@@ -35,6 +37,7 @@ async function main(): Promise<void> {
   await app.register(draftRoutes);
   await app.register(memoryRoutes);
   await app.register(libraryRoutes);
+  await app.register(eventRoutes);
 
   // When the web app has been built, serve it from the same process so a
   // single `pnpm start` works on a desktop machine or a host.
@@ -50,10 +53,18 @@ async function main(): Promise<void> {
     });
   }
 
-  // Populate the built-in automations on a fresh install, then schedule
-  // everything (defaults included) for this boot.
-  await seedDefaultAutomations();
-  await startScheduler();
+  if (env.demoMode) {
+    // Seeded history (20 days of digests, drafts, chats, memories, library
+    // docs) stands in for live automation runs — the scheduler never starts,
+    // so nothing runs on a timer or touches Pipedream.
+    await seedDemoData();
+    app.log.info("Demo mode: automation scheduler disabled — seeded history replaces it");
+  } else {
+    // Populate the built-in automations on a fresh install, then schedule
+    // everything (defaults included) for this boot.
+    await seedDefaultAutomations();
+    await startScheduler();
+  }
 
   // Index the document drop folder and keep watching it.
   await startLibrary((message) => app.log.info(message));

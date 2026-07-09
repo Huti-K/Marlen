@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, ExternalLink, Loader2, Pencil, X } from "lucide-react";
+import { Check, ExternalLink, Loader2, Pencil, TriangleAlert, X } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import type { PipedreamStatus } from "@trailin/shared";
 import { api } from "@/lib/api";
@@ -15,7 +15,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Accounts } from "@/features/connections/Accounts";
 import { toast } from "@/lib/toast";
-import { errorMessage } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
 export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => void }) {
   const { t } = useTranslation();
@@ -66,6 +66,23 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
     } catch (err) {
       toast.error(errorMessage(err));
     }
+  };
+
+  // Enabling send/change access is consequential, so confirm it first; turning
+  // it back off is safe and immediate.
+  const [confirmWrite, setConfirmWrite] = React.useState(false);
+  const [writeBusy, setWriteBusy] = React.useState(false);
+
+  const handleWriteToggle = (next: boolean) => {
+    if (next) setConfirmWrite(true);
+    else void toggleWrite(false);
+  };
+
+  const confirmEnableWrite = async () => {
+    setWriteBusy(true);
+    await toggleWrite(true);
+    setWriteBusy(false);
+    setConfirmWrite(false);
   };
 
   if (!status) {
@@ -139,12 +156,24 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
         </div>
       )}
 
-      <ListRow className="animate-in-up py-2.5" style={{ animationDelay: "50ms" }}>
+      <ListRow
+        className={cn(
+          "animate-in-up py-2.5 transition-colors",
+          // Armed = the agent can send/delete. Tint the whole row amber so it
+          // reads as a live danger zone, not a neutral setting.
+          allowWrite && "bg-warning/10",
+        )}
+        style={{ animationDelay: "50ms" }}
+      >
         <div className="min-w-0">
-          <Label htmlFor="pd-write-toggle" className="text-sm font-medium">
+          <Label
+            htmlFor="pd-write-toggle"
+            className="flex items-center gap-1.5 text-sm font-medium"
+          >
+            {allowWrite && <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-warning" />}
             {t("connections.writeToggle")}
           </Label>
-          <p className="text-xs text-muted-foreground">
+          <p className={cn("text-xs", allowWrite ? "text-warning" : "text-muted-foreground")}>
             {allowWrite
               ? t("connections.writeToggleOn")
               : t("connections.writeToggleOff")}
@@ -152,9 +181,10 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
         </div>
         <Switch
           id="pd-write-toggle"
+          tone="warning"
           checked={allowWrite ?? false}
           disabled={allowWrite === null}
-          onCheckedChange={(next) => void toggleWrite(next)}
+          onCheckedChange={handleWriteToggle}
         />
       </ListRow>
 
@@ -163,6 +193,17 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
           <Accounts onChanged={onStatusChanged} />
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmWrite}
+        onOpenChange={(next) => !writeBusy && setConfirmWrite(next)}
+        title={t("connections.writeConfirmTitle")}
+        description={t("connections.writeConfirmBody")}
+        confirmLabel={t("connections.writeConfirmCta")}
+        variant="destructive"
+        busy={writeBusy}
+        onConfirm={() => void confirmEnableWrite()}
+      />
     </div>
   );
 }

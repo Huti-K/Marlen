@@ -7,6 +7,7 @@
     "dev": "pnpm --parallel --filter @trailin/server --filter @trailin/web dev",
     "dev:server": "pnpm --filter @trailin/server dev",
     "dev:web": "pnpm --filter @trailin/web dev",
+    "demo": "TRAILIN_DEMO=1 pnpm --filter @trailin/server dev",
     "build": "pnpm -r build",
     "start": "pnpm --filter @trailin/server start",
     "typecheck": "pnpm -r typecheck"

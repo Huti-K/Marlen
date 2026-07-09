@@ -28,6 +28,25 @@ export async function getLanguageSetting(): Promise<Language | null> {
   return isLanguage(value) ? value : null;
 }
 
+export const TIMEZONE_SETTING_KEY = "app.timezone";
+
+/** True for a string Intl recognizes as an IANA timezone identifier. */
+export function isValidTimezone(value: unknown): value is string {
+  if (typeof value !== "string" || !value) return false;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The chosen IANA timezone, or null until the web app first sets one from the browser. */
+export async function getTimezoneSetting(): Promise<string | null> {
+  const value = await getSetting(TIMEZONE_SETTING_KEY);
+  return isValidTimezone(value) ? value : null;
+}
+
 export const EMAIL_WRITE_SETTING_KEY = "agent.allowEmailWrite";
 
 /**
@@ -60,4 +79,59 @@ export async function getAccountColors(): Promise<import("@trailin/shared").Acco
 
 export async function setAccountColors(colors: import("@trailin/shared").AccountColor[]): Promise<void> {
   await setSetting(ACCOUNT_COLORS_SETTING_KEY, JSON.stringify(colors));
+}
+
+export const ACCOUNT_DESCRIPTIONS_SETTING_KEY = "account.descriptions";
+
+/** All persisted per-account purpose notes (fed to the agent as tool context). */
+export async function getAccountDescriptions(): Promise<
+  import("@trailin/shared").AccountDescription[]
+> {
+  const raw = await getSetting(ACCOUNT_DESCRIPTIONS_SETTING_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export async function setAccountDescriptions(
+  descriptions: import("@trailin/shared").AccountDescription[],
+): Promise<void> {
+  await setSetting(ACCOUNT_DESCRIPTIONS_SETTING_KEY, JSON.stringify(descriptions));
+}
+
+export const DEMO_DRAFTS_SETTING_KEY = "demo.drafts";
+
+/** One demo Gmail draft, stored whole (list + detail views both read this). */
+export interface DemoDraftRecord {
+  id: string;
+  messageId: string;
+  threadId: string;
+  subject: string;
+  to: string;
+  cc?: string;
+  bcc?: string;
+  date: string;
+  webUrl: string;
+  body: string;
+}
+
+/** Demo drafts, keyed by the fake account id — seeded once, then edited via deletes. */
+export type DemoDraftStore = Record<string, DemoDraftRecord[]>;
+
+/** Fake Gmail drafts for demo mode (see pipedream/gmailDrafts.ts), keyed by account id. */
+export async function getDemoDraftStore(): Promise<DemoDraftStore> {
+  const raw = await getSetting(DEMO_DRAFTS_SETTING_KEY);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+export async function setDemoDraftStore(store: DemoDraftStore): Promise<void> {
+  await setSetting(DEMO_DRAFTS_SETTING_KEY, JSON.stringify(store));
 }

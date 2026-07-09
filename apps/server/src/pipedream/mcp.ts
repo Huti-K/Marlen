@@ -1,8 +1,9 @@
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { ConnectedAccount } from "@trailin/shared";
-import { getEmailWriteSetting } from "../db/settings.js";
+import type { AccountDescription, ConnectedAccount } from "@trailin/shared";
+import { getAccountDescriptions, getEmailWriteSetting } from "../db/settings.js";
+import { env } from "../env.js";
 import {
   getConnectConfig,
   getPipedreamAccessToken,
@@ -67,10 +68,20 @@ function sanitizeToolName(name: string): string {
 const SAFE_VERBS = /^(find|get|list|search|download|fetch|retrieve)(-|$)/;
 const DRAFT_ONLY = /^create-draft(-|$)/;
 
-function allowedInReadOnly(mcpToolName: string): boolean {
+/**
+ * True for pure read/search actions only, never drafts. This is the strict
+ * subset handed to background delegate workers, which must not create
+ * drafts even though a draft never sends anything.
+ */
+function isReadAction(mcpToolName: string): boolean {
   // Strip the app-slug prefix: "gmail-find-email" -> "find-email".
   const action = mcpToolName.replace(/^[a-z0-9_]+-/, "");
-  return SAFE_VERBS.test(action) || DRAFT_ONLY.test(action);
+  return SAFE_VERBS.test(action);
+}
+
+function allowedInReadOnly(mcpToolName: string): boolean {
+  const strippedAction = mcpToolName.replace(/^[a-z0-9_]+-/, "");
+  return isReadAction(mcpToolName) || DRAFT_ONLY.test(strippedAction);
 }
 
 /** Short per-account tool-name suffix, e.g. "kadim" from kadim@gmail.com. */
@@ -93,17 +104,26 @@ function mcpContentToText(content: unknown): string {
     .join("\n");
 }
 
-/** Wrap every tool of one account's session as a pi AgentTool. */
+/**
+ * Wrap every tool of one account's session as a pi AgentTool. Also returns
+ * the strict read-only subset (see isReadAction) so callers can build the
+ * separate toolset background delegate workers get.
+ */
 async function bridgeAccountTools(
   session: McpSession,
   account: ConnectedAccount,
   needsSuffix: boolean,
   seenNames: Set<string>,
   allowWrite: boolean,
-): Promise<AgentTool[]> {
+  purpose: string | undefined,
+): Promise<{ tools: AgentTool[]; readTools: AgentTool[] }> {
   const tools: AgentTool[] = [];
+  const readTools: AgentTool[] = [];
   const { tools: mcpTools } = await session.client.listTools();
   const suffix = needsSuffix ? `__${accountSlug(account)}` : "";
+  // The user's note on why this account is connected — appended to every tool
+  // so the model understands what the connection is meant for.
+  const purposeNote = purpose?.trim() ? ` This connection is used for: ${purpose.trim()}.` : "";
 
   for (const mcpTool of mcpTools) {
     // Pipedream's Gmail draft component needs a paid workspace (File Stash);
@@ -115,10 +135,10 @@ async function bridgeAccountTools(
     if (seenNames.has(name)) continue;
     seenNames.add(name);
 
-    tools.push({
+    const tool: AgentTool = {
       name,
       label: mcpTool.title ?? mcpTool.name,
-      description: `${mcpTool.description ?? mcpTool.name}\n\nActs as the connected account: ${account.name}.`,
+      description: `${mcpTool.description ?? mcpTool.name}\n\nActs as the connected account: ${account.name}.${purposeNote}`,
       // MCP input schemas are plain JSON Schema, which is exactly what
       // TypeBox schemas compile to — pass through as-is.
       parameters: mcpTool.inputSchema as AgentTool["parameters"],
@@ -134,17 +154,24 @@ async function bridgeAccountTools(
         }
         return { content: [{ type: "text", text }], details: undefined };
       },
-    });
+    };
+    tools.push(tool);
+    if (isReadAction(mcpTool.name)) readTools.push(tool);
   }
-  return tools;
+  return { tools, readTools };
 }
 
 export interface EmailToolset {
   tools: AgentTool[];
+  /**
+   * The strictly read-only email tools (search/read, no drafts, no sends)
+   * given to background delegate workers.
+   */
+  readTools: AgentTool[];
   close: () => Promise<void>;
 }
 
-const EMPTY_TOOLSET: EmailToolset = { tools: [], close: async () => {} };
+const EMPTY_TOOLSET: EmailToolset = { tools: [], readTools: [], close: async () => {} };
 
 /**
  * Load the agent's email tools: one pinned MCP session per connected account.
@@ -153,17 +180,23 @@ const EMPTY_TOOLSET: EmailToolset = { tools: [], close: async () => {} };
  * to connect are skipped — the agent works with what's left.
  */
 export async function loadEmailTools(): Promise<EmailToolset> {
+  // Demo mode never opens an MCP session or otherwise calls Pipedream — the
+  // seeded history stands in for what the agent would normally fetch live.
+  if (env.demoMode) return EMPTY_TOOLSET;
+
   const config = await getConnectConfig();
   if (!config) return EMPTY_TOOLSET;
 
   let accounts: ConnectedAccount[];
   let accessToken: string;
   let allowWrite: boolean;
+  let descriptions: AccountDescription[];
   try {
-    [accounts, accessToken, allowWrite] = await Promise.all([
+    [accounts, accessToken, allowWrite, descriptions] = await Promise.all([
       listAccounts(),
       getPipedreamAccessToken(),
       getEmailWriteSetting(),
+      getAccountDescriptions(),
     ]);
   } catch (error) {
     console.warn("[mcp] listing Pipedream accounts failed:", error);
@@ -171,11 +204,14 @@ export async function loadEmailTools(): Promise<EmailToolset> {
   }
   if (accounts.length === 0) return EMPTY_TOOLSET;
 
+  const purposeByAccount = new Map(descriptions.map((d) => [d.accountId, d.text]));
+
   const perApp = new Map<string, number>();
   for (const account of accounts) perApp.set(account.app, (perApp.get(account.app) ?? 0) + 1);
 
   const sessions: McpSession[] = [];
   const tools: AgentTool[] = [];
+  const readTools: AgentTool[] = [];
   const seenNames = new Set<string>();
 
   for (const account of accounts) {
@@ -189,9 +225,16 @@ export async function loadEmailTools(): Promise<EmailToolset> {
     sessions.push(session);
     const needsSuffix = (perApp.get(account.app) ?? 0) > 1;
     try {
-      tools.push(
-        ...(await bridgeAccountTools(session, account, needsSuffix, seenNames, allowWrite)),
+      const bridged = await bridgeAccountTools(
+        session,
+        account,
+        needsSuffix,
+        seenNames,
+        allowWrite,
+        purposeByAccount.get(account.id),
       );
+      tools.push(...bridged.tools);
+      readTools.push(...bridged.readTools);
     } catch (error) {
       console.warn(`[mcp] listing tools failed for ${account.app} (${account.name}):`, error);
     }
@@ -200,6 +243,8 @@ export async function loadEmailTools(): Promise<EmailToolset> {
       const name = sanitizeToolName(`gmail-create-draft${suffix}`);
       if (!seenNames.has(name)) {
         seenNames.add(name);
+        // The custom draft tool is never read-only: it's kept out of
+        // readTools so background workers cannot create drafts.
         tools.push(buildGmailDraftTool(account, name));
       }
     }
@@ -207,6 +252,7 @@ export async function loadEmailTools(): Promise<EmailToolset> {
 
   return {
     tools,
+    readTools,
     close: async () => {
       await Promise.all(sessions.map((s) => s.close()));
     },

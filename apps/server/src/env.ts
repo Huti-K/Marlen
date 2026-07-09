@@ -5,9 +5,16 @@ function optional(name: string): string | undefined {
   return value && value.trim() !== "" ? value.trim() : undefined;
 }
 
+/** Dev-only sandbox: seeded fake accounts/drafts/digests, real Pipedream never called. */
+const demoMode = optional("TRAILIN_DEMO") === "1";
+
 export const env = {
   port: Number(optional("PORT") ?? 3001),
-  databasePath: optional("DATABASE_PATH") ?? "./data/trailin.db",
+  demoMode,
+  // Demo mode defaults to a sibling database file so it can never touch the
+  // user's real data — an explicit DATABASE_PATH still always wins.
+  databasePath:
+    optional("DATABASE_PATH") ?? (demoMode ? "./data/demo.db" : "./data/trailin.db"),
   /** Default drop folder for the document library; a folder saved in the app wins. */
   libraryPath: optional("LIBRARY_PATH") ?? "./data/library",
 

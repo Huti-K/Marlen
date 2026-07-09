@@ -1,3 +1,6 @@
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import type { LibraryStatus } from "@trailin/shared";
 import {
@@ -8,10 +11,30 @@ import {
   setLibraryFolder,
 } from "../library/ingest.js";
 import { pickFolder } from "../library/pickFolder.js";
-import { listDocuments } from "../library/store.js";
+import { getDocument, listDocuments } from "../library/store.js";
 import { errorMessage } from "../util.js";
 
 const UPLOAD_LIMIT = 64 * 1024 * 1024;
+
+/** Map file extension to a browser-friendly MIME type. */
+function mimeForExt(ext: string): string {
+  switch (ext.toLowerCase()) {
+    case "pdf":
+      return "application/pdf";
+    case "md":
+    case "markdown":
+    case "txt":
+    case "csv":
+      return "text/plain; charset=utf-8";
+    case "html":
+    case "htm":
+      return "text/html; charset=utf-8";
+    case "docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    default:
+      return "application/octet-stream";
+  }
+}
 
 /** The document library: list, upload into the drop folder, rescan, delete. */
 export async function libraryRoutes(app: FastifyInstance): Promise<void> {
@@ -73,6 +96,31 @@ export async function libraryRoutes(app: FastifyInstance): Promise<void> {
       return status();
     },
   );
+
+  // Stream the original file so the browser can view/download it.
+  app.get<{ Params: { id: string } }>("/api/library/documents/:id/open", async (req, reply) => {
+    const doc = await getDocument(req.params.id);
+    if (!doc) return reply.code(404).send({ error: "document not found" });
+
+    const absPath = join(getLibraryDir(), doc.path);
+    try {
+      await stat(absPath);
+    } catch {
+      return reply.code(404).send({ error: "file not found on disk" });
+    }
+
+    const mime = mimeForExt(doc.ext);
+    // PDFs and text open in-browser ("inline"); everything else downloads.
+    const inline = /^(application\/pdf|text\/)/.test(mime);
+    const disposition = inline
+      ? `inline; filename="${doc.title}.${doc.ext}"`
+      : `attachment; filename="${doc.title}.${doc.ext}"`;
+
+    return reply
+      .header("Content-Type", mime)
+      .header("Content-Disposition", disposition)
+      .send(createReadStream(absPath));
+  });
 
   app.delete<{ Params: { id: string } }>("/api/library/documents/:id", async (req, reply) => {
     if (!(await deleteDocument(req.params.id))) {

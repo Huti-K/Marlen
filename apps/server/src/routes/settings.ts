@@ -3,11 +3,16 @@ import { isLanguage, SUPPORTED_LANGUAGES } from "@trailin/shared";
 import {
   EMAIL_WRITE_SETTING_KEY,
   getAccountColors,
+  getAccountDescriptions,
   getEmailWriteSetting,
   getLanguageSetting,
+  getTimezoneSetting,
+  isValidTimezone,
   LANGUAGE_SETTING_KEY,
   setAccountColors,
+  setAccountDescriptions,
   setSetting,
+  TIMEZONE_SETTING_KEY,
 } from "../db/settings.js";
 import { resetSessions } from "../agent/emailAgent.js";
 
@@ -26,6 +31,20 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     // new conversations (and scheduled runs) pick it up immediately.
     await resetSessions();
     return { language };
+  });
+
+  app.get("/api/settings/timezone", async () => ({ timezone: await getTimezoneSetting() }));
+
+  app.put<{ Body: { timezone: string } }>("/api/settings/timezone", async (req, reply) => {
+    const timezone = req.body?.timezone;
+    if (!isValidTimezone(timezone)) {
+      return reply.code(400).send({ error: "timezone must be a valid IANA timezone" });
+    }
+    await setSetting(TIMEZONE_SETTING_KEY, timezone);
+    // The current time is baked into the system prompt, so drop in-memory
+    // agents — the next prompt in every conversation picks up the change.
+    await resetSessions();
+    return { timezone };
   });
 
   app.get("/api/settings/email-write", async () => ({
@@ -63,6 +82,32 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       }
       await setAccountColors(colors);
       return { colors };
+    },
+  );
+
+  // ---- Account descriptions (the "what is this connection for" note) ----
+
+  app.get("/api/settings/account-descriptions", async () => ({
+    descriptions: await getAccountDescriptions(),
+  }));
+
+  app.put<{ Body: { descriptions: import("@trailin/shared").AccountDescription[] } }>(
+    "/api/settings/account-descriptions",
+    async (req, reply) => {
+      const descriptions = req.body?.descriptions;
+      if (!Array.isArray(descriptions)) {
+        return reply.code(400).send({ error: "descriptions must be an array" });
+      }
+      for (const d of descriptions) {
+        if (!d.accountId || typeof d.text !== "string") {
+          return reply.code(400).send({ error: "each description must have accountId and text" });
+        }
+      }
+      await setAccountDescriptions(descriptions);
+      // Descriptions are baked into each tool's description string, so rebuild
+      // in-memory agents to surface the new purpose to the model right away.
+      await resetSessions();
+      return { descriptions };
     },
   );
 }

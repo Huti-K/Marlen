@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Loader2, MessagesSquare, Send, Wrench } from "lucide-react";
+import { Loader2, MessagesSquare, Send, Wrench, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatStreamEvent, Conversation } from "@trailin/shared";
 import { api, streamChat } from "@/lib/api";
@@ -9,6 +9,7 @@ import { LoadingRow } from "@/components/ui/feedback";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Markdown } from "@/components/ui/markdown";
 import { toast } from "@/lib/toast";
+import { useServerEvents } from "@/lib/serverEvents";
 import { cn, errorMessage } from "@/lib/utils";
 
 /** Same-device continuity: the conversation to restore on the next load. */
@@ -26,9 +27,15 @@ interface DisplayMessage {
 export function ChatPanel({
   historyOpen,
   setHistoryOpen,
+  layout = "panel",
+  onConversationChange,
 }: {
   historyOpen: boolean;
   setHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** "panel" is the floating side-panel; "page" is the full-page Chat tab (history lives in an external rail). */
+  layout?: "panel" | "page";
+  /** Lets the host mirror the active conversation (e.g. to highlight it in the Chat tab's history rail). */
+  onConversationChange?: (id: string | undefined) => void;
 }) {
   const { t } = useTranslation();
   const [messages, setMessages] = React.useState<DisplayMessage[]>([]);
@@ -77,6 +84,11 @@ export function ChatPanel({
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Keep the host in sync with the open conversation (Chat tab highlights it).
+  React.useEffect(() => {
+    onConversationChange?.(conversationId);
+  }, [conversationId, onConversationChange]);
 
   // Grow the textarea with its content, up to the CSS max-height cap (then it
   // scrolls internally). Empty is left to the CSS min-height instead of measured
@@ -222,11 +234,14 @@ export function ChatPanel({
     };
   }, [newConversation]);
 
+  const isPage = layout === "page";
+
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex flex-1 min-h-0 flex-col gap-3 overflow-hidden">
 
       <div className="min-h-0 flex-1 overflow-y-auto scroll-stable">
-        {historyOpen ? (
+        {/* In page mode the history rail is external, so the internal toggle is inert. */}
+        {!isPage && historyOpen ? (
           <HistoryList activeId={conversationId} onPick={(id) => void openConversation(id)} />
         ) : restoring ? (
           <LoadingRow />
@@ -240,7 +255,7 @@ export function ChatPanel({
             />
           </div>
         ) : (
-          <div className="flex flex-col gap-4 py-1">
+          <div className={cn("flex flex-col gap-4 py-1", isPage && "mx-auto w-full max-w-3xl")}>
             {messages.map((m) => (
               <div
                 key={m.id}
@@ -253,7 +268,7 @@ export function ChatPanel({
                   className={cn(
                     "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm",
                     m.role === "user"
-                      ? "rounded-br-md bg-primary text-primary-foreground"
+                      ? "rounded-br-md bg-accent text-accent-foreground"
                       : "rounded-bl-md bg-surface-2 text-foreground",
                   )}
                 >
@@ -297,7 +312,12 @@ export function ChatPanel({
         )}
       </div>
 
-      <div className="flex items-end gap-2 rounded-2xl bg-surface-2 p-1.5 pl-4">
+      <div
+        className={cn(
+          "flex items-end gap-2 rounded-2xl bg-surface-2 p-1.5 pl-4",
+          isPage && "mx-auto w-full max-w-3xl",
+        )}
+      >
         <textarea
           ref={textareaRef}
           value={input}
@@ -310,7 +330,7 @@ export function ChatPanel({
           }}
           placeholder={t("chat.placeholder")}
           rows={1}
-          className="max-h-40 min-h-[36px] flex-1 resize-none overflow-y-auto bg-transparent py-2 text-sm leading-relaxed [scrollbar-width:none] [-webkit-scrollbar]:hidden placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
+          className="max-h-40 min-h-[36px] flex-1 resize-none overflow-y-auto bg-transparent py-2 text-base md:text-sm leading-relaxed [scrollbar-width:none] [-webkit-scrollbar]:hidden placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
           disabled={busy}
         />
         <Button
@@ -328,17 +348,19 @@ export function ChatPanel({
 }
 
 /** Past conversations, newest first; fetched fresh each time it opens. */
-function HistoryList({
+export function HistoryList({
   activeId,
   onPick,
+  query = "",
 }: {
   activeId: string | undefined;
   onPick: (id: string) => void;
+  query?: string;
 }) {
   const { t, i18n } = useTranslation();
   const [list, setList] = React.useState<Conversation[] | null>(null);
 
-  React.useEffect(() => {
+  const load = React.useCallback(() => {
     api
       .conversations()
       .then(setList)
@@ -347,6 +369,13 @@ function HistoryList({
         setList([]);
       });
   }, []);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  // New chats and automation runs appear in the list as they happen.
+  useServerEvents(["conversations"], load);
 
   const dateLabel = (iso: string) =>
     new Date(iso).toLocaleString(i18n.language, {
@@ -357,12 +386,34 @@ function HistoryList({
     });
 
   if (!list) return <LoadingRow />;
-  if (list.length === 0) {
-    return <p className="px-1 py-2 text-xs text-muted-foreground">{t("chat.noConversations")}</p>;
-  }
 
-  const chats = list.filter((c) => c.type !== "automation");
-  const automations = list.filter((c) => c.type === "automation");
+  const q = query.trim().toLowerCase();
+  const matches = (c: Conversation) => !q || (c.title || "").toLowerCase().includes(q);
+  const chats = list.filter((c) => c.type !== "automation" && matches(c));
+  const automations = list.filter((c) => c.type === "automation" && matches(c));
+
+  if (chats.length === 0 && automations.length === 0) {
+    if (q) {
+      return (
+        <p className="px-1 py-2 text-xs text-muted-foreground">
+          {t("chat.noSearchResults")}
+        </p>
+      );
+    }
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-8 px-2 text-center">
+        <p className="text-sm text-muted-foreground">{t("chat.noConversations")}</p>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => window.dispatchEvent(new CustomEvent("trailin:new-chat"))}
+        >
+          <Plus className="h-4 w-4 mr-1.5" />
+          {t("chat.newConversation")}
+        </Button>
+      </div>
+    );
+  }
 
   const renderList = (items: Conversation[]) => (
     <div className="flex flex-col gap-1">

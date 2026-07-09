@@ -1,5 +1,6 @@
 import type {
   AccountColor,
+  AccountDescription,
   AccountDrafts,
   AppStatus,
   Automation,
@@ -57,6 +58,11 @@ export const api = {
   setLanguage: (language: Language) =>
     http<{ language: Language }>("PUT", "/api/settings/language", { language }),
 
+  // null until a timezone has been chosen (first web load initializes it).
+  timezone: () => get<{ timezone: string | null }>("/api/settings/timezone"),
+  setTimezone: (timezone: string) =>
+    http<{ timezone: string }>("PUT", "/api/settings/timezone", { timezone }),
+
   emailWrite: () => get<{ allowWrite: boolean }>("/api/settings/email-write"),
   setEmailWrite: (allowWrite: boolean) =>
     http<{ allowWrite: boolean }>("PUT", "/api/settings/email-write", { allowWrite }),
@@ -64,6 +70,12 @@ export const api = {
   accountColors: () => get<{ colors: AccountColor[] }>("/api/settings/account-colors"),
   setAccountColors: (colors: AccountColor[]) =>
     http<{ colors: AccountColor[] }>("PUT", "/api/settings/account-colors", { colors }),
+  accountDescriptions: () =>
+    get<{ descriptions: AccountDescription[] }>("/api/settings/account-descriptions"),
+  setAccountDescriptions: (descriptions: AccountDescription[]) =>
+    http<{ descriptions: AccountDescription[] }>("PUT", "/api/settings/account-descriptions", {
+      descriptions,
+    }),
 
   llmProviders: () => get<LlmProviderInfo[]>("/api/llm/providers"),
   modelSettings: () => get<ModelSettings>("/api/llm/model"),
@@ -139,6 +151,10 @@ export const api = {
     });
     await throwOnError(res);
     return res.json() as Promise<LibraryStatus>;
+  },
+  /** Open a library document in a new browser tab (or trigger a download). */
+  openLibraryDocument: (id: string): void => {
+    window.open(`/api/library/documents/${encodeURIComponent(id)}/open`, "_blank");
   },
 };
 

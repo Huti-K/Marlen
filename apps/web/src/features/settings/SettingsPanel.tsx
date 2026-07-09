@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Section } from "@/components/ui/section-header";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
 import { useNavLayout, type NavLayout } from "@/lib/useNavLayout";
 import { ConnectionsPanel } from "@/features/connections/ConnectionsPanel";
@@ -45,6 +46,7 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
     <div className="flex flex-col gap-10 pt-4">
       <Section
         index={0}
+        className="animate-in-up"
         title={t("settings.sections.ai.title")}
         description={t("settings.sections.ai.description")}
       >
@@ -56,6 +58,7 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
 
       <Section
         index={1}
+        className="animate-in-up"
         title={t("settings.sections.email.title")}
         description={t("settings.sections.email.description")}
       >
@@ -64,6 +67,7 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
 
       <Section
         index={2}
+        className="animate-in-up"
         layout="row"
         title={t("settings.sections.language.title")}
         description={t("settings.sections.language.description")}
@@ -73,6 +77,7 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
 
       <Section
         index={3}
+        className="animate-in-up"
         layout="row"
         title="Navigation Style"
         description="Choose between a left sidebar or a floating bottom dock"
@@ -103,45 +108,6 @@ function NavLayoutPicker() {
   );
 }
 
-function Section({
-  title,
-  description,
-  children,
-  index = 0,
-  layout = "stack",
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-  index?: number;
-  layout?: "stack" | "row";
-}) {
-  const header = (
-    <div className="flex min-w-0 flex-col gap-1">
-      <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-      <p className="text-sm text-muted-foreground">{description}</p>
-    </div>
-  );
-
-  return (
-    <section
-      className="animate-in-up relative flex flex-col gap-4"
-      style={{ animationDelay: `${index * 70}ms`, zIndex: 10 - index }}
-    >
-      {layout === "row" ? (
-        <div className="flex items-center justify-between gap-4">
-          {header}
-          {children}
-        </div>
-      ) : (
-        <>
-          {header}
-          {children}
-        </>
-      )}
-    </section>
-  );
-}
 
 /* ---------------- Language picker ---------------- */
 

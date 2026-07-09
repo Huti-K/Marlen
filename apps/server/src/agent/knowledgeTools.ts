@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { formatFileSize } from "@trailin/shared";
-import { createMemory, deleteMemory, updateMemory } from "../db/memories.js";
+import { createMemory, deleteMemory, listMemories, updateMemory } from "../db/memories.js";
 import { getLibraryDir, saveNote, SUPPORTED_FORMATS } from "../library/ingest.js";
 import { errorMessage } from "../util.js";
 import {
@@ -250,4 +250,44 @@ export function buildKnowledgeTools(): AgentTool[] {
     libraryRead,
     libraryWrite,
   ];
+}
+
+/**
+ * Read-only subset of the knowledge tools — no memory writes, no
+ * library_write — given to background delegate workers.
+ */
+export function buildKnowledgeReadTools(): AgentTool[] {
+  return [libraryList, librarySearch, libraryRead];
+}
+
+/** Library titles listed in the system prompt are capped so it can't grow unbounded. */
+const LIBRARY_TOC_LIMIT = 100;
+
+/**
+ * The dynamic context sections shared by the main agent's and the background
+ * workers' system prompts: saved memories plus the library table of contents.
+ * Returns "" when there is nothing to show.
+ */
+export async function buildKnowledgeContext(): Promise<string> {
+  let context = "";
+
+  const memories = await listMemories();
+  if (memories.length > 0) {
+    context += `\n\nLong-term memory (saved earlier; the user manages these on the Knowledge page):\n${memories
+      .map((m) => `- [${m.id.slice(0, 8)}] ${m.content}`)
+      .join("\n")}`;
+  }
+
+  const indexed = (await listDocuments()).filter(
+    (d) => d.status === "indexed" && d.chunkCount > 0,
+  );
+  if (indexed.length > 0) {
+    const shown = indexed.slice(0, LIBRARY_TOC_LIMIT);
+    const lines = shown.map((d) => `- ${d.title} (${d.ext})`);
+    if (indexed.length > shown.length) {
+      lines.push(`… and ${indexed.length - shown.length} more — use library_list.`);
+    }
+    context += `\n\nDocument library (search with library_search, read with library_read):\n${lines.join("\n")}`;
+  }
+  return context;
 }

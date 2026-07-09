@@ -7,6 +7,7 @@ import {
   extractProjectId,
   getPipedreamStatus,
   getSavedClientSecret,
+  getDefaultApps,
   listAccounts,
   saveConnectSettings,
   searchApps,
@@ -92,10 +93,9 @@ export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
 
   /** Search Pipedream's app catalog for the provider picker. */
   app.get<{ Querystring: { q?: string } }>("/api/pipedream/apps", async (req, reply) => {
-    const q = req.query.q?.trim();
-    if (!q) return reply.code(400).send({ error: "q is required" });
+    const q = req.query.q?.trim() || "";
     try {
-      return await searchApps(q);
+      return q ? await searchApps(q) : await getDefaultApps();
     } catch (error) {
       req.log.error(error, "searching apps failed");
       return reply.code(502).send({ error: errorMessage(error) });

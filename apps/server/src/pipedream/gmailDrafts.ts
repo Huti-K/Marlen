@@ -1,5 +1,8 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import { getDemoDraftStore, setDemoDraftStore } from "../db/settings.js";
+import { env } from "../env.js";
+import { emitServerEvent } from "../events.js";
 import { proxyRequest } from "./connect.js";
 
 /**
@@ -44,6 +47,14 @@ export async function listGmailDrafts(
   account: ConnectedAccount,
   limit = 15,
 ): Promise<EmailDraft[]> {
+  if (env.demoMode) {
+    const store = await getDemoDraftStore();
+    return (store[account.id] ?? [])
+      .map(({ body: _body, cc: _cc, bcc: _bcc, ...draft }) => draft)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, limit);
+  }
+
   const list = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts`, {
     params: { maxResults: String(limit) },
   })) as DraftsListResponse;
@@ -109,6 +120,13 @@ export async function getGmailDraftDetail(
   account: ConnectedAccount,
   draftId: string,
 ): Promise<{ body: string; cc: string; bcc: string }> {
+  if (env.demoMode) {
+    const store = await getDemoDraftStore();
+    const record = (store[account.id] ?? []).find((d) => d.id === draftId);
+    if (!record) throw new Error("draft not found");
+    return { body: record.body, cc: record.cc ?? "", bcc: record.bcc ?? "" };
+  }
+
   const full = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts/${draftId}`, {
     params: { format: "full" },
   })) as {
@@ -139,7 +157,16 @@ export async function deleteGmailDraft(
   account: ConnectedAccount,
   draftId: string,
 ): Promise<void> {
+  if (env.demoMode) {
+    const store = await getDemoDraftStore();
+    store[account.id] = (store[account.id] ?? []).filter((d) => d.id !== draftId);
+    await setDemoDraftStore(store);
+    emitServerEvent("drafts");
+    return;
+  }
+
   await proxyRequest(account.id, "delete", `${GMAIL_API}/drafts/${draftId}`);
+  emitServerEvent("drafts");
 }
 
 /** RFC 2047 B-encoding — safe for any subject, including umlauts. */
@@ -177,6 +204,7 @@ export async function createGmailDraft(
     body: { message: { raw, ...(input.threadId ? { threadId: input.threadId } : {}) } },
   })) as { id: string; message: { id: string; threadId: string } };
 
+  emitServerEvent("drafts");
   return { draftId: res.id, messageId: res.message.id, threadId: res.message.threadId };
 }
 

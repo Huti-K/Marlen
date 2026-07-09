@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { desc, eq, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
+import { emitServerEvent } from "../events.js";
 import {
   isValidCron,
   refreshSchedule,
@@ -62,6 +63,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     };
     await db.insert(schema.automations).values(automation);
     await refreshSchedule(automation.id);
+    emitServerEvent("automations");
     return automation;
   });
 
@@ -88,6 +90,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
         .set(updates)
         .where(eq(schema.automations.id, req.params.id));
       await refreshSchedule(req.params.id);
+      emitServerEvent("automations");
 
       const [automation] = await db
         .select()
@@ -103,6 +106,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     await db
       .delete(schema.automationRuns)
       .where(eq(schema.automationRuns.automationId, req.params.id));
+    emitServerEvent("automations");
     return { ok: true };
   });
 

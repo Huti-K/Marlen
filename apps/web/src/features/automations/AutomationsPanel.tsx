@@ -19,6 +19,7 @@ import { LinkButton } from "@/components/ui/link-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { toast } from "@/lib/toast";
+import { useServerEvents } from "@/lib/serverEvents";
 import { cn, errorMessage } from "@/lib/utils";
 import {
   DEFAULT_PRESET,
@@ -78,6 +79,12 @@ export function AutomationsPanel() {
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Server-side changes (agent tools, scheduled runs): refetch without the
+  // loading gate — toggling it would unmount the cards and drop their state.
+  useServerEvents(["automations"], () => {
+    void api.automations().then(setAutomations).catch(() => {});
+  });
 
   const resetForm = () => {
     setForm({ name: "", instruction: "", showInActivity: true });
@@ -504,6 +511,11 @@ function AutomationCard({
     const timer = setInterval(() => void loadRuns(), 2000);
     return () => clearInterval(timer);
   }, [expanded, runs, loadRuns]);
+
+  // Complements the polling: run started/finished elsewhere (schedule, chat).
+  useServerEvents(["runs"], () => {
+    if (expanded) void loadRuns();
+  });
 
   const toggle = async (enabled: boolean) => {
     setBusy(true);
