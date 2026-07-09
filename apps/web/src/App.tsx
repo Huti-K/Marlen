@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { isLanguage, isSetupComplete, type AppStatus } from "@trailin/shared";
 import { Sidebar } from "@/components/Sidebar";
 import { DockNav } from "@/components/DockNav";
+import { Kbd, SearchPalette } from "@/components/SearchPalette";
 import { ChatPanel, HistoryList } from "@/features/chat/ChatPanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
 import { AutomationsPanel } from "@/features/automations/AutomationsPanel";
@@ -15,11 +16,13 @@ import { SetupGate } from "@/features/setup/SetupGate";
 import { Toaster } from "@/components/ui/toaster";
 import { LoadingRow } from "@/components/ui/feedback";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { NAV_VIEWS } from "@/lib/nav";
+import { cn, MOD_LABEL } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useNavLayout } from "@/lib/useNavLayout";
+import { useTheme } from "@/lib/useTheme";
 import { CursorTooltip } from "@/components/ui/cursor-tooltip";
 
 /** Set once setup finished (or was skipped); an established app never re-gates. */
@@ -61,22 +64,6 @@ function useServerTimezone() {
   }, []);
 }
 
-function useTheme() {
-  const [theme, setTheme] = React.useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "light";
-    const saved = localStorage.getItem("trailin-theme");
-    if (saved === "light" || saved === "dark") return saved;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  });
-
-  React.useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    localStorage.setItem("trailin-theme", theme);
-  }, [theme]);
-
-  return [theme, () => setTheme((t) => (t === "dark" ? "light" : "dark"))] as const;
-}
-
 export default function App() {
   const { t } = useTranslation();
   const location = useLocation();
@@ -84,7 +71,7 @@ export default function App() {
   
   const currentPath = location.pathname.split("/")[1] || "home";
   const onChatRoute = currentPath === "chat";
-  const view = (["home", "chat", "automations", "knowledge", "settings"].includes(currentPath) ? currentPath : "home");
+  const view = (NAV_VIEWS.includes(currentPath as (typeof NAV_VIEWS)[number]) ? currentPath : "home");
   const [status, setStatus] = React.useState<AppStatus | null>(null);
   // "pending" until the first status answer decides between gate and app.
   const [gate, setGate] = React.useState<"pending" | "open" | "closed">(() =>
@@ -99,7 +86,8 @@ export default function App() {
     () => typeof window !== "undefined" && localStorage.getItem("trailin-chat-history-collapsed") === "true",
   );
   const [historyQuery, setHistoryQuery] = React.useState("");
-  const [theme, toggleTheme] = useTheme();
+  const [, theme, setThemePref] = useTheme();
+  const toggleTheme = () => setThemePref(theme === "dark" ? "light" : "dark");
   const [navLayout] = useNavLayout();
   const { width: chatWidth, onPointerDown: onChatResizeStart } = useResizableWidth({
     storageKey: "trailin-chat-width",
@@ -171,7 +159,10 @@ export default function App() {
     select(openSettings ? "settings" : "home");
   };
 
-  if (gate === "open" && status) {
+  // Once the gate is open, a failed status poll (server down / offline) must not
+  // fall through to the main app — SetupGate itself renders a "reconnecting" notice
+  // when `status` is null and keeps polling.
+  if (gate === "open") {
     return (
       <>
         <SetupGate status={status} onStatusChanged={refreshStatus} onFinish={closeGate} />
@@ -189,7 +180,7 @@ export default function App() {
   }
 
   const meta =
-    currentPath === "showcase" // DEV showcase — remove this branch with the route
+    import.meta.env.DEV && currentPath === "showcase" // DEV showcase — remove this branch with the route
       ? { title: "UI Showcase", description: "Component gallery & theme lab (dev only)" }
       : {
           title: t(`views.${view}.title` as any),
@@ -210,7 +201,7 @@ export default function App() {
 
       {navLayout === "sidebar" && mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+          className="scrim fixed inset-0 z-40 md:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -257,33 +248,55 @@ export default function App() {
               <Menu />
             </Button>
           )}
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight">{meta.title}</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold tracking-tight text-foreground">{meta.title}</h1>
             <p className="truncate text-sm text-muted-foreground">{meta.description}</p>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            className="ml-auto shrink-0"
-            aria-label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
-            data-tooltip={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
-          >
-            {theme === "dark" ? <Sun /> : <Moon />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              setMobileOpen(false);
-              setChatOpen(true);
-            }}
-            className="shrink-0 md:hidden"
-            aria-label={t("app.openChat")}
-            data-tooltip={t("app.openChat")}
-          >
-            <MessagesSquare />
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Reads as a field on desktop so the shortcut is discoverable; an icon on mobile. */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("trailin:open-search"))}
+              className="hidden h-9 w-56 shrink-0 items-center gap-2 rounded-md bg-surface-2 px-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:flex"
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{t("search.openButton")}</span>
+              <Kbd className="bg-background/70 px-1.5">{MOD_LABEL}K</Kbd>
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => window.dispatchEvent(new CustomEvent("trailin:open-search"))}
+              className="shrink-0 sm:hidden"
+              aria-label={t("search.openButton")}
+              data-tooltip={t("search.openButton")}
+            >
+              <Search />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className="shrink-0"
+              aria-label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
+              data-tooltip={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
+            >
+              {theme === "dark" ? <Sun /> : <Moon />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setMobileOpen(false);
+                setChatOpen(true);
+              }}
+              className="shrink-0 md:hidden"
+              aria-label={t("app.openChat")}
+              data-tooltip={t("app.openChat")}
+            >
+              <MessagesSquare />
+            </Button>
+          </div>
         </header>
 
         <div
@@ -309,7 +322,7 @@ export default function App() {
               <Route path="/automations" element={<AutomationsPanel />} />
               <Route path="/knowledge" element={<KnowledgePanel />} />
               {/* DEV showcase / theme lab — delete this line and the ShowcasePanel file to remove. */}
-              <Route path="/showcase" element={<ShowcasePanel />} />
+              {import.meta.env.DEV && <Route path="/showcase" element={<ShowcasePanel />} />}
               <Route 
                 path="/" 
                 element={
@@ -329,7 +342,7 @@ export default function App() {
       {/* Chat backdrop — mobile slide-over (panel mode only) */}
       {!onChatRoute && chatOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+          className="scrim fixed inset-0 z-40 md:hidden"
           onClick={() => setChatOpen(false)}
         />
       )}
@@ -337,7 +350,7 @@ export default function App() {
       {/* History-rail backdrop — full-page Chat tab on mobile, where the rail is a drawer */}
       {onChatRoute && historyOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+          className="scrim fixed inset-0 z-40 md:hidden"
           onClick={() => setHistoryOpen(false)}
         />
       )}
@@ -567,6 +580,7 @@ export default function App() {
 
       <Toaster />
       <CursorTooltip />
+      <SearchPalette />
     </div>
   );
 }

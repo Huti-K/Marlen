@@ -1,20 +1,27 @@
 import type { FastifyInstance } from "fastify";
-import { isLanguage, SUPPORTED_LANGUAGES } from "@trailin/shared";
+import { isLanguage, SUPPORTED_LANGUAGES, THINKING_LEVELS, type ThinkingLevelSetting } from "@trailin/shared";
 import {
   EMAIL_WRITE_SETTING_KEY,
   getAccountColors,
   getAccountDescriptions,
+  getAccountVoices,
   getEmailWriteSetting,
   getLanguageSetting,
+  getThinkingLevelSetting,
   getTimezoneSetting,
   isValidTimezone,
   LANGUAGE_SETTING_KEY,
   setAccountColors,
   setAccountDescriptions,
+  setAccountVoices,
   setSetting,
+  setThinkingLevelSetting,
   TIMEZONE_SETTING_KEY,
 } from "../db/settings.js";
 import { resetSessions } from "../agent/emailAgent.js";
+import { learnAccountVoice } from "../agent/voiceLearn.js";
+import { listAccounts } from "../pipedream/connect.js";
+import { errorMessage } from "../util.js";
 
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/settings/language", async () => ({ language: await getLanguageSetting() }));
@@ -60,6 +67,26 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     await resetSessions();
     return { allowWrite: req.body.allowWrite };
   });
+
+  app.get("/api/settings/thinking-level", async () => ({
+    thinkingLevel: await getThinkingLevelSetting(),
+  }));
+
+  app.put<{ Body: { thinkingLevel: string } }>(
+    "/api/settings/thinking-level",
+    async (req, reply) => {
+      const thinkingLevel = req.body?.thinkingLevel;
+      if (!(THINKING_LEVELS as readonly string[]).includes(thinkingLevel)) {
+        return reply
+          .code(400)
+          .send({ error: `thinkingLevel must be one of: ${THINKING_LEVELS.join(", ")}` });
+      }
+      await setThinkingLevelSetting(thinkingLevel as ThinkingLevelSetting);
+      // The agent re-reads this setting per prompt (see emailAgent.ts) — no
+      // session reset needed.
+      return { thinkingLevel };
+    },
+  );
 
   // ---- Account colors ----
 
@@ -108,6 +135,75 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       // in-memory agents to surface the new purpose to the model right away.
       await resetSessions();
       return { descriptions };
+    },
+  );
+
+  // ---- Account voices (signature for drafting as an account; writing style
+  // lives as account-scoped memories now, not here) ----
+
+  app.get("/api/settings/account-voices", async () => ({
+    voices: await getAccountVoices(),
+  }));
+
+  app.put<{ Body: { voices: import("@trailin/shared").AccountVoice[] } }>(
+    "/api/settings/account-voices",
+    async (req, reply) => {
+      const voices = req.body?.voices;
+      if (!Array.isArray(voices)) {
+        return reply.code(400).send({ error: "voices must be an array" });
+      }
+      for (const v of voices) {
+        if (!v.accountId) {
+          return reply.code(400).send({ error: "each voice must have an accountId" });
+        }
+        if (v.signature !== undefined && typeof v.signature !== "string") {
+          return reply.code(400).send({ error: "signature must be a string" });
+        }
+      }
+      // The UI only edits signatures, so an incoming voice never carries the
+      // server-managed learnedAt/styleMemoryIds fields — merge them back in
+      // from the currently stored voice so a signature-only edit doesn't wipe
+      // the record of a prior voice-learn run.
+      const stored = await getAccountVoices();
+      const merged = voices.map((v) => {
+        const existing = stored.find((s) => s.accountId === v.accountId);
+        return {
+          ...v,
+          ...(v.learnedAt !== undefined || existing?.learnedAt !== undefined
+            ? { learnedAt: v.learnedAt ?? existing?.learnedAt }
+            : {}),
+          ...(v.styleMemoryIds !== undefined || existing?.styleMemoryIds !== undefined
+            ? { styleMemoryIds: v.styleMemoryIds ?? existing?.styleMemoryIds }
+            : {}),
+        };
+      });
+      await setAccountVoices(merged);
+      // The signature is looked up fresh by the create-draft tool at save
+      // time, and buildVoiceContext recomputes on every prompt (see
+      // getOrCreateSession) — no session reset needed.
+      return { voices: merged };
+    },
+  );
+
+  // Derives writing-style directives (saved as account-scoped memories) and a
+  // signature (saved on the voice) from the account's own sent mail. Runs an
+  // ephemeral agent through several tool round-trips — legitimately 30-90s,
+  // not a hung request.
+  app.post<{ Params: { accountId: string } }>(
+    "/api/settings/account-voices/:accountId/learn",
+    async (req, reply) => {
+      try {
+        const { accountId } = req.params;
+        const accounts = await listAccounts();
+        if (!accounts.some((a) => a.id === accountId)) {
+          return reply.code(404).send({ error: `No connected account with id ${accountId}.` });
+        }
+        const voice = await learnAccountVoice(accountId);
+        // No session reset needed, same reasoning as the PUT above.
+        return { voice };
+      } catch (error) {
+        return reply.code(500).send({ error: errorMessage(error) });
+      }
     },
   );
 }

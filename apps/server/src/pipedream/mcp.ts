@@ -1,16 +1,25 @@
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { AccountDescription, ConnectedAccount } from "@trailin/shared";
+import type { AccountDescription, AgentCard, ConnectedAccount } from "@trailin/shared";
+import { cardFromMcpResult, toCardAccount } from "../agent/cards.js";
+import { humanizeDraftBody } from "../agent/humanizer.js";
+import { getVoiceFor } from "../agent/voice.js";
+import { buildDemoEmailToolset } from "../demo/emailTools.js";
 import { getAccountDescriptions, getEmailWriteSetting } from "../db/settings.js";
+import "../email/registerProviders.js";
+import { getDraftProvider, type CreateDraftInput, type DraftProvider } from "../email/providers.js";
 import { env } from "../env.js";
+import { moduleLogger } from "../logger.js";
+import { buildSaveAttachmentTool } from "./gmailAttachments.js";
 import {
   getConnectConfig,
   getPipedreamAccessToken,
   listAccounts,
   type ConnectConfig,
 } from "./connect.js";
-import { buildGmailDraftTool } from "./gmailDrafts.js";
+
+const log = moduleLogger("mcp");
 
 const MCP_BASE_URL = "https://remote.mcp.pipedream.net/v3";
 
@@ -85,7 +94,7 @@ function allowedInReadOnly(mcpToolName: string): boolean {
 }
 
 /** Short per-account tool-name suffix, e.g. "kadim" from kadim@gmail.com. */
-function accountSlug(account: ConnectedAccount): string {
+export function accountSlug(account: ConnectedAccount): string {
   const local = account.name.split("@")[0] ?? account.name;
   const slug = local.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24).toLowerCase();
   return slug || account.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6);
@@ -124,16 +133,30 @@ async function bridgeAccountTools(
   // The user's note on why this account is connected — appended to every tool
   // so the model understands what the connection is meant for.
   const purposeNote = purpose?.trim() ? ` This connection is used for: ${purpose.trim()}.` : "";
+  const cardAccount = toCardAccount(account);
+  // Tools dropped by the read-only filter below — logged once after the loop
+  // so the silent capability filtering is at least visible in debug logs.
+  const skipped: string[] = [];
 
   for (const mcpTool of mcpTools) {
-    // Pipedream's Gmail draft component needs a paid workspace (File Stash);
-    // Trailin registers its own proxy-based replacement under the same name.
-    if (account.app === "gmail" && mcpTool.name === "gmail-create-draft") continue;
-    if (!allowWrite && !allowedInReadOnly(mcpTool.name)) continue;
+    // Pipedream's create-draft components are gated behind a paid workspace
+    // on some apps (Gmail's needs File Stash); Trailin substitutes its own
+    // proxy-based tool under the same slug for every app with a
+    // DraftProvider, so skip Pipedream's version wherever ours takes over.
+    if (getDraftProvider(account.app) && mcpTool.name === `${account.app}-create-draft`) continue;
+    if (!allowWrite && !allowedInReadOnly(mcpTool.name)) {
+      skipped.push(mcpTool.name);
+      continue;
+    }
     let name = sanitizeToolName(`${mcpTool.name}${suffix}`);
     if (seenNames.has(name)) name = sanitizeToolName(`${mcpTool.name}__${account.id}`);
     if (seenNames.has(name)) continue;
     seenNames.add(name);
+
+    // "gmail-find-email" -> "find-email"; used by cardFromMcpResult to pick a shape.
+    const action = mcpTool.name.startsWith(`${account.app}-`)
+      ? mcpTool.name.slice(account.app.length + 1)
+      : mcpTool.name;
 
     const tool: AgentTool = {
       name,
@@ -152,13 +175,111 @@ async function bridgeAccountTools(
         if (result.isError) {
           throw new Error(text || `Tool ${mcpTool.name} failed`);
         }
-        return { content: [{ type: "text", text }], details: undefined };
+        // Best-effort — see cards.ts. A miss just falls back to the plain tool badge.
+        const details = cardFromMcpResult(action, cardAccount, result);
+        return { content: [{ type: "text", text }], details };
       },
     };
     tools.push(tool);
     if (isReadAction(mcpTool.name)) readTools.push(tool);
   }
+  if (skipped.length > 0) {
+    log.debug({ app: account.app, account: account.name, skipped }, "read-only mode dropped write tools");
+  }
   return { tools, readTools };
+}
+
+/**
+ * Trailin's own create-draft tool for one connected account, generalized
+ * over any app with a DraftProvider. The single create-draft tool builder
+ * for both the live path here and demo mode (demo/emailTools.ts, always with
+ * gmailDrafts.ts's gmailDraftProvider). Replaces Pipedream's own component
+ * with the same kind of tool, so prompts stay natural. Drafts never send
+ * anything — allowed even in read-only mode.
+ */
+export function buildDraftTool(account: ConnectedAccount, name: string, provider: DraftProvider): AgentTool {
+  return {
+    name,
+    label: "Create email draft",
+    description:
+      `Create an unsent draft email in this account's Drafts folder — nothing is sent; the ` +
+      `user reviews and sends it themselves. Pass threadId to attach the draft to an existing ` +
+      `conversation (use the thread's id from find/list tools), where the connected provider ` +
+      `supports it. The body goes through a humanizer pass before saving, which removes ` +
+      `AI-sounding phrasing; the tool result reports the final saved text when it was adjusted. ` +
+      `If this account has a signature configured in Settings, it is appended automatically — ` +
+      `do not write a signature block yourself.\n\n` +
+      `Acts as the connected account: ${account.name}.`,
+    parameters: {
+      type: "object",
+      properties: {
+        to: { type: "array", items: { type: "string" }, description: "Recipient email addresses." },
+        cc: { type: "array", items: { type: "string" }, description: "Cc addresses." },
+        bcc: { type: "array", items: { type: "string" }, description: "Bcc addresses." },
+        subject: { type: "string", description: "Subject line." },
+        body: { type: "string", description: "Plain-text body of the draft." },
+        threadId: {
+          type: "string",
+          description: "Optional thread id to attach this draft to (for replies), when supported.",
+        },
+      },
+      required: ["to", "subject", "body"],
+    } as AgentTool["parameters"],
+    execute: async (_toolCallId, params) => {
+      const input = params as unknown as CreateDraftInput;
+      // Copy-edit the body before it ever reaches the provider, so every
+      // surface that saves a draft (chat, automations) gets the same pass.
+      const humanized = await humanizeDraftBody({ body: input.body, subject: input.subject });
+
+      // Append the account's signature (if any) after the humanizer, unless
+      // the (humanized) body already contains it — compared loosely so minor
+      // whitespace differences don't cause a duplicate signature.
+      const voice = await getVoiceFor(account.id);
+      const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
+      let finalBody = humanized.body;
+      let signatureAppended = false;
+      const signature = voice?.signature?.trim();
+      if (signature && !normalize(finalBody).includes(normalize(signature))) {
+        finalBody = `${finalBody}\n\n${signature}`;
+        signatureAppended = true;
+      }
+
+      const result = await provider.createDraft(account, { ...input, body: finalBody });
+      const providerLabel = account.appName ?? "the provider's";
+      let text = `Draft created in ${account.name} (draft id ${result.draftId}). It is unsent — the user can review it on the Drafts page or in ${providerLabel} web UI.`;
+
+      // Show the saved body once, whenever it differs from what the model
+      // submitted — whether that's the humanizer, the signature, or both.
+      if (finalBody !== input.body) {
+        const reasons: string[] = [];
+        if (humanized.changed) reasons.push("lightly edited by the humanizer pass");
+        if (signatureAppended) reasons.push("had the account's signature appended");
+        const reasonText = reasons.length > 0 ? ` (${reasons.join(" and ")})` : "";
+        text += `\n\nThe saved draft reads${reasonText}:\n\n${finalBody}`;
+      }
+
+      const card: AgentCard = {
+        kind: "email_draft",
+        account: toCardAccount(account),
+        draft: {
+          draftId: result.draftId,
+          threadId: result.threadId,
+          subject: input.subject,
+          to: input.to,
+          ...(input.cc?.length ? { cc: input.cc } : {}),
+          ...(input.bcc?.length ? { bcc: input.bcc } : {}),
+          body: finalBody,
+          webUrl: result.webUrl,
+          signatureAppended,
+        },
+      };
+
+      return {
+        content: [{ type: "text", text }],
+        details: card,
+      };
+    },
+  };
 }
 
 export interface EmailToolset {
@@ -180,9 +301,10 @@ const EMPTY_TOOLSET: EmailToolset = { tools: [], readTools: [], close: async () 
  * to connect are skipped — the agent works with what's left.
  */
 export async function loadEmailTools(): Promise<EmailToolset> {
-  // Demo mode never opens an MCP session or otherwise calls Pipedream — the
-  // seeded history stands in for what the agent would normally fetch live.
-  if (env.demoMode) return EMPTY_TOOLSET;
+  // Demo mode never opens an MCP session or otherwise calls Pipedream — its
+  // tools search/read the seeded MAILBOX instead of what the agent would
+  // normally fetch live.
+  if (env.demoMode) return buildDemoEmailToolset();
 
   const config = await getConnectConfig();
   if (!config) return EMPTY_TOOLSET;
@@ -199,7 +321,7 @@ export async function loadEmailTools(): Promise<EmailToolset> {
       getAccountDescriptions(),
     ]);
   } catch (error) {
-    console.warn("[mcp] listing Pipedream accounts failed:", error);
+    log.warn({ err: error }, "listing Pipedream accounts failed");
     return EMPTY_TOOLSET;
   }
   if (accounts.length === 0) return EMPTY_TOOLSET;
@@ -219,7 +341,7 @@ export async function loadEmailTools(): Promise<EmailToolset> {
     try {
       session = await connectForAccount(account, config, accessToken);
     } catch (error) {
-      console.warn(`[mcp] session failed for ${account.app} (${account.name}):`, error);
+      log.warn({ err: error, app: account.app, account: account.name }, "MCP session failed for account");
       continue;
     }
     sessions.push(session);
@@ -236,16 +358,27 @@ export async function loadEmailTools(): Promise<EmailToolset> {
       tools.push(...bridged.tools);
       readTools.push(...bridged.readTools);
     } catch (error) {
-      console.warn(`[mcp] listing tools failed for ${account.app} (${account.name}):`, error);
+      log.warn({ err: error, app: account.app, account: account.name }, "listing tools failed for account");
     }
-    if (account.app === "gmail") {
-      const suffix = needsSuffix ? `__${accountSlug(account)}` : "";
-      const name = sanitizeToolName(`gmail-create-draft${suffix}`);
+    const suffix = needsSuffix ? `__${accountSlug(account)}` : "";
+    const draftProvider = getDraftProvider(account.app);
+    if (draftProvider) {
+      const name = sanitizeToolName(`${account.app}-create-draft${suffix}`);
       if (!seenNames.has(name)) {
         seenNames.add(name);
         // The custom draft tool is never read-only: it's kept out of
         // readTools so background workers cannot create drafts.
-        tools.push(buildGmailDraftTool(account, name));
+        tools.push(buildDraftTool(account, name, draftProvider));
+      }
+    }
+    if (account.app === "gmail") {
+      const name = sanitizeToolName(`gmail-save-attachment${suffix}`);
+      if (!seenNames.has(name)) {
+        seenNames.add(name);
+        // Reads mail but writes only into the local document library, so it's
+        // fine in read-only mode; kept out of readTools so background workers
+        // can't grow the library.
+        tools.push(buildSaveAttachmentTool(account, name));
       }
     }
   }

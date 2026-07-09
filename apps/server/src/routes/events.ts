@@ -24,7 +24,10 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
       reply.raw.write(": ping\n\n");
     }, HEARTBEAT_MS);
 
-    req.raw.on("close", () => {
+    // The *response* closing signals the client went away — the request's
+    // own "close" fires as soon as it is fully received (Node ≥ 16), which
+    // would tear the stream down immediately.
+    reply.raw.on("close", () => {
       unsubscribe();
       clearInterval(heartbeat);
       if (!reply.raw.writableEnded) reply.raw.end();

@@ -1,10 +1,12 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import Fastify from "fastify";
+import Fastify, { type FastifyBaseLogger } from "fastify";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
 import { env } from "./env.js";
+import { registerErrorHandler } from "./errors.js";
+import { installProcessErrorHandlers, logger } from "./logger.js";
 import { pipedreamConfigured } from "./pipedream/connect.js";
 import { chatRoutes } from "./routes/chat.js";
 import { accountRoutes } from "./routes/accounts.js";
@@ -13,9 +15,11 @@ import { llmRoutes } from "./routes/llm.js";
 import { pipedreamRoutes } from "./routes/pipedream.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { draftRoutes } from "./routes/drafts.js";
+import { waitingRoutes } from "./routes/waiting.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { libraryRoutes } from "./routes/library.js";
 import { eventRoutes } from "./routes/events.js";
+import { searchRoutes } from "./routes/search.js";
 import { startScheduler } from "./automations/scheduler.js";
 import { seedDefaultAutomations } from "./automations/defaults.js";
 import { seedDemoData } from "./demo/seed.js";
@@ -25,7 +29,13 @@ import { activeModelConfigured } from "./llm/registry.js";
 const here = dirname(fileURLToPath(import.meta.url));
 
 async function main(): Promise<void> {
-  const app = Fastify({ logger: { level: "info" } });
+  // Share the process-wide logger rather than letting Fastify build its own,
+  // so `req.log` and the scheduler/MCP loggers agree on level and redaction.
+  // Typed as FastifyBaseLogger at the boundary: handing Fastify a pino.Logger
+  // narrows the inferred FastifyInstance and every plugin then mismatches it.
+  const loggerInstance: FastifyBaseLogger = logger;
+  const app = Fastify({ loggerInstance });
+  registerErrorHandler(app);
 
   await app.register(cors, { origin: true });
   await app.register(accountRoutes);
@@ -35,9 +45,11 @@ async function main(): Promise<void> {
   await app.register(pipedreamRoutes);
   await app.register(settingsRoutes);
   await app.register(draftRoutes);
+  await app.register(waitingRoutes);
   await app.register(memoryRoutes);
   await app.register(libraryRoutes);
   await app.register(eventRoutes);
+  await app.register(searchRoutes);
 
   // When the web app has been built, serve it from the same process so a
   // single `pnpm start` works on a desktop machine or a host.
@@ -50,6 +62,12 @@ async function main(): Promise<void> {
         return;
       }
       reply.sendFile("index.html");
+    });
+  } else {
+    // Dev (web is served by Vite): still answer 404s in the API's `{ error }`
+    // shape instead of Fastify's default `{ statusCode, error, message }`.
+    app.setNotFoundHandler((_req, reply) => {
+      reply.code(404).send({ error: "not found" });
     });
   }
 
@@ -81,10 +99,27 @@ async function main(): Promise<void> {
     );
   }
 
+  // Ctrl-C / `docker stop` should drain in-flight requests and close the
+  // agents' MCP sessions, rather than dropping the sockets on the floor.
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      app.log.info({ signal }, "shutting down");
+      app.close().then(
+        () => process.exit(0),
+        (error: unknown) => {
+          app.log.error({ err: error }, "shutdown failed");
+          process.exit(1);
+        },
+      );
+    });
+  }
+
   await app.listen({ port: env.port, host: "0.0.0.0" });
 }
 
+installProcessErrorHandlers();
+
 main().catch((error) => {
-  console.error(error);
-  process.exit(1);
+  logger.fatal({ err: error }, "server failed to start");
+  setTimeout(() => process.exit(1), 100);
 });

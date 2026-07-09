@@ -12,6 +12,22 @@ export const messages = sqliteTable("messages", {
   conversationId: text("conversation_id").notNull(),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   content: text("content").notNull(),
+  /** JSON-encoded MessageCard[] — the cards an assistant turn produced; null for none. */
+  cards: text("cards"),
+  createdAt: text("created_at").notNull(),
+});
+
+/**
+ * Which conversation's turn created a draft (chat or automation run — run ids
+ * are conversation ids too). Lets the Drafts list jump back into the chat
+ * where a draft came from. Rows are never cleaned up: a stale link is filtered
+ * out at read time by joining conversations, and drafts themselves live in
+ * the mail account, not here.
+ */
+export const draftLinks = sqliteTable("draft_links", {
+  draftId: text("draft_id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  conversationId: text("conversation_id").notNull(),
   createdAt: text("created_at").notNull(),
 });
 
@@ -22,6 +38,7 @@ export const automations = sqliteTable("automations", {
   schedule: text("schedule").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   showInActivity: integer("show_in_activity", { mode: "boolean" }).notNull().default(true),
+  pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
 });
 
@@ -34,6 +51,8 @@ export const memories = sqliteTable("memories", {
   id: text("id").primaryKey(),
   content: text("content").notNull(),
   source: text("source", { enum: ["user", "agent"] }).notNull(),
+  /** Connected-account id the fact is scoped to; null = applies everywhere. */
+  accountId: text("account_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -61,6 +80,8 @@ export const automationRuns = sqliteTable("automation_runs", {
   automationId: text("automation_id").notNull(),
   status: text("status", { enum: ["running", "success", "error"] }).notNull(),
   result: text("result").notNull().default(""),
+  /** JSON-encoded MessageCard[] — the cards the run's assistant turn produced; null for none. */
+  cards: text("cards"),
   startedAt: text("started_at").notNull(),
   finishedAt: text("finished_at"),
 });

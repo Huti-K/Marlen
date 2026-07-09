@@ -1,8 +1,8 @@
 import * as React from "react";
 import { CalendarClock, ChevronDown, ChevronUp, FileText, Mail, MessageSquareShare, Newspaper, RefreshCw, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AccountColor, AccountDrafts, Automation, RunFeedItem } from "@trailin/shared";
-import type { View } from "@/components/DockNav";
+import type { AccountColor, AccountDrafts, AccountWaiting, Automation, RunFeedItem } from "@trailin/shared";
+import type { View } from "@/lib/nav";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +10,14 @@ import { Select } from "@/components/ui/select";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { DraftRow } from "@/features/home/DraftRow";
-import { Markdown } from "@/components/ui/markdown";
+import { BriefingHero } from "@/features/home/BriefingHero";
+import { GlanceStrip } from "@/features/home/GlanceStrip";
+import { WaitingSection } from "@/features/home/WaitingSection";
+import { DigestView, hasDigestShape, parseDigest } from "@/features/automations/DigestView";
+import { dateTimeLabel, dayLabel as formatDayLabel, timeLabel as formatTimeLabel } from "@/lib/dates";
+import { openRunInChat } from "@/lib/runNavigation";
 import { useServerEvents } from "@/lib/serverEvents";
 import { errorMessage } from "@/lib/utils";
 
@@ -34,6 +40,10 @@ function draftInRange(dateIso: string, range: DraftRange): boolean {
   return t >= now - days * 24 * 60 * 60 * 1000;
 }
 
+/** GET /api/runs/pinned's shape: the pinned automation and its latest
+ *  successful run, or both null when nothing is pinned. */
+type PinnedRun = { run: RunFeedItem | null; automation: Automation | null };
+
 /**
  * Stale-while-revalidate cache. The Home route unmounts when you navigate away
  * (React Router swaps the route element), so without this every return to Home
@@ -46,7 +56,9 @@ const cache: {
   runs: RunFeedItem[] | null;
   automations: Automation[] | null;
   colors: AccountColor[];
-} = { drafts: null, runs: null, automations: null, colors: [] };
+  waiting: AccountWaiting[] | null;
+  pinned: PinnedRun | null;
+} = { drafts: null, runs: null, automations: null, colors: [], waiting: null, pinned: null };
 
 /**
  * The default view: what the agent prepared for you (drafts to review) and
@@ -67,7 +79,13 @@ export function HomePanel({
   const [runs, setRuns] = React.useState<RunFeedItem[] | null>(cache.runs);
   const [automations, setAutomations] = React.useState<Automation[] | null>(cache.automations);
   const [colors, setColors] = React.useState<AccountColor[]>(cache.colors);
+  const [waiting, setWaiting] = React.useState<AccountWaiting[] | null>(cache.waiting);
+  const [pinned, setPinned] = React.useState<PinnedRun | null>(cache.pinned);
   const [error, setError] = React.useState<string | null>(null);
+  // Set by the search palette (see SearchPalette.tsx) when a draft hit is opened.
+  const [focusDraft, setFocusDraft] = React.useState<{ accountId: string; draftId: string } | null>(
+    null,
+  );
 
   const load = React.useCallback(async () => {
     setError(null);
@@ -76,12 +94,16 @@ export function HomePanel({
       api.runsFeed(),
       api.automations(),
       api.accountColors(),
+      api.waiting(),
+      api.pinnedRun(),
     ]);
-    const [d, r, a, c] = results;
+    const [d, r, a, c, w, p] = results;
     if (d.status === "fulfilled") setDrafts((cache.drafts = d.value));
-    if (r.status === "fulfilled") setRuns((cache.runs = r.value));
+    if (r.status === "fulfilled") setRuns((cache.runs = r.value.items));
     if (a.status === "fulfilled") setAutomations((cache.automations = a.value));
     if (c.status === "fulfilled") setColors((cache.colors = c.value.colors));
+    if (w.status === "fulfilled") setWaiting((cache.waiting = w.value));
+    if (p.status === "fulfilled") setPinned((cache.pinned = p.value));
     const failed = results.find((x) => x.status === "rejected");
     setError(failed ? errorMessage(failed.reason) : null);
   }, []);
@@ -93,9 +115,46 @@ export function HomePanel({
   // Refetch in place when the agent or an automation changes data server-side.
   useServerEvents(["runs", "drafts", "automations"], () => void load());
 
+  // The search palette navigates here, then dispatches this with the hit's ids.
+  React.useEffect(() => {
+    const onOpenDraft = (e: Event) => {
+      const detail = (e as CustomEvent<{ accountId: string; draftId: string }>).detail;
+      if (detail) setFocusDraft(detail);
+    };
+    window.addEventListener("trailin:open-draft", onOpenDraft);
+    return () => window.removeEventListener("trailin:open-draft", onOpenDraft);
+  }, []);
+
+  // The flagship output: the pinned automation's latest successful run, when
+  // one is pinned. Otherwise fall back to the most recent successful,
+  // digest-shaped run across all automations, so installs with nothing
+  // pinned yet behave exactly as before pinning existed. Sorted explicitly
+  // rather than trusting feed order, since that's a server-side detail this
+  // component shouldn't depend on.
+  const heroRun = React.useMemo(() => {
+    if (pinned?.run) return pinned.run;
+    if (!runs) return null;
+    let best: RunFeedItem | null = null;
+    for (const run of runs) {
+      if (run.status !== "success" || !run.result) continue;
+      if (!hasDigestShape(parseDigest(run.result))) continue;
+      if (!best || new Date(run.startedAt).getTime() > new Date(best.startedAt).getTime()) {
+        best = run;
+      }
+    }
+    return best;
+  }, [runs, pinned]);
+
+  // Keep `runs` as-is while loading (null) so ActivitySection still shows its
+  // own loading state; once loaded, drop the run already shown in the hero.
+  const activityRuns = React.useMemo(() => {
+    if (!runs) return runs;
+    return heroRun ? runs.filter((r) => r.id !== heroRun.id) : runs;
+  }, [runs, heroRun]);
+
   // No top-level loading gate: each section renders its own <LoadingRow /> while
   // its data is null, so the fast local reads (runs/automations) paint straight
-  // away instead of waiting on the slow live Gmail drafts fetch.
+  // away instead of waiting on the slow live mailbox drafts fetch.
   return (
     <div className="flex flex-col gap-10 pt-1">
 
@@ -117,8 +176,33 @@ export function HomePanel({
         )
       )}
 
-      <ReviewSection drafts={drafts} colors={colors} onChanged={() => void load()} />
-      <ActivitySection runs={runs} automations={automations} onNavigate={onNavigate} />
+      <GlanceStrip drafts={drafts} heroRun={heroRun} waiting={waiting} automations={automations} />
+
+      {heroRun && (
+        <BriefingHero
+          run={heroRun}
+          runs={runs}
+          onNavigate={onNavigate}
+          nextRunAt={
+            pinned?.automation?.nextRunAt ??
+            automations?.find((a) => a.id === heroRun.automationId)?.nextRunAt
+          }
+        />
+      )}
+
+      <ReviewSection
+        drafts={drafts}
+        colors={colors}
+        onChanged={() => void load()}
+        focusDraft={focusDraft}
+      />
+      <WaitingSection waiting={waiting} colors={colors} />
+      <ActivitySection
+        runs={activityRuns}
+        automations={automations}
+        onNavigate={onNavigate}
+        hasHero={!!heroRun}
+      />
     </div>
   );
 }
@@ -129,25 +213,26 @@ function ReviewSection({
   drafts,
   colors,
   onChanged,
+  focusDraft,
 }: {
   drafts: AccountDrafts[] | null;
   colors: AccountColor[];
   onChanged: () => void;
+  /** A draft opened via the search palette — widen the filter and expand so it's visible. */
+  focusDraft?: { accountId: string; draftId: string } | null;
 }) {
   const { t, i18n } = useTranslation();
   const [rowError, setRowError] = React.useState<string | null>(null);
   const [range, setRange] = React.useState<DraftRange>("today");
   const [isExpanded, setIsExpanded] = React.useState(true);
 
-  const dateLabel = (iso: string) =>
-    iso
-      ? new Date(iso).toLocaleDateString(i18n.language, {
-          day: "numeric",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "";
+  React.useEffect(() => {
+    if (!focusDraft) return;
+    setRange("all");
+    setIsExpanded(true);
+  }, [focusDraft]);
+
+  const dateLabel = (iso: string) => dateTimeLabel(iso, i18n.language);
 
   const unfilteredTotal = drafts?.reduce((n, a) => n + a.drafts.length, 0) ?? 0;
 
@@ -160,11 +245,13 @@ function ReviewSection({
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h2 
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight cursor-pointer hover:text-muted-foreground transition-colors select-none"
+          className="flex items-center gap-2.5 text-base font-semibold tracking-tight cursor-pointer hover:text-muted-foreground transition-colors select-none"
           onClick={() => setIsExpanded(!isExpanded)}
           title={isExpanded ? "Collapse" : "Expand"}
         >
-          <FileText className="h-4 w-4 text-muted-foreground" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent/15 text-accent">
+            <FileText className="h-4 w-4" />
+          </div>
           {t("home.reviewTitle")}
           {filteredTotal > 0 && <Badge variant="muted">{filteredTotal}</Badge>}
           {isExpanded ? (
@@ -242,7 +329,12 @@ function ReviewSection({
                               draft={draft}
                               dateLabel={dateLabel}
                               onDeleted={onChanged}
+                              onSaved={onChanged}
                               onError={setRowError}
+                              forceOpen={
+                                focusDraft?.accountId === accountDrafts.accountId &&
+                                focusDraft?.draftId === draft.id
+                              }
                             />
                           </div>
                         ))}
@@ -264,35 +356,72 @@ function ActivitySection({
   runs,
   automations,
   onNavigate,
+  hasHero,
 }: {
   runs: RunFeedItem[] | null;
   automations: Automation[] | null;
   onNavigate: (view: View) => void;
+  /** The latest digest already leads the page as the BriefingHero — don't also auto-expand it here. */
+  hasHero: boolean;
 }) {
   const { t, i18n } = useTranslation();
+  // Older runs stay collapsed behind this toggle; only today's ever show by
+  // default so the section doesn't grow unbounded with automation history.
+  const [showEarlier, setShowEarlier] = React.useState(false);
 
-  const dayLabel = (iso: string) =>
-    new Date(iso).toLocaleDateString(i18n.language, {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    });
-  const timeLabel = (iso: string) =>
-    new Date(iso).toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit" });
+  const dayLabel = (iso: string) => formatDayLabel(iso, i18n.language);
+  const timeLabel = (iso: string) => formatTimeLabel(iso, i18n.language);
+  const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
 
-  const byDay = new Map<string, RunFeedItem[]>();
-  for (const run of runs ?? []) {
-    const key = dayLabel(run.startedAt);
-    byDay.set(key, [...(byDay.get(key) ?? []), run]);
-  }
+  const groupByDay = (list: RunFeedItem[]) => {
+    const byDay = new Map<string, RunFeedItem[]>();
+    for (const run of list) {
+      const key = dayLabel(run.startedAt);
+      byDay.set(key, [...(byDay.get(key) ?? []), run]);
+    }
+    return byDay;
+  };
+
+  const todayRuns = (runs ?? []).filter((r) => isToday(r.startedAt));
+  const earlierRuns = (runs ?? []).filter((r) => !isToday(r.startedAt));
+  // `runs` arrives newest-first from the feed, so its head is the one card
+  // that was expanded by default before today/earlier existed as separate
+  // groups — preserve that regardless of which group it lands in.
+  const firstRunId = runs?.[0]?.id;
 
   const hasAutomations = (automations?.length ?? 0) > 0;
+
+  const renderDayGroups = (list: RunFeedItem[]) => (
+    <div className="flex flex-col gap-8">
+      {[...groupByDay(list).entries()].map(([day, dayRuns]) => (
+        <div key={day} className="flex flex-col gap-3">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground/80">
+            {day}
+          </h3>
+          <div className="flex flex-col gap-3">
+            {dayRuns.map((run, i) => (
+              <ActivityRunCard
+                key={run.id}
+                run={run}
+                index={i}
+                timeLabel={timeLabel}
+                defaultExpanded={!hasHero && run.id === firstRunId}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-          <Wrench className="h-4 w-4 text-muted-foreground" />
+        <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tight">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Wrench className="h-4 w-4" />
+          </div>
           {t("home.activityTitle")}
         </h2>
       </div>
@@ -312,19 +441,32 @@ function ActivitySection({
           }
         />
       ) : (
-        <div className="flex flex-col gap-8">
-          {[...byDay.entries()].map(([day, dayRuns], dayIndex) => (
-            <div key={day} className="flex flex-col gap-3">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground/80">
-                {day}
-              </h3>
-              <div className="flex flex-col gap-3">
-                {dayRuns.map((run, i) => (
-                  <ActivityRunCard key={run.id} run={run} index={i} timeLabel={timeLabel} defaultExpanded={dayIndex === 0 && i === 0} />
-                ))}
-              </div>
+        <div className="flex flex-col gap-4">
+          {todayRuns.length > 0 ? (
+            renderDayGroups(todayRuns)
+          ) : earlierRuns.length > 0 ? (
+            <p className="text-xs text-muted-foreground">{t("home.activityNothingToday")}</p>
+          ) : null}
+
+          {earlierRuns.length > 0 && (
+            <div className="flex flex-col gap-4">
+              {showEarlier && renderDayGroups(earlierRuns)}
+              <button
+                type="button"
+                className="flex w-fit items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setShowEarlier((v) => !v)}
+              >
+                {showEarlier ? (
+                  <ChevronUp className="h-3 w-3 shrink-0" />
+                ) : (
+                  <ChevronDown className="h-3 w-3 shrink-0" />
+                )}
+                {showEarlier
+                  ? t("home.activityShowLess")
+                  : t("home.activityShowEarlier", { count: earlierRuns.length })}
+              </button>
             </div>
-          ))}
+          )}
         </div>
       )}
     </section>
@@ -336,11 +478,13 @@ function ActivityRunCard({
   index,
   timeLabel,
   defaultExpanded = false,
+  onNavigate,
 }: {
   run: RunFeedItem;
   index: number;
   timeLabel: (iso: string) => string;
   defaultExpanded?: boolean;
+  onNavigate: (view: View) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = React.useState(defaultExpanded);
@@ -370,34 +514,31 @@ function ActivityRunCard({
             variant="ghost"
             size="icon"
             className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            title="Go to chat"
+            title={t("home.openInChat")}
+            aria-label={t("home.openInChat")}
             onClick={(e) => {
               e.stopPropagation();
-              window.dispatchEvent(new CustomEvent("trailin:show-chat"));
-              setTimeout(() => {
-                window.dispatchEvent(new CustomEvent("trailin:open-chat", { detail: run.id }));
-              }, 100);
+              openRunInChat(run.id, () => onNavigate("chat"));
             }}
           >
             <MessageSquareShare className="h-3 w-3" />
           </Button>
-          <Badge
-            variant={
-              run.status === "success"
-                ? "success"
-                : run.status === "error"
-                  ? "destructive"
-                  : "muted"
-            }
-          >
-            {t(`automations.runStatus.${run.status}`)}
-          </Badge>
+          <RunStatusBadge status={run.status} />
           <span className="text-xs tabular-nums text-muted-foreground">
             {timeLabel(run.startedAt)}
           </span>
         </div>
       </div>
-      {expanded && hasResult && <Markdown content={run.result} className="text-sm border-t border-border/50 pt-2 mt-1" />}
+      {expanded && hasResult && (
+        <div className="mt-1 pt-3 border-t border-border/40">
+          <DigestView
+            content={run.result}
+            automationName={run.automationName}
+            runDate={run.startedAt}
+            className="text-[14px] text-foreground/90"
+          />
+        </div>
+      )}
     </Card>
   );
 }

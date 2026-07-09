@@ -25,6 +25,7 @@ export interface SearchHit {
   documentId: string;
   path: string;
   title: string;
+  ext: string;
   /** Position of the matching chunk within the document (0-based). */
   seq: number;
   snippet: string;
@@ -116,7 +117,7 @@ function buildMatch(query: string, operator: "AND" | "OR"): string | null {
 }
 
 const searchStmt = sqlite.prepare(`
-  SELECT c.doc_id AS documentId, c.seq AS seq, d.path AS path, d.title AS title,
+  SELECT c.doc_id AS documentId, c.seq AS seq, d.path AS path, d.title AS title, d.ext AS ext,
          snippet(library_chunks, 0, '', '', ' … ', 24) AS snippet
   FROM library_chunks c
   JOIN library_documents d ON d.id = c.doc_id

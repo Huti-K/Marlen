@@ -44,14 +44,16 @@ export function SetupGate({
   onStatusChanged,
   onFinish,
 }: {
-  status: AppStatus;
+  // null while the server can't be reached — the gate stays up and shows an
+  // offline notice instead of falling through to the main app.
+  status: AppStatus | null;
   onStatusChanged: () => void;
   /** Dismiss the gate; `openSettings` lands on Settings instead of Home. */
   onFinish: (openSettings: boolean) => void;
 }) {
   const { t } = useTranslation();
   const [providers, setProviders] = React.useState<LlmProviderInfo[] | null>(null);
-  const complete = isSetupComplete(status);
+  const complete = status !== null && isSetupComplete(status);
 
   const refreshProviders = React.useCallback(async () => {
     try {
@@ -87,41 +89,50 @@ export function SetupGate({
           </div>
         </div>
 
-        <Step
-          index={1}
-          done={status.modelConfigured}
-          title={t("setup.stepAiTitle")}
-          description={t("setup.stepAiDescription")}
-        >
-          {status.modelConfigured ? (
-            <p className="text-sm font-medium text-success">
-              {t("setup.aiDone", { model: status.model })}
-            </p>
-          ) : (
-            <Providers providers={providers} onChanged={refreshProviders} />
-          )}
-        </Step>
+        {status === null ? (
+          <div className="tint-warning animate-in-up flex flex-col items-start gap-1.5 rounded-lg p-4">
+            <p className="text-sm font-medium">{t("setup.offlineTitle")}</p>
+            <p className="text-sm">{t("setup.offlineBody")}</p>
+          </div>
+        ) : (
+          <>
+            <Step
+              index={1}
+              done={status.modelConfigured}
+              title={t("setup.stepAiTitle")}
+              description={t("setup.stepAiDescription")}
+            >
+              {status.modelConfigured ? (
+                <p className="text-sm font-medium text-success">
+                  {t("setup.aiDone", { model: status.model })}
+                </p>
+              ) : (
+                <Providers providers={providers} onChanged={refreshProviders} />
+              )}
+            </Step>
 
-        <Step
-          index={2}
-          done={status.emailAccounts > 0}
-          title={t("setup.stepEmailTitle")}
-          description={t("setup.stepEmailDescription")}
-        >
-          {status.pipedreamConfigured ? (
-            <div className="flex flex-col gap-3">
-              <Accounts onChanged={onStatusChanged} />
-              <LinkButton onClick={() => onFinish(true)}>{t("setup.advancedLink")}</LinkButton>
-            </div>
-          ) : (
-            <div className="flex flex-col items-start gap-3 rounded-lg bg-surface-2 p-4">
-              <p className="text-sm text-muted-foreground">{t("setup.pipedreamMissingBody")}</p>
-              <Button variant="secondary" size="sm" onClick={() => onFinish(true)}>
-                {t("setup.openSettings")}
-              </Button>
-            </div>
-          )}
-        </Step>
+            <Step
+              index={2}
+              done={status.emailAccounts > 0}
+              title={t("setup.stepEmailTitle")}
+              description={t("setup.stepEmailDescription")}
+            >
+              {status.pipedreamConfigured ? (
+                <div className="flex flex-col gap-3">
+                  <Accounts onChanged={onStatusChanged} />
+                  <LinkButton onClick={() => onFinish(true)}>{t("setup.advancedLink")}</LinkButton>
+                </div>
+              ) : (
+                <div className="flex flex-col items-start gap-3 rounded-lg bg-surface-2 p-4">
+                  <p className="text-sm text-muted-foreground">{t("setup.pipedreamMissingBody")}</p>
+                  <Button variant="secondary" size="sm" onClick={() => onFinish(true)}>
+                    {t("setup.openSettings")}
+                  </Button>
+                </div>
+              )}
+            </Step>
+          </>
+        )}
 
         {complete ? (
           <div className="tint-success flex flex-col items-start gap-2 rounded-lg p-4">

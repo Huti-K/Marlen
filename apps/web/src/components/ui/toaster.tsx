@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Toaster as Sonner } from "sonner";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info } from "lucide-react";
 
 export function Toaster() {
   return (
@@ -15,6 +15,7 @@ export function Toaster() {
           error:
             "bg-destructive text-destructive-foreground border-destructive/20 tint-danger",
           success: "bg-surface text-foreground border-border tint-success",
+          info: "bg-surface text-foreground border-border tint-accent",
         },
       }}
       icons={{
@@ -22,6 +23,7 @@ export function Toaster() {
           <CheckCircle2 className="h-4 w-4 shrink-0 translate-y-0.5 text-success" />
         ),
         error: <AlertCircle className="h-4 w-4 shrink-0 translate-y-0.5" />,
+        info: <Info className="h-4 w-4 shrink-0 translate-y-0.5 text-accent" />,
       }}
     />
   );

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Inbox, Loader2, Mail, Pencil, Plus, Trash2 } from "lucide-react";
+import { Inbox, Loader2, Mail, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   EMAIL_APPS,
@@ -135,11 +135,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const [removing, setRemoving] = React.useState(false);
   const [colors, setColors] = React.useState<AccountColor[]>([]);
   const [descriptions, setDescriptions] = React.useState<AccountDescription[]>([]);
-  const [editingNote, setEditingNote] = React.useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = React.useState("");
-  // Set when Enter/Escape already resolved the edit, so the blur that fires as
-  // the input unmounts doesn't save a second time (or override a cancel).
-  const noteHandled = React.useRef(false);
 
   // Debounced catalog search; empty query shows the e-mail suggestions.
   React.useEffect(() => {
@@ -292,19 +287,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const noteFor = (accountId: string) =>
     descriptions.find((d) => d.accountId === accountId)?.text ?? "";
 
-  const saveNote = async (accountId: string, text: string) => {
-    const trimmed = text.trim();
-    const next = descriptions.filter((d) => d.accountId !== accountId);
-    if (trimmed) next.push({ accountId, text: trimmed });
-    setDescriptions(next);
-    setEditingNote(null);
-    try {
-      await api.setAccountDescriptions(next);
-    } catch (err) {
-      toast.error(errorMessage(err));
-    }
-  };
-
   // Split the pre-search suggestions into "email apps" and "everything else",
   // so the picker shows email providers plus a taste of the wider catalog.
   const isEmailApp = (slug: string) => (EMAIL_APPS as readonly string[]).includes(slug);
@@ -400,78 +382,43 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
         ) : (
           <div className="flex flex-col gap-2">
             {accounts.map((account, i) => (
-              <ListRow
+              <div
                 key={account.id}
-                className="animate-in-up relative"
+                className="animate-in-up flex flex-col gap-1.5"
                 style={{ animationDelay: `${i * 45}ms`, zIndex: accounts.length - i }}
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  <ColorPicker
-                    color={colorFor(account.id)?.hex ?? "#616161"}
-                    onSelect={(hex) => void updateColor(account.id, hex)}
-                  />
-                  <AppIcon src={account.imgSrc} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{account.name}</p>
-                    <p className="text-xs text-muted-foreground">{appLabel(account)}</p>
-                    {editingNote === account.id ? (
-                      <Input
-                        autoFocus
-                        className="mt-1.5 h-7 text-xs"
-                        placeholder={t("connections.notePlaceholder")}
-                        value={noteDraft}
-                        onChange={(e) => setNoteDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            noteHandled.current = true;
-                            void saveNote(account.id, noteDraft);
-                          } else if (e.key === "Escape") {
-                            noteHandled.current = true;
-                            setEditingNote(null);
-                          }
-                        }}
-                        onBlur={() => {
-                          if (noteHandled.current) {
-                            noteHandled.current = false;
-                            return;
-                          }
-                          void saveNote(account.id, noteDraft);
-                        }}
-                      />
-                    ) : (
-                      noteFor(account.id) && (
+                <ListRow className="relative">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <ColorPicker
+                      color={colorFor(account.id)?.hex ?? "#616161"}
+                      onSelect={(hex) => void updateColor(account.id, hex)}
+                    />
+                    <AppIcon src={account.imgSrc} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{account.name}</p>
+                      <p className="text-xs text-muted-foreground">{appLabel(account)}</p>
+                      {noteFor(account.id) && (
                         <p className="mt-0.5 truncate text-xs italic text-muted-foreground">
                           {noteFor(account.id)}
                         </p>
-                      )
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={account.healthy ? "success" : "destructive"}>
-                    {account.healthy ? t("connections.healthy") : t("connections.unhealthy")}
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setNoteDraft(noteFor(account.id));
-                      setEditingNote(account.id);
-                    }}
-                    title={t("connections.editNote")}
-                  >
-                    <Pencil className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setConfirmId(account.id)}
-                    title={t("connections.disconnect")}
-                  >
-                    <Trash2 className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                </div>
-              </ListRow>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={account.healthy ? "success" : "destructive"}>
+                      {account.healthy ? t("connections.healthy") : t("connections.unhealthy")}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setConfirmId(account.id)}
+                      title={t("connections.disconnect")}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </ListRow>
+              </div>
             ))}
           </div>
         )}

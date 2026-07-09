@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, ExternalLink, Loader2, Pencil, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronRight, ExternalLink, Loader2, Pencil, X } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import type { PipedreamStatus } from "@trailin/shared";
 import { api } from "@/lib/api";
@@ -21,6 +21,9 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
   const { t } = useTranslation();
   const [status, setStatus] = React.useState<PipedreamStatus | null>(null);
   const [editing, setEditing] = React.useState(false);
+  // Plumbing is collapsed by default once accounts are connected — the toggle
+  // and project credentials matter far less often than the account list.
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
   // Only for the initial fetch — every error after that is a toast, not a blocking state.
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
@@ -52,39 +55,6 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
     }
   };
 
-  const [allowWrite, setAllowWrite] = React.useState<boolean | null>(null);
-  React.useEffect(() => {
-    api
-      .emailWrite()
-      .then((r) => setAllowWrite(r.allowWrite))
-      .catch((err) => toast.error(errorMessage(err)));
-  }, []);
-
-  const toggleWrite = async (next: boolean) => {
-    try {
-      setAllowWrite((await api.setEmailWrite(next)).allowWrite);
-    } catch (err) {
-      toast.error(errorMessage(err));
-    }
-  };
-
-  // Enabling send/change access is consequential, so confirm it first; turning
-  // it back off is safe and immediate.
-  const [confirmWrite, setConfirmWrite] = React.useState(false);
-  const [writeBusy, setWriteBusy] = React.useState(false);
-
-  const handleWriteToggle = (next: boolean) => {
-    if (next) setConfirmWrite(true);
-    else void toggleWrite(false);
-  };
-
-  const confirmEnableWrite = async () => {
-    setWriteBusy(true);
-    await toggleWrite(true);
-    setWriteBusy(false);
-    setConfirmWrite(false);
-  };
-
   if (!status) {
     return loadError ? (
       <div className="flex flex-col items-start gap-2">
@@ -100,110 +70,104 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
 
   const custom = status.mode === "custom";
 
+  // The custom-project toggle + its wizard/footer row: the only thing that
+  // matters during first-time setup, tucked under "Advanced" once an account
+  // is connected. Same JSX either way, just relocated by `status.configured`.
+  const modeToggle = (
+    <ListRow className="animate-in-up py-2.5" style={{ animationDelay: "0ms" }}>
+      <div className="min-w-0">
+        <Label htmlFor="pd-custom-toggle" className="text-sm font-medium">
+          {t("connections.customToggle")}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          {custom
+            ? t("connections.customToggleOn")
+            : status.builtinAvailable
+              ? t("connections.builtinInUse")
+              : t("connections.builtinMissing")}
+        </p>
+      </div>
+      <Switch
+        id="pd-custom-toggle"
+        checked={custom}
+        onCheckedChange={(next) => void toggleMode(next)}
+      />
+    </ListRow>
+  );
+
+  const projectPanel = custom && (
+    <div className="animate-in-up" style={{ animationDelay: "25ms" }}>
+      {!status.configured || editing ? (
+        <SetupWizard
+          status={status}
+          onSaved={afterChange}
+          onClose={status.configured ? () => setEditing(false) : undefined}
+        />
+      ) : (
+        <ListRow className="py-2.5">
+          <div className="min-w-0">
+            <p className="truncate text-xs text-muted-foreground">
+              <Trans
+                i18nKey="connections.projectFooter"
+                values={{
+                  projectId: status.projectId,
+                  environment: status.environment,
+                  source:
+                    status.source === "env"
+                      ? t("connections.sourceEnv")
+                      : t("connections.sourceSettings"),
+                }}
+                components={{ code: <span className="font-mono" /> }}
+              />
+            </p>
+          </div>
+          <IconButton onClick={() => setEditing(true)} aria-label={t("connections.edit")}>
+            <Pencil className="h-4 w-4" />
+          </IconButton>
+        </ListRow>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-4">
-      <ListRow className="animate-in-up py-2.5" style={{ animationDelay: "0ms" }}>
-        <div className="min-w-0">
-          <Label htmlFor="pd-custom-toggle" className="text-sm font-medium">
-            {t("connections.customToggle")}
-          </Label>
-          <p className="text-xs text-muted-foreground">
-            {custom
-              ? t("connections.customToggleOn")
-              : status.builtinAvailable
-                ? t("connections.builtinInUse")
-                : t("connections.builtinMissing")}
-          </p>
-        </div>
-        <Switch
-          id="pd-custom-toggle"
-          checked={custom}
-          onCheckedChange={(next) => void toggleMode(next)}
-        />
-      </ListRow>
-
-      {custom && (
-        <div className="animate-in-up" style={{ animationDelay: "25ms" }}>
-          {!status.configured || editing ? (
-            <SetupWizard
-              status={status}
-              onSaved={afterChange}
-              onClose={status.configured ? () => setEditing(false) : undefined}
-            />
-          ) : (
-            <ListRow className="py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-xs text-muted-foreground">
-                  <Trans
-                    i18nKey="connections.projectFooter"
-                    values={{
-                      projectId: status.projectId,
-                      environment: status.environment,
-                      source:
-                        status.source === "env"
-                          ? t("connections.sourceEnv")
-                          : t("connections.sourceSettings"),
-                    }}
-                    components={{ code: <span className="font-mono" /> }}
-                  />
-                </p>
+      {status.configured ? (
+        <>
+          <div className="animate-in-up" style={{ animationDelay: "0ms" }}>
+            <Accounts onChanged={onStatusChanged} />
+          </div>
+          <div className="animate-in-up" style={{ animationDelay: "50ms" }}>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((open) => !open)}
+              className="flex w-full items-center gap-1.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0 transition-transform",
+                  advancedOpen && "rotate-90",
+                )}
+              />
+              <span>{t("connections.advanced")}</span>
+              <span aria-hidden="true">·</span>
+              <span>
+                {custom ? t("connections.advancedCustom") : t("connections.advancedBuiltin")}
+              </span>
+            </button>
+            {advancedOpen && (
+              <div className="mt-3 flex flex-col gap-4">
+                {modeToggle}
+                {projectPanel}
               </div>
-              <IconButton onClick={() => setEditing(true)} aria-label={t("connections.edit")}>
-                <Pencil className="h-4 w-4" />
-              </IconButton>
-            </ListRow>
-          )}
-        </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          {modeToggle}
+          {projectPanel}
+        </>
       )}
-
-      <ListRow
-        className={cn(
-          "animate-in-up py-2.5 transition-colors",
-          // Armed = the agent can send/delete. Tint the whole row amber so it
-          // reads as a live danger zone, not a neutral setting.
-          allowWrite && "bg-warning/10",
-        )}
-        style={{ animationDelay: "50ms" }}
-      >
-        <div className="min-w-0">
-          <Label
-            htmlFor="pd-write-toggle"
-            className="flex items-center gap-1.5 text-sm font-medium"
-          >
-            {allowWrite && <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-warning" />}
-            {t("connections.writeToggle")}
-          </Label>
-          <p className={cn("text-xs", allowWrite ? "text-warning" : "text-muted-foreground")}>
-            {allowWrite
-              ? t("connections.writeToggleOn")
-              : t("connections.writeToggleOff")}
-          </p>
-        </div>
-        <Switch
-          id="pd-write-toggle"
-          tone="warning"
-          checked={allowWrite ?? false}
-          disabled={allowWrite === null}
-          onCheckedChange={handleWriteToggle}
-        />
-      </ListRow>
-
-      {status.configured && (
-        <div className="animate-in-up pt-6 mt-2" style={{ animationDelay: "75ms" }}>
-          <Accounts onChanged={onStatusChanged} />
-        </div>
-      )}
-
-      <ConfirmDialog
-        open={confirmWrite}
-        onOpenChange={(next) => !writeBusy && setConfirmWrite(next)}
-        title={t("connections.writeConfirmTitle")}
-        description={t("connections.writeConfirmBody")}
-        confirmLabel={t("connections.writeConfirmCta")}
-        variant="destructive"
-        busy={writeBusy}
-        onConfirm={() => void confirmEnableWrite()}
-      />
     </div>
   );
 }
@@ -296,10 +260,12 @@ function SetupWizard({
       <ol className="flex flex-col gap-2">
         {GUIDE_STEPS.map((step, i) => (
           <li key={step.key} className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              <span className="mr-1.5 font-medium tabular-nums text-foreground">{i + 1}.</span>
-              {t(`connections.${step.key}`)}
-            </p>
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[11px] font-semibold text-accent">
+                {i + 1}
+              </span>
+              <p className="text-xs text-muted-foreground">{t(`connections.${step.key}`)}</p>
+            </div>
             <Button
               variant="outline"
               size="sm"

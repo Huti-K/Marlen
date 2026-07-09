@@ -57,7 +57,7 @@ single quick lookup, call the email tools directly instead.`,
       },
       required: ["tasks"],
     } as AgentTool["parameters"],
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, params, signal, onUpdate) => {
       const { tasks: rawTasks } = params as { tasks?: unknown[] };
       const allTasks = (rawTasks ?? []).map((t) => String(t).trim()).filter(Boolean);
       if (allTasks.length === 0) {
@@ -77,19 +77,32 @@ single quick lookup, call the email tools directly instead.`,
       // CONCURRENCY runners so at most that many workers run at once.
       const reports: string[] = new Array(tasks.length);
       let nextIndex = 0;
+      let finished = 0;
       const runNext = async (): Promise<void> => {
         for (let i = nextIndex++; i < tasks.length; i = nextIndex++) {
           const task = tasks[i]!;
+          // The main turn was aborted (e.g. client disconnect): don't start
+          // more workers; in-flight ones stop via the signal passed below.
+          if (signal?.aborted) {
+            reports[i] = "Cancelled before it started.";
+            continue;
+          }
           try {
             const agent = new Agent({
               initialState: { systemPrompt, model, tools },
               streamFn: (m, c, o) => modelRegistry.streamSimple(m, c, o),
             });
-            const report = await runPrompt({ agent }, task);
+            const report = await runPrompt({ agent }, task, {}, signal);
             reports[i] = report || "(the worker returned an empty report)";
           } catch (error) {
             reports[i] = `Worker failed: ${errorMessage(error)}`;
           }
+          finished += 1;
+          // Streamed progress for the UI's tool badge; ignored elsewhere.
+          onUpdate?.({
+            content: [{ type: "text", text: `${finished}/${tasks.length} tasks done` }],
+            details: undefined,
+          });
         }
       };
       await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));

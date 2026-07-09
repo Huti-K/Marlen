@@ -1,17 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { AgentCard, MessageCard } from "@trailin/shared";
+import { toCardAccount } from "../agent/cards.js";
 import { seedDefaultAutomations } from "../automations/defaults.js";
 import { db, schema } from "../db/index.js";
+import { moduleLogger } from "../logger.js";
 import {
   getSetting,
   LIBRARY_FOLDER_SETTING_KEY,
+  setAccountColors,
+  setAccountVoices,
   setDemoDraftStore,
   setSetting,
   type DemoDraftRecord,
   type DemoDraftStore,
 } from "../db/settings.js";
-import { getDemoAccounts } from "./accounts.js";
+import { gmailDraftUrl } from "../pipedream/gmailDrafts.js";
+import { DEMO_PERSONAL_ACCOUNT_ID, DEMO_UNI_ACCOUNT_ID, DEMO_WORK_ACCOUNT_ID, getDemoAccounts } from "./accounts.js";
 import {
   buildEveningResult,
   buildMorningResult,
@@ -32,15 +38,11 @@ import {
  * runs at most once per demo.db (deleting demo.db forces a fresh reseed).
  */
 
+const log = moduleLogger("demo");
+
 const DEMO_SEEDED_KEY = "demo.seeded";
 const MORNING_NAME = "Morning briefing";
 const EVENING_NAME = "End-of-day learnings";
-
-/** Deep link a demo draft would open in Gmail — same shape as gmailDrafts.ts's real one. */
-function demoGmailDraftUrl(accountName: string, messageId: string): string {
-  const auth = accountName.includes("@") ? `?authuser=${encodeURIComponent(accountName)}` : "";
-  return `https://mail.google.com/mail/${auth}#drafts?compose=${messageId}`;
-}
 
 /**
  * Writes one automation_runs row plus its mirrored conversation + user/
@@ -98,7 +100,7 @@ async function seedRuns(): Promise<void> {
   const morning = automations.find((a) => a.name === MORNING_NAME);
   const evening = automations.find((a) => a.name === EVENING_NAME);
   if (!morning || !evening) {
-    console.warn("[demo] default automations not found — skipping seeded run history");
+    log.warn("default automations not found — skipping seeded run history");
     return;
   }
 
@@ -134,10 +136,21 @@ async function seedRuns(): Promise<void> {
   }
 }
 
-/** 25 drafts spread across the 3 fake accounts, written straight into the demo draft store. */
-async function seedDrafts(): Promise<void> {
+/** A seeded draft a chat can claim as its own (via ChatSeed.draftLinkKey). */
+interface SeededDraft {
+  record: DemoDraftRecord;
+  accountId: string;
+}
+
+/**
+ * Drafts spread across the 3 fake accounts, written straight into the demo
+ * draft store. Returns the records with a linkKey, so seedChats() can link
+ * them to the conversation that "wrote" them.
+ */
+async function seedDrafts(): Promise<Map<string, SeededDraft>> {
   const accountsById = new Map(getDemoAccounts().map((a) => [a.id, a]));
   const store: DemoDraftStore = {};
+  const byLinkKey = new Map<string, SeededDraft>();
 
   for (const draft of DRAFTS) {
     const account = accountsById.get(draft.accountId);
@@ -146,39 +159,81 @@ async function seedDrafts(): Promise<void> {
     const record: DemoDraftRecord = {
       id: randomUUID(),
       messageId,
-      threadId: randomUUID().replace(/-/g, ""),
+      threadId: draft.threadId ?? randomUUID().replace(/-/g, ""),
       subject: draft.subject,
       to: draft.to,
       cc: draft.cc,
       date: daysAgo(draft.daysAgo, draft.hour, (draft.daysAgo * 11) % 60).toISOString(),
-      webUrl: demoGmailDraftUrl(account.name, messageId),
+      webUrl: gmailDraftUrl(account.name, messageId),
       body: draft.body,
     };
     const list = store[draft.accountId] ?? [];
     list.push(record);
     store[draft.accountId] = list;
+    if (draft.linkKey) byLinkKey.set(draft.linkKey, { record, accountId: draft.accountId });
   }
 
   await setDemoDraftStore(store);
+  return byLinkKey;
 }
 
-/** ~18 chat conversations with realistic multi-turn exchanges. */
-async function seedChats(): Promise<void> {
+/**
+ * ~18 chat conversations with realistic multi-turn exchanges. A chat with a
+ * draftLinkKey gets what a live create-draft turn produces: the draft's card
+ * on its last assistant turn, and a draft_links row back to the conversation.
+ */
+async function seedChats(drafts: Map<string, SeededDraft>): Promise<void> {
+  const accountsById = new Map(getDemoAccounts().map((a) => [a.id, a]));
+
   for (const chat of CHATS) {
     const conversationId = randomUUID();
     const startedAt = daysAgo(chat.daysAgo, chat.hour);
+
+    let cardsJson: string | null = null;
+    const linked = chat.draftLinkKey ? drafts.get(chat.draftLinkKey) : undefined;
+    const linkedAccount = linked ? accountsById.get(linked.accountId) : undefined;
+    if (linked && linkedAccount) {
+      const card: AgentCard = {
+        kind: "email_draft",
+        account: toCardAccount(linkedAccount),
+        draft: {
+          draftId: linked.record.id,
+          threadId: linked.record.threadId,
+          subject: linked.record.subject,
+          to: linked.record.to.split(", "),
+          ...(linked.record.cc ? { cc: linked.record.cc.split(", ") } : {}),
+          body: linked.record.body,
+          webUrl: linked.record.webUrl,
+        },
+      };
+      const cards: MessageCard[] = [{ toolCallId: `seed-${chat.draftLinkKey}`, card }];
+      cardsJson = JSON.stringify(cards);
+
+      await db.insert(schema.draftLinks).values({
+        draftId: linked.record.id,
+        accountId: linked.accountId,
+        conversationId,
+        createdAt: startedAt.toISOString(),
+      });
+    }
+
     await db.insert(schema.conversations).values({
       id: conversationId,
       title: chat.title,
       type: "chat",
       createdAt: startedAt.toISOString(),
     });
+    const lastAssistantIndex = chat.turns.reduce(
+      (last, turn, i) => (turn.role === "assistant" ? i : last),
+      -1,
+    );
     await db.insert(schema.messages).values(
       chat.turns.map((turn, i) => ({
         id: randomUUID(),
         conversationId,
         role: turn.role,
         content: turn.content,
+        cards: i === lastAssistantIndex ? cardsJson : null,
         // A few seconds apart per turn, so the conversation reads chronologically.
         createdAt: new Date(startedAt.getTime() + i * 45_000).toISOString(),
       })),
@@ -191,7 +246,10 @@ async function seedChats(): Promise<void> {
 // End-of-day learnings run happen shortly after that run finishes.
 const MEMORY_HOUR_BY_DAYS_AGO: Record<number, number> = { 17: 9, 14: 11, 9: 15 };
 
-/** 12 long-term memories: 9 agent-saved (evening runs), 3 user-stated (chats). */
+/**
+ * 15 long-term memories: 9 agent-saved (evening runs), 3 user-stated (chats),
+ * plus 3 agent-saved work-account style directives (a past voice-learn run).
+ */
 async function seedMemories(): Promise<void> {
   const rows = MEMORIES.map((m) => {
     const hour = MEMORY_HOUR_BY_DAYS_AGO[m.daysAgo] ?? 19;
@@ -201,6 +259,7 @@ async function seedMemories(): Promise<void> {
       id: randomUUID(),
       content: m.content,
       source: m.source,
+      accountId: m.accountId ?? null,
       createdAt,
       updatedAt: createdAt,
     };
@@ -221,6 +280,38 @@ async function seedLibrary(): Promise<void> {
   await setSetting(LIBRARY_FOLDER_SETTING_KEY, dir);
 }
 
+/**
+ * Signatures for the 3 demo accounts (per-inbox voice feature). The work
+ * account's writing style lives as account-scoped memories instead — see
+ * seedMemories() / MEMORIES in content.ts.
+ */
+async function seedVoices(): Promise<void> {
+  await setAccountVoices([
+    {
+      accountId: DEMO_PERSONAL_ACCOUNT_ID,
+      signature: "Liebe Grüße\nSelin",
+    },
+    {
+      accountId: DEMO_WORK_ACCOUNT_ID,
+      signature:
+        "Beste Grüße\nSelin Kaya\nNordwind Studio — Design & Branding\nnordwind-studio.de",
+    },
+    {
+      accountId: DEMO_UNI_ACCOUNT_ID,
+      signature: "Viele Grüße\nSelin Kaya\nMatrikel-Nr. 402318, TU Berlin",
+    },
+  ]);
+}
+
+/** Account colors (memory dots, filter chips) for the 3 demo accounts. */
+async function seedColors(): Promise<void> {
+  await setAccountColors([
+    { accountId: DEMO_WORK_ACCOUNT_ID, hex: "#059669" },
+    { accountId: DEMO_PERSONAL_ACCOUNT_ID, hex: "#2563eb" },
+    { accountId: DEMO_UNI_ACCOUNT_ID, hex: "#7c3aed" },
+  ]);
+}
+
 export async function seedDemoData(): Promise<void> {
   if ((await getSetting(DEMO_SEEDED_KEY)) === "true") return;
 
@@ -229,13 +320,15 @@ export async function seedDemoData(): Promise<void> {
   await seedDefaultAutomations();
 
   await seedRuns();
-  await seedDrafts();
-  await seedChats();
+  const linkableDrafts = await seedDrafts();
+  await seedChats(linkableDrafts);
   await seedMemories();
   await seedLibrary();
+  await seedVoices();
+  await seedColors();
 
   await setSetting(DEMO_SEEDED_KEY, "true");
-  console.log(
-    "[demo] seeded demo data: automation runs, drafts, chats, memories, library documents",
+  log.info(
+    "seeded demo data: automation runs, drafts, chats, memories, library documents, voices, colors",
   );
 }

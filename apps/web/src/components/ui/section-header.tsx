@@ -1,10 +1,28 @@
 import * as React from "react";
 
 /** Title + description pair shared by top-level section/step headers. */
-export function SectionHeader({ title, description }: { title: string; description: string }) {
+export function SectionHeader({
+  title,
+  description,
+  icon,
+}: {
+  title: string;
+  description: string;
+  /** Replaces the accent bar with a 24px icon chip. */
+  icon?: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-col gap-1">
-      <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+    <div className="flex flex-col gap-1.5">
+      <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+        {icon ? (
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent [&_svg]:h-3.5 [&_svg]:w-3.5">
+            {icon}
+          </span>
+        ) : (
+          <span className="h-4 w-1 shrink-0 rounded-full bg-accent/50" />
+        )}
+        {title}
+      </h2>
       <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );
@@ -18,6 +36,8 @@ export function Section({
   className,
   index = 0,
   layout = "stack",
+  icon,
+  aside,
 }: {
   title: string;
   description: string;
@@ -25,8 +45,11 @@ export function Section({
   className?: string;
   index?: number;
   layout?: "stack" | "row";
+  icon?: React.ReactNode;
+  /** Stack layout only: rendered beside the header (e.g. a status chip). */
+  aside?: React.ReactNode;
 }) {
-  const header = <SectionHeader title={title} description={description} />;
+  const header = <SectionHeader title={title} description={description} icon={icon} />;
 
   return (
     <section
@@ -40,7 +63,14 @@ export function Section({
         </div>
       ) : (
         <>
-          {header}
+          {aside ? (
+            <div className="flex items-start justify-between gap-4">
+              {header}
+              {aside}
+            </div>
+          ) : (
+            header
+          )}
           {children}
         </>
       )}

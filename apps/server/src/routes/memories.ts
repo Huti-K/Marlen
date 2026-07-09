@@ -11,22 +11,38 @@ import { errorMessage } from "../util.js";
 export async function memoryRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/memories", async () => listMemories());
 
-  app.post<{ Body: { content?: string } }>("/api/memories", async (req, reply) => {
-    try {
-      const { entry, created } = await createMemory(req.body?.content ?? "", "user");
-      // A dedup hit returns the existing entry unchanged — no need to reset sessions.
-      if (created) await resetSessions();
-      return entry;
-    } catch (error) {
-      return reply.code(400).send({ error: errorMessage(error) });
-    }
-  });
+  app.post<{ Body: { content?: string; accountId?: string | null } }>(
+    "/api/memories",
+    async (req, reply) => {
+      const { accountId } = req.body ?? {};
+      if (accountId !== undefined && accountId !== null && typeof accountId !== "string") {
+        return reply.code(400).send({ error: "accountId must be a string or null" });
+      }
+      try {
+        const { entry, created } = await createMemory(
+          req.body?.content ?? "",
+          "user",
+          accountId ?? null,
+        );
+        // A dedup hit returns the existing entry unchanged — no need to reset sessions.
+        if (created) await resetSessions();
+        return entry;
+      } catch (error) {
+        return reply.code(400).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
-  app.put<{ Params: { id: string }; Body: { content?: string } }>(
+  app.put<{ Params: { id: string }; Body: { content?: string; accountId?: string | null } }>(
     "/api/memories/:id",
     async (req, reply) => {
+      const { accountId } = req.body ?? {};
+      if (accountId !== undefined && accountId !== null && typeof accountId !== "string") {
+        return reply.code(400).send({ error: "accountId must be a string or null" });
+      }
       try {
-        const entry = await updateMemory(req.params.id, req.body?.content ?? "");
+        // accountId undefined (omitted from the body) keeps the entry's current scope.
+        const entry = await updateMemory(req.params.id, req.body?.content ?? "", accountId);
         if (!entry) return reply.code(404).send({ error: "memory not found" });
         await resetSessions();
         return entry;

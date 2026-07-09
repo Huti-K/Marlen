@@ -1,33 +1,12 @@
 import * as React from "react";
 import { Link, useLocation } from "react-router-dom";
-import {
-  BookOpen,
-  CalendarClock,
-  ChevronLeft,
-  ChevronRight,
-  Inbox,
-  MessagesSquare,
-  Palette,
-  Settings2,
-  TriangleAlert,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Palette, TriangleAlert, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isSetupComplete, type AppStatus } from "@trailin/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NAV_ITEMS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
-
-export type View = "home" | "chat" | "automations" | "knowledge" | "settings";
-
-const NAV: { id: View; path: string; icon: LucideIcon }[] = [
-  { id: "home", path: "/", icon: Inbox },
-  { id: "chat", path: "/chat", icon: MessagesSquare },
-  { id: "automations", path: "/automations", icon: CalendarClock },
-  { id: "knowledge", path: "/knowledge", icon: BookOpen },
-  { id: "settings", path: "/settings", icon: Settings2 },
-];
 
 interface SidebarProps {
   status: AppStatus | null;
@@ -82,8 +61,10 @@ export function Sidebar({ status, onClose }: SidebarProps) {
         </Button>
       </div>
 
-      <nav className={cn("flex flex-1 flex-col gap-1 pt-4", isCollapsed ? "px-3 md:px-2 md:items-center" : "px-3")}>
-        {NAV.map(({ id, path, icon: Icon }) => {
+
+
+      <nav className={cn("flex flex-1 flex-col gap-1 pt-3", isCollapsed ? "px-3 md:px-2 md:items-center" : "px-3")}>
+        {NAV_ITEMS.map(({ id, path, icon: Icon }) => {
           const isActive = location.pathname === path || (path !== "/" && location.pathname.startsWith(path));
           return (
             <Link
@@ -113,33 +94,34 @@ export function Sidebar({ status, onClose }: SidebarProps) {
         })}
 
         {/* DEV showcase — delete this block with the /showcase route. */}
-        {(() => {
-          const isActive = location.pathname.startsWith("/showcase");
-          return (
-            <Link
-              to="/showcase"
-              onClick={onClose}
-              aria-current={isActive ? "page" : undefined}
-              className={cn(
-                "group relative flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition-colors",
-                isCollapsed ? "md:px-0 md:w-10 md:justify-center px-3" : "px-3",
-                isActive
-                  ? "bg-accent/12 text-accent"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-              )}
-            >
-              <Palette className="h-4 w-4 shrink-0" />
-              <span className={cn(isCollapsed && "md:hidden")}>
-                Showcase
-              </span>
-              {isCollapsed && (
-                <div className="absolute left-full top-1/2 ml-2 -translate-y-1/2 rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-sm transition-all group-hover:translate-x-1 group-hover:opacity-100 pointer-events-none z-50 md:block hidden whitespace-nowrap">
+        {import.meta.env.DEV &&
+          (() => {
+            const isActive = location.pathname.startsWith("/showcase");
+            return (
+              <Link
+                to="/showcase"
+                onClick={onClose}
+                aria-current={isActive ? "page" : undefined}
+                className={cn(
+                  "group relative flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition-colors",
+                  isCollapsed ? "md:px-0 md:w-10 md:justify-center px-3" : "px-3",
+                  isActive
+                    ? "bg-accent/12 text-accent"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                )}
+              >
+                <Palette className="h-4 w-4 shrink-0" />
+                <span className={cn(isCollapsed && "md:hidden")}>
                   Showcase
-                </div>
-              )}
-            </Link>
-          );
-        })()}
+                </span>
+                {isCollapsed && (
+                  <div className="absolute left-full top-1/2 ml-2 -translate-y-1/2 rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-sm transition-all group-hover:translate-x-1 group-hover:opacity-100 pointer-events-none z-50 md:block hidden whitespace-nowrap">
+                    Showcase
+                  </div>
+                )}
+              </Link>
+            );
+          })()}
       </nav>
 
       <div className={cn("mt-auto flex flex-col gap-2 p-3", isCollapsed && "md:items-center md:px-0")}>

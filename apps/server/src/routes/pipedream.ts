@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PipedreamConfigInput } from "@trailin/shared";
+import "../email/registerProviders.js";
+import { invalidateDraftsCacheEverywhere } from "../email/providers.js";
 import {
   clearConnectSettings,
   createConnectToken,
@@ -123,6 +125,9 @@ export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
       await deleteAccount(req.params.id);
       // Live agents may hold tools for the removed account.
       await resetSessions();
+      // The account's app slug is gone along with it, so sweep every
+      // provider's drafts cache rather than looking the app up first.
+      invalidateDraftsCacheEverywhere(req.params.id);
       return { ok: true };
     } catch (error) {
       req.log.error(error, "deleting account failed");

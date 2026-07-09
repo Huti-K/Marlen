@@ -24,7 +24,7 @@
     },
     "settings": {
       "title": "Settings",
-      "description": "Your AI, email connections, and language."
+      "description": "Your AI, email accounts, permissions, and preferences."
     }
   },
   "sidebar": {
@@ -43,9 +43,13 @@
     "saved": "Saved",
     "retry": "Retry",
     "refresh": "Refresh",
+    "clear": "Clear",
     "signIn": "Sign in",
     "signOut": "Sign out",
-    "submit": "Submit"
+    "submit": "Submit",
+    "noResults": "No matches",
+    "noResultsBody": "Nothing here matches “{{query}}”.",
+    "clearSearch": "Clear search"
   },
   "chat": {
     "newConversation": "New conversation",
@@ -61,30 +65,134 @@
     "searchPlaceholder": "Search conversations…",
     "noSearchResults": "No matches.",
     "collapseHistory": "Collapse history",
-    "showHistory": "Show history"
+    "showHistory": "Show history",
+    "chats": "Chats",
+    "automations": "Automations",
+    "groupToday": "Today",
+    "groupYesterday": "Yesterday",
+    "groupThisWeek": "This week",
+    "groupEarlier": "Earlier",
+    "loadMore": "Load more",
+    "rename": "Rename",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Delete this conversation?",
+    "deleteConfirmBody": "This permanently deletes the conversation and its messages.",
+    "cards": {
+      "noSubject": "(no subject)",
+      "emptyBody": "(empty message)",
+      "hits": {
+        "title": "Email search",
+        "resultCount_one": "{{count}} result",
+        "resultCount_other": "{{count}} results",
+        "truncatedLabel": "+ more",
+        "empty": "No matching emails."
+      },
+      "thread": {
+        "label": "Thread",
+        "messageCount_one": "{{count}} message",
+        "messageCount_other": "{{count}} messages",
+        "to": "To:",
+        "cc": "Cc:"
+      },
+      "draft": {
+        "badge": "Draft",
+        "to": "To:",
+        "cc": "Cc:",
+        "bcc": "Bcc:",
+        "open": "Open in mailbox",
+        "signatureNote": "Your signature was added automatically."
+      },
+      "briefing": {
+        "label": "Briefing",
+        "itemCount_one": "{{count}} item",
+        "itemCount_other": "{{count}} items",
+        "empty": "Nothing needs you right now.",
+        "draftReady": "Draft ready",
+        "draftReply": "Draft reply",
+        "reviewDraft": "Review draft",
+        "askAbout": "Ask about this",
+        "showMore_one": "Show {{count}} more",
+        "showMore_other": "Show {{count}} more",
+        "draftReplyPrompt": "Draft a reply to {{sender}}'s email \"{{subject}}\" in {{account}} (thread {{threadId}}). The briefing summarized it as: {{gist}}",
+        "draftReplyPromptNoAccount": "Draft a reply to {{sender}}'s email \"{{subject}}\" (thread {{threadId}}). The briefing summarized it as: {{gist}}",
+        "reviewDraftPrompt": "Show me the draft you wrote for {{sender}}'s email \"{{subject}}\" (thread {{threadId}}, draft {{draftId}}) so I can review it.",
+        "askAboutPrompt": "In this morning's briefing you flagged {{sender}}'s email \"{{subject}}\" (thread {{threadId}}) — \"{{gist}}\". What is this about, and does anything need me?",
+        "groups": {
+          "urgent": "Urgent",
+          "reply": "Awaiting your reply",
+          "action": "Needs action",
+          "fyi": "FYI"
+        },
+        "stats": {
+          "reply_one": "{{count}} needs a reply",
+          "reply_other": "{{count}} need a reply",
+          "draftsReady_one": "{{count}} draft ready",
+          "draftsReady_other": "{{count}} drafts ready",
+          "rolledUp_one": "{{count}} rolled up",
+          "rolledUp_other": "{{count}} rolled up",
+          "scanned_one": "{{count}} reviewed",
+          "scanned_other": "{{count}} reviewed",
+          "scannedOf_one": "of {{count}} reviewed",
+          "scannedOf_other": "of {{count}} reviewed"
+        },
+        "rollup": "{{count}} {{label}}"
+      }
+    },
+    "showcase": {
+      "intro": "Here is a sample of everything I can show in chat — tool activity, one of every card, a formatted reply, and the thinking state.",
+      "toolsNote": "While tools run, each one appears as a chip: finished, still running, or failed."
+    }
+  },
+  "search": {
+    "openButton": "Search",
+    "title": "Search",
+    "placeholder": "Search chats, briefings, drafts, documents, memories…",
+    "hint": "Search across your chats, briefings, drafts, documents and memories.",
+    "shortcuts": "Go to",
+    "topHit": "Top hit",
+    "recent": "Recent",
+    "recentHint": "One of your recent searches. Run it again.",
+    "clearRecents": "Clear",
+    "scopeAll": "All",
+    "noResults": "No results for “{{q}}”.",
+    "noResultsHint": "Check the spelling, or try a shorter word.",
+    "hintNavigate": "Navigate",
+    "hintOpen": "Open",
+    "hintFilter": "Filter",
+    "hintClose": "Close",
+    "actionPage": "Open page",
+    "actionSearch": "Search again",
+    "actions": {
+      "run": "Open briefing",
+      "chat": "Open chat",
+      "draft": "Open draft",
+      "document": "Open document",
+      "memory": "Open memory"
+    },
+    "groups": {
+      "run": "Briefings",
+      "chat": "Chats",
+      "draft": "Drafts",
+      "document": "Documents",
+      "memory": "Memories"
+    }
   },
   "connections": {
     "customToggle": "Use my own Pipedream project",
     "customToggleOn": "Email runs through the Pipedream project configured below.",
     "builtinInUse": "Email runs through Trailin's built-in Pipedream.",
-    "builtinMissing": "This build has no built-in Pipedream — turn this on and add your own below.",
-    "writeToggle": "Allow sending & changes",
-    "writeToggleOff": "Read-only: the AI can read, search and create drafts — it can never send, delete or change anything.",
-    "writeToggleOn": "The AI may send emails and make changes (labels, archiving, deleting) when you ask it to.",
-    "writeConfirmTitle": "Allow the AI to send and change email?",
-    "writeConfirmBody": "Once on, the assistant can send and reply to emails and change your mailbox — archive, label, delete — across every connected account when you ask it to. You can turn this off anytime.",
-    "writeConfirmCta": "Allow sending & changes",
+    "builtinMissing": "This build has no built-in Pipedream, turn this on and add your own below.",
     "addAccount": "Add a new Account",
     "searchProviders": "Search all apps… (Gmail, Zoho, IMAP, Notion, …)",
     "noProvidersFound": "No apps found for “{{q}}”.",
     "suggestedHeading": "Popular email apps",
     "moreAppsHeading": "Popular integrations",
-    "anyAppHint": "These are just a few — search above to connect any of 2,000+ apps, from other mail services to your calendar, notes and chat.",
+    "anyAppHint": "These are just a few, search above to connect any of 2,000+ apps, from other mail services to your calendar, notes and chat.",
     "setupTitle": "One-time setup: connect Trailin to Pipedream",
-    "setupIntro": "Trailin uses <pd>Pipedream</pd>, a free service, to link your email accounts safely — as many as you like, also several from the same provider. It needs three values from your own Pipedream workspace, copied once:",
+    "setupIntro": "Trailin uses <pd>Pipedream</pd>, a free service, to link your email accounts safely, as many as you like, also several from the same provider. It needs three values from your own Pipedream workspace, copied once:",
     "setupStep1": "Create a free Pipedream account.",
     "setupStep2": "Under Settings → API, create an OAuth client and copy its Client ID and Client Secret below.",
-    "setupStep3": "Create a project (any name) and paste its URL — or the proj_… id — below.",
+    "setupStep3": "Create a project (any name) and paste its URL, or the proj_… id, below.",
     "openPipedream": "Open pipedream.com",
     "openApiSettings": "Open API settings",
     "openProjects": "Open projects",
@@ -93,34 +201,32 @@
     "clientSecretKeepPlaceholder": "•••••• (leave empty to keep)",
     "project": "Project URL or ID",
     "saveVerify": "Save & verify",
-    "verified": "Checked with Pipedream before saving.",
     "removeSaved": "Clear",
     "removeSavedConfirm": "Remove the Pipedream credentials saved in the app?",
     "emailAccounts": "Connected accounts",
-    "noAccounts": "No email accounts connected yet. Use the buttons above — you can connect several accounts per provider.",
+    "noAccounts": "No email accounts connected yet. Use the buttons above, you can connect several accounts per provider.",
     "connectApp": "Connect {{app}}",
-    "finishConnecting": "Complete the connection in the window that just opened — it closes by itself when you're done.",
-    "healthy": "healthy",
-    "unhealthy": "unhealthy",
+    "finishConnecting": "Complete the connection in the window that just opened, it closes by itself when you're done.",
+    "healthy": "Healthy",
+    "unhealthy": "Unhealthy",
     "disconnect": "Disconnect",
     "disconnectConfirm": "Disconnect this account?",
-    "notePlaceholder": "What's this connection for? (helps your agent)",
-    "editNote": "Edit note",
     "projectFooter": "Pipedream project <code>{{projectId}}</code> · {{environment}} · {{source}}",
     "sourceSettings": "saved in app",
     "sourceEnv": "from .env",
     "edit": "Edit",
     "accountColor": "Account color",
     "customColor": "Custom color",
-    "colorPresets": "Color presets"
+    "colorPresets": "Color presets",
+    "advanced": "Advanced",
+    "advancedBuiltin": "Built-in Pipedream",
+    "advancedCustom": "Own Pipedream project"
   },
   "home": {
-    "hint": "Everything your agent prepared for you, in one place.",
-    "setupBanner": "Trailin isn't fully set up — the agent can't reach your mail yet.",
+    "setupBanner": "Trailin isn't fully set up, the agent can't reach your mail yet.",
     "setupBannerCta": "Finish setup",
-    "offlineBanner": "Can't reach your email provider right now — check your connection.",
+    "offlineBanner": "Can't reach your email provider right now, check your connection.",
     "reviewTitle": "Needs your review",
-    "reviewHint": "Drafts the agent pre-wrote, live from your mail accounts. Nothing is ever sent from here — you review and send in your mail app.",
     "reviewEmpty": "No drafts waiting. When you or the agent prepare replies, they show up here.",
     "reviewEmptyFiltered": "No drafts in this period.",
     "filterPeriod": "Period",
@@ -129,22 +235,49 @@
     "filter30Days": "Last 30 days",
     "filterAll": "All",
     "activityTitle": "Agent activity",
-    "activityHint": "Results from your scheduled automations — a morning digest lands here.",
     "activityEmptyTitle": "Nothing here yet",
     "activityEmptyBody": "Put your inbox on autopilot: a standing instruction runs on a schedule and reports here.",
-    "activityNoRunsBody": "Your automations haven't produced results yet — run one now or wait for its schedule.",
+    "activityNoRunsBody": "Your automations haven't produced results yet, run one now or wait for its schedule.",
+    "activityNothingToday": "Nothing today yet.",
+    "activityShowEarlier_one": "Show {{count}} earlier run",
+    "activityShowEarlier_other": "Show {{count}} earlier runs",
+    "activityShowLess": "Show less",
     "createAutomation": "Create an automation",
     "viewAutomations": "View automations",
-    "deletedAutomation": "Deleted automation"
+    "deletedAutomation": "Deleted automation",
+    "briefingToday": "Today at {{time}}",
+    "briefingUrgent_one": "{{count}} urgent",
+    "briefingUrgent_other": "{{count}} urgent",
+    "briefingRefresh": "Update briefing",
+    "briefingNext": "Next briefing: {{when}}",
+    "openInChat": "Open in chat",
+    "waitingTitle": "Waiting on others",
+    "waitingNudge": "Draft a follow-up",
+    "waitingNudgePrompt": "Draft a friendly follow-up to {{counterpart}} for the thread \"{{subject}}\" in {{account}}.",
+    "glance": {
+      "drafts_one": "{{count}} draft to review",
+      "drafts_other": "{{count}} drafts to review",
+      "waiting_one": "{{count}} waiting on a reply",
+      "waiting_other": "{{count}} waiting on replies",
+      "nextRun": "Next run {{when}}"
+    }
   },
   "drafts": {
     "noSubject": "(no subject)",
     "to": "To:",
     "cc": "Cc:",
-    "open": "Open in Gmail",
+    "open": "Open in mailbox",
     "discard": "Discard draft",
     "discardConfirm": "Discard this draft? It is removed from your mail account.",
-    "emptyBodyText": "(empty body)"
+    "emptyBodyText": "(empty body)",
+    "subject": "Subject",
+    "refine": "Refine with AI",
+    "refineInChat": "Refine in the chat that wrote it",
+    "refinePrompt": "Please refine the draft \"{{subject}}\"",
+    "save": "Save",
+    "conversation_one": "Conversation · {{count}}",
+    "conversation_other": "Conversation · {{count}}",
+    "threadLoadFailed": "Couldn't load the conversation this replies to."
   },
   "automations": {
     "new": "New automation",
@@ -176,13 +309,14 @@
       "custom": "{{days}} · {{time}}",
       "date": "{{date}} · {{time}}"
     },
-    "cronInvalid": "Doesn’t look like a standard 5-field cron — checked on create.",
+    "cronInvalid": "Doesn’t look like a standard 5-field cron, checked on create.",
     "cronHint": "<c>0 8 * * 1-5</c> runs at 08:00 on weekdays.",
     "instruction": "Instruction for the agent",
     "instructionPlaceholder": "Summarize all unread emails from the last 24 hours…",
     "showInActivity": "Show in agent activity",
     "showInActivityHint": "Include this automation's runs in the Home activity feed.",
-    "create": "Create",
+    "pin": "Show at top of Home",
+    "pinned": "Pinned to Home",
     "emptyTitle": "No automations yet",
     "emptyBody": "Write a standing instruction and choose when it runs.",
     "paused": "paused",
@@ -196,22 +330,37 @@
       "running": "running",
       "success": "success",
       "error": "error"
+    },
+    "digest": {
+      "askAbout": "Ask about this",
+      "askAboutPrompt": "In the \"{{automation}}\" run from {{date}}, you flagged \"{{sender}}, {{subject}}\" — \"{{gist}}\". What is this about, and does anything need me?",
+      "thisAutomation": "this automation",
+      "draftReply": "Draft a reply",
+      "draftReplyPrompt": "Draft a reply to {{sender}}'s email \"{{subject}}\" in {{account}}. The briefing summarized it as: {{gist}}",
+      "draftReplyPromptNoAccount": "Draft a reply to {{sender}}'s email \"{{subject}}\". The briefing summarized it as: {{gist}}"
     }
   },
   "memory": {
     "addPlaceholder": "Add something Trailin should remember…",
-    "savedByAgent": "saved by the agent",
-    "empty": "Nothing remembered yet. Tell the agent \"remember …\" in chat, or add it here.",
+    "add": "Add memory",
+    "edit": "Edit memory",
+    "save": "Save",
+    "searchPlaceholder": "Search memories…",
     "delete": "Delete",
-    "deleteConfirm": "Delete this memory?"
+    "deleteConfirm": "Delete this memory?",
+    "collapse": "Collapse memory",
+    "expand": "Expand memory"
   },
   "library": {
     "folderLabel": "Library folder path",
     "changeFolder": "Change folder",
     "editPath": "Edit path manually",
-    "folderHint": "Files dropped here are indexed automatically. Click “Change folder” to switch to a different one.",
     "upload": "Upload files",
-    "rescan": "Rescan",
+    "uploading": "Uploading…",
+    "uploaded_one": "{{count}} file added",
+    "uploaded_other": "{{count}} files added",
+    "dropTitle": "Drop files to add them",
+    "searchPlaceholder": "Search documents…",
     "emptyTitle": "No documents yet",
     "emptyBody": "Drop files into the folder above or upload them.",
     "error": "error",
@@ -219,17 +368,23 @@
     "deleteConfirm": "Delete \"{{title}}\"? The file is also removed from the folder.",
     "openDocument": "Open document",
     "sectionCount_one": "{{count}} section",
-    "sectionCount_other": "{{count}} sections"
+    "sectionCount_other": "{{count}} sections",
+    "showMore_one": "Show 1 more",
+    "showMore_other": "Show {{count}} more"
   },
   "knowledge": {
     "sections": {
       "memory": {
         "title": "Memory",
-        "description": "What your agent knows: short facts, always available. It saves them when you say \"remember …\", and you can edit them here."
+        "description": "What your agent knows: short facts, always available. It saves them when you say \"remember …\", and you can edit them here.",
+        "general": "General",
+        "scopeLabel": "Scope",
+        "filterAll": "All",
+        "filterAccountHint": "Show only {{name}}'s memories"
       },
       "library": {
         "title": "Documents",
-        "description": "What your agent can look up: PDF, Word, Markdown, text, CSV and HTML files it searches and reads on demand. Drop files into the folder or upload them — everything stays on this computer."
+        "description": "What your agent can look up: PDF, Word, Markdown, text, CSV and HTML files it searches and reads on demand. Drop files into the folder or upload them, everything stays on this computer."
       }
     }
   },
@@ -238,30 +393,90 @@
     "intro": "Your mail, handled by an agent you can talk to. Two things and you're in:",
     "stepAiTitle": "Sign in to your AI",
     "stepAiDescription": "Use a subscription you already have (Claude, Copilot, ChatGPT) or paste an API key. Your sign-in stays on this computer.",
-    "aiDone": "Signed in — using {{model}}.",
+    "aiDone": "Signed in, using {{model}}.",
     "stepEmailTitle": "Connect an email account",
     "stepEmailDescription": "Link Gmail or Outlook so the agent can see your mail. You can add more accounts later.",
-    "pipedreamMissingBody": "This build has no built-in email bridge. Add your own free Pipedream project in Settings → Email — a one-time, three-field setup.",
+    "pipedreamMissingBody": "This build has no built-in email bridge. Add your own free Pipedream project in Settings → Email, a one-time, three-field setup.",
     "openSettings": "Open settings",
     "advancedLink": "Advanced: use my own Pipedream project",
     "allSetTitle": "You're all set",
     "allSetBody": "The agent can now read your mail, draft replies, and answer your questions.",
     "openApp": "Open Trailin",
-    "skip": "Skip for now — I'll look around first"
+    "skip": "Skip for now, I'll look around first",
+    "offlineTitle": "Can't reach the server",
+    "offlineBody": "Checking connection to Trailin's server every few seconds, this will pick up automatically once it's back."
   },
   "settings": {
     "sections": {
       "ai": {
         "title": "AI & model",
-        "description": "The AI that reads and answers your mail. Sign in with a subscription you already have (Claude, Copilot, ChatGPT) or use an API key — your sign-in stays on this computer."
+        "description": "The AI that reads and answers your mail. Sign in with a subscription you already have (Claude, Copilot, ChatGPT) or use an API key, your sign-in stays on this computer.",
+        "chipReady": "Ready",
+        "chipSignIn": "Sign in required"
       },
       "email": {
         "title": "Email",
-        "description": "Connected accounts, what the AI is allowed to do, and how Trailin links to your mail."
+        "description": "Connected accounts and how Trailin links to your mail.",
+        "chipSetup": "Setup needed",
+        "chipConnected_one": "{{count}} connected",
+        "chipConnected_other": "{{count}} connected",
+        "chipNoAccounts": "No accounts yet"
+      },
+      "permissions": {
+        "title": "Permissions",
+        "description": "What the assistant is allowed to do in your mailbox — sending and changes stay off until you arm them."
+      },
+      "preferences": {
+        "title": "Preferences",
+        "description": "How Trailin looks, speaks, and tells time."
       },
       "language": {
         "title": "Language",
         "description": "Used for the app and for the assistant's answers, in chat and in automations."
+      },
+      "navigation": {
+        "title": "Navigation style",
+        "description": "Choose between a left sidebar or a floating bottom dock.",
+        "dock": "Bottom dock",
+        "sidebar": "Left sidebar"
+      },
+      "quickActions": {
+        "title": "Quick actions",
+        "description": "What buttons like \"Draft reply\" do: send the request right away, or put it in the chat box so you can edit it first.",
+        "send": "Send immediately",
+        "prefill": "Edit before sending"
+      }
+    },
+    "permissions": {
+      "toggle": "Allow sending & changes",
+      "toggleOff": "Read-only: the AI can read, search and create drafts, it can never send, delete or change anything.",
+      "toggleOn": "The AI may send emails and make changes (labels, archiving, deleting) when you ask it to.",
+      "confirmTitle": "Allow the AI to send and change email?",
+      "confirmBody": "Once on, the assistant can send and reply to emails and change your mailbox, archive, label, delete, across every connected account when you ask it to. You can turn this off anytime.",
+      "confirmCta": "Allow sending & changes",
+      "chipOn": "Send & change enabled",
+      "chipOff": "Read-only"
+    },
+    "appearance": {
+      "label": "Appearance",
+      "description": "Light, dark, or follow this device.",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "timezone": {
+      "label": "Timezone",
+      "description": "Automations run and times are shown in this timezone",
+      "localTime": "Local time {{time}}"
+    },
+    "thinkingLevel": {
+      "label": "Thinking",
+      "description": "How much the model reasons before answering. Higher is more thorough but slower.",
+      "options": {
+        "off": "Off",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
       }
     },
     "provider": "Provider",
@@ -287,5 +502,22 @@
     "openSignInPage": "Open sign-in page",
     "enterCodeAt": "Enter this code at <uri>{{uri}}</uri>",
     "loginInputPlaceholder": "Paste the code / redirect URL if it doesn't finish…"
+  },
+  "ui": {
+    "select": {
+      "placeholder": "Select…",
+      "noResults": "No results found."
+    }
+  },
+  "markdown": {
+    "openInMailbox": "Open in mailbox",
+    "copyEmailAddress": "Copy email address",
+    "copiedToClipboard": "Copied {{email}} to clipboard"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "This screen ran into a rendering error. You can try again, or reload the app.",
+    "tryAgain": "Try again",
+    "reload": "Reload"
   }
 }

@@ -1,23 +1,27 @@
 import * as React from "react";
-import { CalendarClock, ChevronDown, ChevronUp, Loader2, MessageSquareShare, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronUp, Loader2, MessageSquareShare, Pencil, Pin, Play, Plus, Trash2 } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import type { Automation, AutomationRun } from "@trailin/shared";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Markdown } from "@/components/ui/markdown";
+import { DigestView } from "@/features/automations/DigestView";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormField } from "@/components/ui/form-field";
 import { LinkButton } from "@/components/ui/link-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
+import { RunStatusBadge } from "@/components/RunStatusBadge";
+import { openRunInChat } from "@/lib/runNavigation";
 import { toast } from "@/lib/toast";
 import { useServerEvents } from "@/lib/serverEvents";
 import { cn, errorMessage } from "@/lib/utils";
@@ -460,21 +464,15 @@ function WeekdayToggle({
       {WEEKDAY_ORDER.map((day) => {
         const active = value.includes(day);
         return (
-          <button
+          <Chip
             key={day}
-            type="button"
+            active={active}
             onClick={() => toggle(day)}
-            aria-pressed={active}
             aria-label={weekdayName(day, locale)}
-            className={cn(
-              "h-8 min-w-8 rounded-full px-2.5 text-xs font-medium transition-colors",
-              active
-                ? "bg-primary text-primary-foreground"
-                : "bg-surface-2 text-muted-foreground hover:text-foreground",
-            )}
+            className="h-8 min-w-8 justify-center"
           >
             {weekdayShortName(day, locale)}
-          </button>
+          </Chip>
         );
       })}
     </div>
@@ -527,6 +525,18 @@ function AutomationCard({
     }
   };
 
+  // Pinning is exclusive server-side (setting one unpins any other), so a
+  // plain refetch after either direction is enough to keep every row in sync.
+  const togglePin = async () => {
+    setBusy(true);
+    try {
+      await api.setAutomationPinned(automation.id, !automation.pinned);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runNow = async () => {
     setBusy(true);
     try {
@@ -567,7 +577,23 @@ function AutomationCard({
               {automation.instruction}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2 pt-0.5">
+          <div className="flex shrink-0 items-center gap-1 pt-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => void togglePin()}
+              disabled={busy}
+              data-tooltip={automation.pinned ? t("automations.pinned") : t("automations.pin")}
+              aria-label={automation.pinned ? t("automations.pinned") : t("automations.pin")}
+            >
+              <Pin
+                className={cn(
+                  "h-4 w-4",
+                  automation.pinned ? "fill-accent/25 text-accent" : "text-muted-foreground",
+                )}
+              />
+            </Button>
             <Switch
               checked={automation.enabled}
               onCheckedChange={(v) => void toggle(v)}
@@ -600,7 +626,7 @@ function AutomationCard({
               <p className="text-xs text-muted-foreground">{t("automations.noRuns")}</p>
             ) : (
               runs.map((run) => (
-                <RunItem key={run.id} run={run} />
+                <RunItem key={run.id} run={run} automationName={automation.name} />
               ))
             )}
           </div>
@@ -609,31 +635,22 @@ function AutomationCard({
   );
 }
 
-function RunItem({ run }: { run: AutomationRun }) {
+function RunItem({ run, automationName }: { run: AutomationRun; automationName: string }) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [expanded, setExpanded] = React.useState(false);
   const hasResult = !!run.result;
 
   return (
     <div className="rounded-lg bg-surface-2 p-3">
-      <div 
+      <div
         className={cn("flex items-center gap-2", hasResult && "cursor-pointer")}
         onClick={() => hasResult && setExpanded(!expanded)}
       >
         {hasResult && (
            expanded ? <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
         )}
-        <Badge
-          variant={
-            run.status === "success"
-              ? "success"
-              : run.status === "error"
-                ? "destructive"
-                : "muted"
-          }
-        >
-          {t(`automations.runStatus.${run.status}`)}
-        </Badge>
+        <RunStatusBadge status={run.status} />
         <div className="ml-auto flex items-center gap-2">
           <time dateTime={run.startedAt} className="text-xs text-muted-foreground">
             {new Date(run.startedAt).toLocaleString(i18n.language)}
@@ -642,20 +659,25 @@ function RunItem({ run }: { run: AutomationRun }) {
             variant="ghost"
             size="icon"
             className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            title="Go to chat"
+            title={t("home.openInChat")}
+            aria-label={t("home.openInChat")}
             onClick={(e) => {
               e.stopPropagation();
-              window.dispatchEvent(new CustomEvent("trailin:show-chat"));
-              setTimeout(() => {
-                window.dispatchEvent(new CustomEvent("trailin:open-chat", { detail: run.id }));
-              }, 100);
+              openRunInChat(run.id, () => navigate("/chat"));
             }}
           >
             <MessageSquareShare className="h-3 w-3" />
           </Button>
         </div>
       </div>
-      {expanded && hasResult && <Markdown content={run.result} className="mt-2 text-xs" />}
+      {expanded && hasResult && (
+        <DigestView
+          content={run.result}
+          automationName={automationName}
+          runDate={run.startedAt}
+          className="mt-2 text-xs"
+        />
+      )}
     </div>
   );
 }

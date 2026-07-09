@@ -107,6 +107,21 @@ export async function pipedreamConfigured(): Promise<boolean> {
 }
 
 export async function getPipedreamStatus(): Promise<PipedreamStatus> {
+  // Demo mode reports a working built-in connection (matching
+  // pipedreamConfigured above) so the Settings UI shows the seeded accounts
+  // instead of the setup form — nothing ever calls out to Pipedream.
+  if (env.demoMode) {
+    return {
+      configured: true,
+      mode: "builtin",
+      builtinAvailable: true,
+      source: null,
+      clientId: null,
+      projectId: null,
+      environment: "development",
+      hasClientSecret: false,
+    };
+  }
   const [useCustom, config] = await Promise.all([getUseCustom(), getConnectConfig()]);
   return {
     configured: config !== null,
@@ -313,10 +328,12 @@ export async function deleteAccount(accountId: string): Promise<void> {
  * Pipedream injects the account's OAuth credentials. Used where the prebuilt
  * components fall short (e.g. their draft/send components need a paid
  * workspace for attachment handling; the proxy is available on all plans).
+ *
+ * GET/DELETE take `params` (query string); POST/PUT take `body` (JSON).
  */
 export async function proxyRequest(
   accountId: string,
-  method: "get" | "post" | "delete",
+  method: "get" | "post" | "put" | "delete",
   url: string,
   opts: { params?: Record<string, string>; body?: unknown } = {},
 ): Promise<unknown> {
@@ -329,5 +346,6 @@ export async function proxyRequest(
   };
   if (method === "get") return pd.proxy.get(request);
   if (method === "delete") return pd.proxy.delete(request);
+  if (method === "put") return pd.proxy.put({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
   return pd.proxy.post({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
 }

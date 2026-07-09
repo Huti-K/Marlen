@@ -9,3 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/** The modifier the Cmd/Ctrl shortcuts listen for, spelled the way this keyboard prints it. */
+export const MOD_LABEL =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? "⌘" : "Ctrl";

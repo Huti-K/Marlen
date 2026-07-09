@@ -15,9 +15,9 @@
 */
 :root, .light {
   color-scheme: light;
-  --background: oklch(0.986 0.002 255);
-  --surface: oklch(0.999 0.001 255);
-  --surface-2: oklch(0.955 0.004 255);
+  --background: oklch(0.986 0.006 255);
+  --surface: oklch(0.999 0.003 255);
+  --surface-2: oklch(0.955 0.008 255);
   --foreground: oklch(0.255 0.008 260);
 
   --muted: oklch(0.955 0.004 255);
@@ -40,6 +40,11 @@
   --destructive: oklch(0.55 0.17 27);
   --destructive-foreground: oklch(0.99 0.004 255);
 
+  /* File-type ink. Only the hue varies (per format, set on the element as
+     --filetype-h); lightness and chroma are fixed so the family stays even. */
+  --filetype-l: 0.55;
+  --filetype-c: 0.11;
+
   --ring: oklch(0.53 0.11 256);
   /* Clean white nav rail — sits a touch brighter than the canvas, no border needed. */
   --sidebar: oklch(1 0 0);
@@ -52,9 +57,9 @@
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.192 0.006 260);
-  --surface: oklch(0.234 0.008 260);
-  --surface-2: oklch(0.272 0.009 260);
+  --background: oklch(0.192 0.015 260);
+  --surface: oklch(0.234 0.018 260);
+  --surface-2: oklch(0.272 0.02 260);
   --foreground: oklch(0.94 0.004 255);
 
   --muted: oklch(0.272 0.009 260);
@@ -74,6 +79,9 @@
   --warning: oklch(0.8 0.11 78);
   --destructive: oklch(0.64 0.18 27);
   --destructive-foreground: oklch(0.99 0.004 255);
+
+  --filetype-l: 0.72;
+  --filetype-c: 0.11;
 
   --ring: oklch(0.68 0.12 253);
   --sidebar: oklch(0.168 0.006 260);
@@ -220,6 +228,32 @@
     background: color-mix(in oklch, var(--destructive) 14%, transparent);
     color: var(--destructive);
   }
+  /*
+    Categorical file-type tint. The hue arrives per-element as `--filetype-h`
+    (a bare number), so one class covers every format — known or not — while
+    lightness and chroma stay on the theme's leash. Translucent like the other
+    tints, so it survives whatever fill sits behind it.
+  */
+  .tint-file {
+    --filetype: oklch(var(--filetype-l) var(--filetype-c) var(--filetype-h, 256));
+    background: color-mix(in oklch, var(--filetype) 14%, transparent);
+    color: var(--filetype);
+  }
+
+  /*
+    The one backdrop behind anything modal — dialogs, drawers, the palette.
+    Deliberately gentle: a light dim plus a 2px blur, so the page underneath
+    stays readable rather than frosting over. Dark mode dims harder because
+    dark surfaces need more separation from a dark canvas.
+  */
+  .scrim {
+    background: oklch(0 0 0 / 0.25);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+  .dark .scrim {
+    background: oklch(0 0 0 / 0.5);
+  }
 }
 
 @layer utilities {
@@ -243,6 +277,89 @@
 }
 .animate-in-up {
   animation: enter-up 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/*
+  Command palette (Cmd+K). Radix flips `data-state` on the overlay and the
+  panel, and its Presence keeps the node mounted while the exit animation
+  plays. The panel's centring translate(-50%, -50%) lives inside the
+  keyframes, so it must NOT also carry Tailwind -translate-x/y utilities —
+  the animation would win and the panel would jump off-centre.
+*/
+@keyframes palette-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes palette-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* No scale — the palette fades and rises like everything else (.animate-in-up),
+   it never zooms. */
+@keyframes palette-panel-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 10px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+@keyframes palette-panel-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 6px));
+  }
+}
+@keyframes palette-scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.palette-overlay {
+  animation: palette-overlay-in 150ms ease-out both;
+}
+.palette-overlay[data-state="closed"] {
+  animation: palette-overlay-out 110ms ease-in both;
+}
+.palette-panel {
+  /* Deeper than --shadow-lg: this is the one panel that floats over a blur. */
+  box-shadow: 0 32px 64px -24px oklch(var(--shadow-ink) / 0.3),
+    0 12px 24px -12px oklch(var(--shadow-ink) / 0.16);
+  animation: palette-panel-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.palette-panel[data-state="closed"] {
+  animation: palette-panel-out 120ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+/* Indeterminate sweep on the hairline while a query is in flight — the previous
+   results stay on screen underneath rather than blinking out to a spinner. */
+.palette-scan {
+  animation: palette-scan 1.05s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+/* The matched substring inside a palette title or snippet. */
+.palette-mark {
+  background: color-mix(in oklch, var(--accent) 22%, transparent);
+  color: var(--foreground);
+  border-radius: 3px;
+  padding: 0 1px;
+  font-weight: 500;
 }
 
 /* Skeleton shimmer over a recessed placeholder. */
@@ -279,6 +396,17 @@
   }
   .skeleton::after {
     animation: none;
+  }
+  .palette-scan {
+    animation: none;
+  }
+  /* Collapsed rather than removed: Radix Presence waits for the exit animation
+     to finish, and the panel's final keyframe is what centres it. */
+  .palette-overlay,
+  .palette-overlay[data-state="closed"],
+  .palette-panel,
+  .palette-panel[data-state="closed"] {
+    animation-duration: 1ms;
   }
 }
 

@@ -1,7 +1,10 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { formatFileSize } from "@trailin/shared";
+import { formatFileSize, type ConnectedAccount, type MemoryEntry } from "@trailin/shared";
+import { and, desc, eq, gte, like } from "drizzle-orm";
+import { db, schema } from "../db/index.js";
 import { createMemory, deleteMemory, listMemories, updateMemory } from "../db/memories.js";
 import { getLibraryDir, saveNote, SUPPORTED_FORMATS } from "../library/ingest.js";
+import { listAccounts } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
 import {
   getDocument,
@@ -24,6 +27,22 @@ const text = (value: string) => ({
   details: undefined,
 });
 
+/** Case-insensitive match on a connected account's name, or an exact account id. */
+export function findAccount(accounts: ConnectedAccount[], raw: string): ConnectedAccount | undefined {
+  const trimmed = raw.trim();
+  return (
+    accounts.find((a) => a.id === trimmed) ??
+    accounts.find((a) => a.name.toLowerCase() === trimmed.toLowerCase())
+  );
+}
+
+/** Helpful "not found" text listing what's actually connected, for a bad account param. */
+export function accountNotFoundText(raw: string, accounts: ConnectedAccount[]): string {
+  const list =
+    accounts.length > 0 ? accounts.map((a) => a.name).join(", ") : "no accounts are connected";
+  return `No connected account matches "${raw}". Connected accounts: ${list}.`;
+}
+
 const memorySave: AgentTool = {
   name: "memory_save",
   label: "Save to memory",
@@ -33,7 +52,10 @@ const memorySave: AgentTool = {
     `every future conversation, so keep them terse. Do not save one-off task details, whole ` +
     `emails, or things already in memory. Anything longer-form or document-shaped — ` +
     `correspondent background, a thread summary, research findings — belongs in the library ` +
-    `instead: use library_write. The user can review and edit memory on the Knowledge page.`,
+    `instead: use library_write. The user can review and edit memory on the Knowledge page. ` +
+    `Facts that only apply to one connected account — a client of one company, a per-inbox rule ` +
+    `or preference — should be scoped to it with the account parameter, so they only surface ` +
+    `when acting as that account; leave account unset for facts that apply everywhere.`,
   parameters: {
     type: "object",
     properties: {
@@ -41,16 +63,31 @@ const memorySave: AgentTool = {
         type: "string",
         description: "The fact to remember, as one short self-contained sentence.",
       },
+      account: {
+        type: "string",
+        description:
+          `The email address of the connected account this fact is specific to (as shown in ` +
+          `tool descriptions: "Acts as the connected account: …"); omit for facts that apply everywhere.`,
+      },
     },
     required: ["content"],
   } as AgentTool["parameters"],
   execute: async (_id, params) => {
-    const { content } = params as { content: string };
-    const { entry, created } = await createMemory(content, "agent");
+    const { content, account } = params as { content: string; account?: string };
+    let accountId: string | null = null;
+    let scopeLabel = "general";
+    if (account?.trim()) {
+      const accounts = await listAccounts();
+      const resolved = findAccount(accounts, account);
+      if (!resolved) return text(accountNotFoundText(account, accounts));
+      accountId = resolved.id;
+      scopeLabel = resolved.name;
+    }
+    const { entry, created } = await createMemory(content, "agent", accountId);
     return text(
       created
-        ? `Saved to long-term memory: ${entry.content}`
-        : `Already in memory: ${entry.content}`,
+        ? `Saved to long-term memory (${scopeLabel}): ${entry.content}`
+        : `Already in memory (${scopeLabel}): ${entry.content}`,
     );
   },
 };
@@ -61,7 +98,9 @@ const memoryUpdate: AgentTool = {
   description:
     `Update one long-term memory entry when a fact has changed or the user corrects it — ` +
     `instead of saving a second, contradicting entry. Use the id shown in brackets in the ` +
-    `Long-term memory list in your system prompt.`,
+    `Long-term memory list in your system prompt. Pass account to move the entry into a ` +
+    `connected account's scope (facts specific to one inbox or client) or to "general" to make ` +
+    `it apply everywhere; omit it to keep the entry's current scope.`,
   parameters: {
     type: "object",
     properties: {
@@ -73,12 +112,30 @@ const memoryUpdate: AgentTool = {
         type: "string",
         description: "The corrected fact, as one short self-contained sentence.",
       },
+      account: {
+        type: "string",
+        description:
+          `The email address of the connected account to scope this entry to, or "general" to ` +
+          `make it apply everywhere; omit to keep its current scope.`,
+      },
     },
     required: ["id", "content"],
   } as AgentTool["parameters"],
   execute: async (_id, params) => {
-    const { id, content } = params as { id: string; content: string };
-    const entry = await updateMemory(id, content);
+    const { id, content, account } = params as { id: string; content: string; account?: string };
+    let accountId: string | null | undefined;
+    const trimmed = account?.trim();
+    if (trimmed) {
+      if (trimmed.toLowerCase() === "general") {
+        accountId = null;
+      } else {
+        const accounts = await listAccounts();
+        const resolved = findAccount(accounts, trimmed);
+        if (!resolved) return text(accountNotFoundText(trimmed, accounts));
+        accountId = resolved.id;
+      }
+    }
+    const entry = await updateMemory(id, content, accountId);
     if (!entry) {
       return text(`No memory found for id ${id} — use the id from the Long-term memory list.`);
     }
@@ -240,6 +297,129 @@ const libraryWrite: AgentTool = {
   },
 };
 
+/** Collapses all whitespace (including newlines) to single spaces, for previews. */
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+const HISTORY_DEFAULT_DAYS = 14;
+const HISTORY_DEFAULT_LIMIT = 20;
+const HISTORY_MAX_LIMIT = 50;
+const HISTORY_PREVIEW_CHARS = 200;
+
+const automationHistory: AgentTool = {
+  name: "automation_history",
+  label: "Automation run history",
+  description:
+    `Past scheduled-automation runs (morning briefings, end-of-day learnings, etc.) — use ` +
+    `when the user references "your briefing", "you flagged X", or asks what an automation ` +
+    `found or did on some day. Lists recent runs newest first with a short preview of each ` +
+    `result; call automation_run_read with a run's id for the full text.`,
+  parameters: {
+    type: "object",
+    properties: {
+      automationName: {
+        type: "string",
+        description:
+          "Only runs of the automation whose name contains this (partial match), e.g. \"Morning briefing\".",
+      },
+      days: {
+        type: "number",
+        description: `How many days back to look (default ${HISTORY_DEFAULT_DAYS}).`,
+      },
+      limit: {
+        type: "number",
+        description: `Max runs to return, 1–${HISTORY_MAX_LIMIT} (default ${HISTORY_DEFAULT_LIMIT}).`,
+      },
+    },
+  } as AgentTool["parameters"],
+  execute: async (_id, params) => {
+    const { automationName, days, limit } = params as {
+      automationName?: string;
+      days?: number;
+      limit?: number;
+    };
+    const windowDays = Math.max(1, Math.round(days ?? HISTORY_DEFAULT_DAYS));
+    const capped = Math.max(1, Math.min(HISTORY_MAX_LIMIT, Math.round(limit ?? HISTORY_DEFAULT_LIMIT)));
+    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+
+    const conditions = [gte(schema.automationRuns.startedAt, since)];
+    const name = automationName?.trim();
+    if (name) conditions.push(like(schema.automations.name, `%${name}%`));
+
+    const rows = await db
+      .select({
+        id: schema.automationRuns.id,
+        name: schema.automations.name,
+        status: schema.automationRuns.status,
+        result: schema.automationRuns.result,
+        startedAt: schema.automationRuns.startedAt,
+      })
+      .from(schema.automationRuns)
+      .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId))
+      .where(and(...conditions))
+      .orderBy(desc(schema.automationRuns.startedAt))
+      .limit(capped);
+
+    if (rows.length === 0) {
+      return text(
+        name
+          ? `No automation runs matching "${name}" in the last ${windowDays} day(s).`
+          : `No automation runs in the last ${windowDays} day(s).`,
+      );
+    }
+
+    const lines = rows.map((r) => {
+      const collapsed = collapseWhitespace(r.result);
+      const preview = collapsed.slice(0, HISTORY_PREVIEW_CHARS);
+      const suffix = collapsed.length > HISTORY_PREVIEW_CHARS ? "…" : "";
+      return (
+        `- [${r.id}] ${r.name ?? "(deleted automation)"} — ${r.status} — ${r.startedAt}` +
+        (preview ? ` — ${preview}${suffix}` : "")
+      );
+    });
+    return text(lines.join("\n"));
+  },
+};
+
+const automationRunRead: AgentTool = {
+  name: "automation_run_read",
+  label: "Read automation run",
+  description:
+    `Read one past automation run in full — its complete result text plus the automation ` +
+    `name, status, and timestamps. Use the run id shown in brackets by automation_history.`,
+  parameters: {
+    type: "object",
+    properties: {
+      runId: { type: "string", description: "The run id (from automation_history)." },
+    },
+    required: ["runId"],
+  } as AgentTool["parameters"],
+  execute: async (_id, params) => {
+    const { runId } = params as { runId: string };
+    const [row] = await db
+      .select({
+        name: schema.automations.name,
+        status: schema.automationRuns.status,
+        result: schema.automationRuns.result,
+        startedAt: schema.automationRuns.startedAt,
+        finishedAt: schema.automationRuns.finishedAt,
+      })
+      .from(schema.automationRuns)
+      .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId))
+      .where(eq(schema.automationRuns.id, runId));
+
+    if (!row) {
+      return text(`No automation run found for id ${runId} — use automation_history to look up run ids.`);
+    }
+
+    const header =
+      `${row.name ?? "(deleted automation)"} — ${row.status} — started ${row.startedAt}` +
+      (row.finishedAt ? `, finished ${row.finishedAt}` : "");
+    return text(`${header}\n\n${row.result || "(empty result)"}`);
+  },
+};
+
 export function buildKnowledgeTools(): AgentTool[] {
   return [
     memorySave,
@@ -249,6 +429,8 @@ export function buildKnowledgeTools(): AgentTool[] {
     librarySearch,
     libraryRead,
     libraryWrite,
+    automationHistory,
+    automationRunRead,
   ];
 }
 
@@ -257,7 +439,7 @@ export function buildKnowledgeTools(): AgentTool[] {
  * library_write — given to background delegate workers.
  */
 export function buildKnowledgeReadTools(): AgentTool[] {
-  return [libraryList, librarySearch, libraryRead];
+  return [libraryList, librarySearch, libraryRead, automationHistory, automationRunRead];
 }
 
 /** Library titles listed in the system prompt are capped so it can't grow unbounded. */
@@ -273,9 +455,41 @@ export async function buildKnowledgeContext(): Promise<string> {
 
   const memories = await listMemories();
   if (memories.length > 0) {
-    context += `\n\nLong-term memory (saved earlier; the user manages these on the Knowledge page):\n${memories
-      .map((m) => `- [${m.id.slice(0, 8)}] ${m.content}`)
-      .join("\n")}`;
+    const format = (list: MemoryEntry[]) =>
+      list.map((m) => `- [${m.id.slice(0, 8)}] ${m.content}`).join("\n");
+
+    const global = memories.filter((m) => m.accountId === null);
+    const scoped = memories.filter((m) => m.accountId !== null);
+
+    const sections: string[] = [];
+    if (global.length > 0) sections.push(format(global));
+
+    if (scoped.length > 0) {
+      // Best-effort account names — fall back to the raw id so a Pipedream
+      // outage never hides the memory, it just makes it less readable (same
+      // fallback pattern buildVoiceContext uses in voice.ts).
+      let names = new Map<string, string>();
+      try {
+        names = new Map((await listAccounts()).map((a) => [a.id, a.name]));
+      } catch {
+        // fall through with an empty map — accountId is used below instead
+      }
+      const byAccount = new Map<string, MemoryEntry[]>();
+      for (const m of scoped) {
+        const key = m.accountId as string;
+        const list = byAccount.get(key);
+        if (list) list.push(m);
+        else byAccount.set(key, [m]);
+      }
+      for (const [accountId, entries] of byAccount) {
+        const name = names.get(accountId) ?? accountId;
+        sections.push(
+          `Memory for ${name} (applies only when reading or writing as this account):\n${format(entries)}`,
+        );
+      }
+    }
+
+    context += `\n\nLong-term memory (saved earlier; the user manages these on the Knowledge page):\n${sections.join("\n\n")}`;
   }
 
   const indexed = (await listDocuments()).filter(

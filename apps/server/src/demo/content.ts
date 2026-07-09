@@ -226,7 +226,7 @@ const MORNING_DAYS: Record<number, MorningDay> = {
       items: [
         bullet(
           "Hausverwaltung Nettbach",
-          "Nebenkostenabrechnung 2025",
+          `Nebenkostenabrechnung ${new Date().getFullYear() - 1}`,
           "die jährliche Betriebskostenabrechnung ist da, eine Nachzahlung von 42 € ist fällig.",
         ),
       ],
@@ -952,16 +952,21 @@ export function buildEveningResult(day: number): string {
   return entry.text;
 }
 
-export function eveningMemoryIndex(day: number): number | undefined {
-  return EVENING_DAYS[day]?.memoryIndex;
-}
-
-/** ---- Long-term memory (12 entries: 9 saved by the agent, 3 by the user in chat) ---- */
+/**
+ * ---- Long-term memory (15 entries: 9 agent-saved evening-run learnings, 3
+ * user-stated in chat, 3 agent-saved writing-style directives for the work
+ * account, standing in for a past voice-learn run). All but one are scoped to
+ * the account their storyline belongs to (work = Acme/Nordwind, personal =
+ * family/Ferienwohnung, uni = Prof. Steiner) so the demo shows the
+ * account-tag model; the scheduling habit stays global on purpose. ----
+ */
 
 export interface MemorySeed {
   content: string;
   source: "user" | "agent";
   daysAgo: number;
+  /** Scopes the memory to one connected account; omit for a global fact. */
+  accountId?: string;
 }
 
 export const MEMORIES: MemorySeed[] = [
@@ -970,13 +975,16 @@ export const MEMORIES: MemorySeed[] = [
       "Schließt deutschsprachige Geschäftsmails mit \"Beste Grüße\", englischsprachige mit \"Best,\".",
     source: "agent",
     daysAgo: 20,
+    accountId: DEMO_WORK_ACCOUNT_ID,
   },
   {
     content:
       "Bleibt bei Acme GmbH bewusst sachlich und kurz, ohne Small Talk — sie lesen alles wörtlich.",
     source: "agent",
     daysAgo: 18,
+    accountId: DEMO_WORK_ACCOUNT_ID,
   },
+  // The one deliberately global entry: a habit that holds across all inboxes.
   {
     content: "Schlägt bei Terminen immer zwei konkrete Zeiten vor statt nach Verfügbarkeit zu fragen.",
     source: "agent",
@@ -986,49 +994,78 @@ export const MEMORIES: MemorySeed[] = [
     content: "Schreibt Familie \"Liebe Grüße, Selin\", engen Freunden nur \"LG\".",
     source: "agent",
     daysAgo: 13,
+    accountId: DEMO_PERSONAL_ACCOUNT_ID,
   },
   {
     content:
       "Sabine Möller (Ferienwohnung Seeblick) verliert Details aus früheren Mails — Gästezahl in jeder neuen Mail wiederholen.",
     source: "agent",
     daysAgo: 11,
+    accountId: DEMO_PERSONAL_ACCOUNT_ID,
   },
   {
     content: "Prof. Steiner antwortet am schnellsten auf Dienstag/Mittwoch-Vormittag-Mails, kaum am Freitag.",
     source: "agent",
     daysAgo: 8,
+    accountId: DEMO_UNI_ACCOUNT_ID,
   },
   {
     content: "Sagt Acme nie direkt einen Rabatt per Mail zu, verweist immer erst auf interne Abstimmung.",
     source: "agent",
     daysAgo: 6,
+    accountId: DEMO_WORK_ACCOUNT_ID,
   },
   {
     content: "Mara Lindqvist bevorzugt eine monatliche Sammel-Mail statt einzelner Pings pro Rechnung.",
     source: "agent",
     daysAgo: 4,
+    accountId: DEMO_WORK_ACCOUNT_ID,
   },
   {
     content: "Mails an Prof. Steiner sollten immer die Kapitelnummer im Betreff nennen.",
     source: "agent",
     daysAgo: 2,
+    accountId: DEMO_UNI_ACCOUNT_ID,
   },
   {
     content: "Bei allem, was Acme-GmbH-Rechnungen betrifft, Jonas Weber (jonas@nordwind-studio.de) in CC setzen.",
     source: "user",
     daysAgo: 17,
+    accountId: DEMO_WORK_ACCOUNT_ID,
   },
   {
     content:
       "Nutzt \"Sehr geehrte/r\" nur beim ersten Kontakt mit einem neuen Kunden, danach \"Hallo\".",
     source: "user",
     daysAgo: 14,
+    accountId: DEMO_WORK_ACCOUNT_ID,
   },
   {
     content:
       "Vor Weiterleitung einer Freelancer-Rechnung (z. B. von Yusuf Demir) an Mara immer die Bankdaten gegenprüfen.",
     source: "user",
     daysAgo: 9,
+    accountId: DEMO_WORK_ACCOUNT_ID,
+  },
+  // Writing-style directives for the work account — what a past voice-learn
+  // run would have saved (see agent/voiceLearn.ts), scoped to that account.
+  {
+    content: "Kurz und direkt, keine Floskeln.",
+    source: "agent",
+    daysAgo: 19,
+    accountId: DEMO_WORK_ACCOUNT_ID,
+  },
+  {
+    content: "Du-Form mit Freelancern, Sie-Form mit Kunden.",
+    source: "agent",
+    daysAgo: 19,
+    accountId: DEMO_WORK_ACCOUNT_ID,
+  },
+  {
+    content: "Auf Deutsch, außer der Kunde schreibt Englisch.",
+    source: "agent",
+    daysAgo: 19,
+    accountId: DEMO_WORK_ACCOUNT_ID,
   },
 ];
 
@@ -1042,6 +1079,15 @@ export interface DraftSeed {
   cc?: string;
   subject: string;
   body: string;
+  /** DemoThread.id (mailbox.ts) this draft replies to, when the thread exists there. */
+  threadId?: string;
+  /**
+   * Stable handle a ChatSeed can point at (draftLinkKey) to mark this draft
+   * as written by that chat — the seeder then links the two (draft_links) and
+   * puts the draft's card on the chat's closing assistant turn, exactly what
+   * a live create-draft turn produces.
+   */
+  linkKey?: string;
 }
 
 export const DRAFTS: DraftSeed[] = [
@@ -1052,6 +1098,7 @@ export const DRAFTS: DraftSeed[] = [
     hour: 17,
     to: "t.brandt@acme-gmbh.de",
     subject: "Re: Rechnung weiterhin strittig",
+    threadId: "th-work-acme-strittig",
     body: `Hallo Herr Brandt,
 
 danke für die Rückmeldung. Wir haben die Zeiterfassung für den Website-Relaunch nochmal im Detail durchgesehen, die 40 Stunden verteilen sich wie folgt:
@@ -1066,6 +1113,7 @@ Wir sind offen, das gemeinsam durchzugehen, sehen aber aktuell keinen Grund, die
     hour: 11,
     to: "meredith@vossandkline.com",
     subject: "Re: Interest in rebranding",
+    threadId: "th-work-voss",
     body: `Hi Meredith,
 
 Thanks for reaching out. Happy to jump on a call, how about Tuesday or Wednesday next week, afternoon?
@@ -1080,6 +1128,7 @@ Selin`,
     to: "f.rieger@kaltwasser-rieger.de",
     cc: "mara.lindqvist@lindqvist-buchhaltung.de",
     subject: "Freundliche Erinnerung: Rechnung 2031",
+    threadId: "th-work-rieger-2031",
     body: `Hallo Herr Rieger,
 
 kurze Erinnerung: Rechnung #2031 vom letzten Monat ist noch offen. Falls das schon in Bearbeitung ist, bitte ignorieren, ansonsten freuen wir uns über eine kurze Rückmeldung, wann wir mit dem Zahlungseingang rechnen können.
@@ -1093,6 +1142,7 @@ Selin`,
     hour: 15,
     to: "jonas@nordwind-studio.de",
     subject: "Portfolio Feedback",
+    threadId: "th-work-jonas-portfolio",
     body: `Hi Jonas,
 
 Die drei neuen Case Studies sehen gut aus. Bei der Acme-Case Study würde ich das strittige Rechnungsthema komplett raushalten, sonst nichts. Bei der zweiten fehlt noch ein Vorher-Bild.
@@ -1106,6 +1156,7 @@ Selin`,
     hour: 10,
     to: "nina.krause@gmail.com",
     subject: "Re: Danke & Update",
+    threadId: "th-work-nina",
     body: `Hallo Nina,
 
 Freut uns total für dich, herzlichen Glückwunsch zur neuen Stelle! Du warst eine super Praktikantin, meld dich gerne, wenn du mal ein Referenzschreiben brauchst.
@@ -1119,6 +1170,7 @@ Selin`,
     hour: 16,
     to: "yusuf.demir.dev@gmail.com",
     subject: "Re: Rechnung Acme-Projekt",
+    threadId: "th-work-yusuf-invoice",
     body: `Hi Yusuf,
 
 Rechnung ist angekommen, danke. Zahlung geht wie üblich innerhalb von 14 Tagen raus, Mara hat sie schon zur Bearbeitung.
@@ -1133,6 +1185,7 @@ Selin`,
     to: "t.brandt@acme-gmbh.de",
     cc: "jonas@nordwind-studio.de",
     subject: "Re: Anfrage Rabatt für Q3",
+    threadId: "th-work-acme-q3",
     body: `Hallo Herr Brandt,
 
 danke für die Anfrage. Wir schätzen die`,
@@ -1143,6 +1196,7 @@ danke für die Anfrage. Wir schätzen die`,
     hour: 13,
     to: "hello@designcodeberlin.de",
     subject: "Re: Speaker-Anfrage September",
+    threadId: "th-work-meetup",
     body: `Hallo zusammen,
 
 Jonas übernimmt das gerne als Speaker im September, ich bin als Backup mit dabei, falls kurzfristig was dazwischenkommt. Habt ihr schon eine grobe Themenrichtung im Kopf, oder ist das frei wählbar? Wir würden gerne etwas rund um Markenarbeit für kleine Studios zeigen, konkrete Beispiele statt Theorie.
@@ -1157,6 +1211,7 @@ Selin`,
     to: "r.fenner@fenner-immobilien.de",
     cc: "jonas@nordwind-studio.de",
     subject: "Re: Website Relaunch Anfrage",
+    threadId: "th-work-fenner",
     body: `Hallo Herr Fenner,
 
 danke für Ihre Anfrage. Für einen Relaunch in der Größenordnung, die Sie beschreiben (bestehende Seite, ca. 15 Unterseiten, neues Buchungssystem), rechnen wir grob mit 6-8 Wochen und einem Budget zwischen 12.000 € und 18.000 €, je nachdem wie viel vom Content-Bestand übernommen werden kann.
@@ -1180,6 +1235,7 @@ Nordwind Studio`,
     hour: 12,
     to: "support@ionos.de",
     subject: "Frage zur Domain-Verlängerung",
+    threadId: "th-work-ionos",
     body: `Hallo,
 
 zu unserer Domain nordwind-studio.de: können Sie uns die Rechnung für die anstehende Verlängerung`,
@@ -1203,17 +1259,36 @@ Selin`,
     hour: 8,
     to: "mara.lindqvist@lindqvist-buchhaltung.de",
     subject: "Q2 Belege",
+    threadId: "th-work-mara-q2",
     body: `Hallo Mara,
 
 hier die letzten fehlenden Belege für Q2, den Rest schicke ich dir bis`,
   },
-  // ---- Personal (8) ----
+  // ---- Personal (9) ----
+  {
+    // Written by the "Höfliche Absage an die Recruiterin" chat (see CHATS) —
+    // the pair demos the draft → originating-conversation link.
+    accountId: DEMO_PERSONAL_ACCOUNT_ID,
+    daysAgo: 2,
+    hour: 11,
+    to: "l.vogt@talentbridge-recruiting.de",
+    subject: "Re: Spannende Rolle als Lead Product Designer",
+    threadId: "th-pers-lena-vogt",
+    linkKey: "vogt-absage",
+    body: `Hallo Frau Vogt,
+
+danke fürs Nachfassen und für das freundliche Angebot. Aktuell bin ich mit Nordwind Studio sehr zufrieden und suche nicht aktiv. Falls sich das ändert, melde ich mich gerne bei Ihnen.
+
+Liebe Grüße
+Selin`,
+  },
   {
     accountId: DEMO_PERSONAL_ACCOUNT_ID,
     daysAgo: 4,
     hour: 20,
     to: "sabine.moeller@ferienwohnung-seeblick.de",
     subject: "Re: Parkplatz & Haustiere",
+    threadId: "th-pers-sabine-anreise",
     body: `Hallo Frau Möller,
 
 super, danke für die Info. Wir bringen unseren Hund mit, die 15 € Gebühr sind kein Problem. Zwei Erwachsene, ein Hund, wie besprochen.
@@ -1227,6 +1302,7 @@ Selin`,
     hour: 21,
     to: "ayse.kaya1968@gmail.com",
     subject: "Re: Geschenk-Idee",
+    threadId: "th-pers-mama-geschenk",
     body: `Liebe Mama,
 
 klingt gut, ich beteilige mich gerne mit 40 €. Sag mir einfach Bescheid, wenn Deniz was bestellt hat.
@@ -1240,6 +1316,7 @@ Selin`,
     hour: 19,
     to: "elif.aydin89@gmail.com",
     subject: "Re: Konzert am Freitag?",
+    threadId: "th-pers-elif-konzert",
     body: `Hey Elif,
 
 bin dabei! Wo treffen wir uns, direkt vor der Astra oder vorher irgendwo essen?
@@ -1253,6 +1330,7 @@ Selin`,
     hour: 18,
     to: "deniz.kaya.b@gmail.com",
     subject: "Re: Geschenk",
+    threadId: "th-pers-deniz-geschenk",
     body: `Hey Deniz,
 
 hab dir gerade meinen Anteil überwiesen, sollte gleich ankommen. Danke, dass du dich drum kümmerst!
@@ -1266,6 +1344,7 @@ Selin`,
     hour: 8,
     to: "praxis@zahnarzt-bloch-berlin.de",
     subject: "Terminverschiebung",
+    threadId: "th-pers-zahnarzt",
     body: `Guten Tag,
 
 könnten wir den Termin am Dienstag auf`,
@@ -1276,6 +1355,7 @@ könnten wir den Termin am Dienstag auf`,
     hour: 12,
     to: "verwaltung@nettbach-hausverwaltung.de",
     subject: "Frage zur Nebenkostenabrechnung",
+    threadId: "th-pers-hausverwaltung",
     body: `Guten Tag,
 
 danke für die Betriebskostenabrechnung. Eine Position ist mir nicht ganz klar: die Position "Sonstige Kosten" mit 84 € ist im Vergleich zum Vorjahr fast doppelt so hoch. Könnten Sie kurz aufschlüsseln, was darin enthalten ist? Die Nachzahlung von 42 € an sich ist kein Problem, ich möchte nur verstehen, wo der Anstieg herkommt.
@@ -1289,6 +1369,7 @@ Selin Kaya`,
     hour: 22,
     to: "kerem.aksu@web.de",
     subject: "Re: Fotos vom Wochenende",
+    threadId: "th-pers-kerem-fotos",
     body: `Hey Kerem,
 
 danke fürs Teilen, richtig schöne Bilder dabei! Vor allem`,
@@ -1299,6 +1380,7 @@ danke fürs Teilen, richtig schöne Bilder dabei! Vor allem`,
     hour: 17,
     to: "sabine.moeller@ferienwohnung-seeblick.de",
     subject: "Anzahlung überwiesen",
+    threadId: "th-pers-sabine-buchung",
     body: `Hallo Frau Möller,
 
 die Anzahlung von 150 € ist raus, Referenznummer FW-2291. Ich melde mich nochmal wegen der genauen Anreisezeit.
@@ -1313,6 +1395,7 @@ Selin`,
     hour: 20,
     to: "steiner@tu-berlin.de",
     subject: "Kapitel 3 – überarbeitete Fassung",
+    threadId: "th-uni-thesis",
     body: `Sehr geehrter Herr Prof. Dr. Steiner,
 
 vielen Dank für Ihr Feedback zu Kapitel 3. Ich habe die Stichprobengröße nun ausführlicher begründet (Abschnitt 3.2) und die fehlenden Zitate ergänzt (Müller 2019, Fischer & Bauer 2021). Die überarbeitete Fassung finden Sie im Anhang.
@@ -1328,6 +1411,7 @@ Selin Kaya`,
     hour: 16,
     to: "yeliz.aksoy@campus.tu-berlin.de",
     subject: "Re: Gruppenarbeit Statistik",
+    threadId: "th-uni-yeliz-statistik",
     body: `Hey Yeliz,
 
 Donnerstag 16 Uhr in der Bibliothek passt mir gut, bringe meine Notizen zu Aufgabe 3 mit.
@@ -1341,6 +1425,7 @@ Selin`,
     hour: 11,
     to: "pruefungsamt@tu-berlin.de",
     subject: "Frage zur Rückmeldung",
+    threadId: "th-uni-pruefungsamt",
     body: `Guten Tag,
 
 ich wollte fragen, ob die Rückmeldefrist zum 15. auch für Studierende gilt, die aktuell im`,
@@ -1351,6 +1436,7 @@ ich wollte fragen, ob die Rückmeldefrist zum 15. auch für Studierende gilt, di
     hour: 21,
     to: "matteo.rossi@campus.tu-berlin.de",
     subject: "Re: Skript Woche 12",
+    threadId: "th-uni-matteo-skript",
     body: `Hey Matteo,
 
 danke fürs Teilen, hat mir echt geholfen! Schulde dir was.
@@ -1364,6 +1450,7 @@ Selin`,
     hour: 9,
     to: "steiner@tu-berlin.de",
     subject: "Terminbestätigung Sprechstunde",
+    threadId: "th-uni-thesis",
     body: `Sehr geehrter Herr Prof. Dr. Steiner,
 
 danke für den Terminvorschlag, Donnerstag 14:00 Uhr passt mir gut. Ich bringe die aktualisierte Kapitelgliederung mit.
@@ -1457,6 +1544,7 @@ Selin Kaya`,
     hour: 20,
     to: "deniz.kaya.b@gmail.com",
     subject: "Re: Grillen am Samstag",
+    threadId: "th-pers-deniz-grillen",
     body: `Hey Deniz,
 
 ich bringe den Kartoffelsalat mit! Soll ich noch was zu trinken besorgen?
@@ -1483,6 +1571,7 @@ Selin Kaya`,
     hour: 15,
     to: "max.schulz88@web.de",
     subject: "Re: Umzugskartons",
+    threadId: "th-pers-max-kartons",
     body: `Hey Max,
 
 danke fürs Angebot! Ich könnte morgen nach der Arbeit gegen 18 Uhr vorbeikommen und die Kartons abholen. Passt dir das?
@@ -1534,10 +1623,10 @@ Selin`,
     daysAgo: 6,
     hour: 16,
     to: "sekretariat@wiwi.tu-berlin.de",
-    subject: "Anmeldung Bachelorarbeit",
+    subject: "Anmeldung Masterarbeit",
     body: `Guten Tag,
 
-können Sie mir bitte das Formular zur Anmeldung der Bachelorarbeit zukommen lassen? Prof. Steiner hat der Betreuung bereits zugestimmt.
+können Sie mir bitte das Formular zur Anmeldung der Masterarbeit zukommen lassen? Prof. Steiner hat der Betreuung bereits zugestimmt.
 
 Vielen Dank im Voraus!
 
@@ -1583,6 +1672,12 @@ export interface ChatSeed {
   daysAgo: number;
   hour: number;
   turns: ChatTurn[];
+  /**
+   * linkKey of the DRAFTS entry this chat wrote, if any. The seeder links the
+   * draft to this conversation and attaches its email_draft card to the last
+   * assistant turn, mirroring a live create-draft turn.
+   */
+  draftLinkKey?: string;
 }
 
 export const CHATS: ChatSeed[] = [
@@ -1785,12 +1880,13 @@ export const CHATS: ChatSeed[] = [
     title: "Höfliche Absage an die Recruiterin",
     daysAgo: 2,
     hour: 11,
+    draftLinkKey: "vogt-absage",
     turns: [
       { role: "user", content: "Schreib mir eine kurze, höfliche Absage an Lena Vogt." },
       {
         role: "assistant",
         content:
-          "Vorschlag:\n\n\"Hallo Frau Vogt, danke für die Rückfrage. Aktuell bin ich mit Nordwind Studio gut ausgelastet und suche nicht aktiv, melde mich aber gerne, falls sich das ändert. Beste Grüße, Selin Kaya\"",
+          "Erledigt, der Entwurf liegt in deinem privaten Postfach als Antwort auf ihre Anfrage: kurze, freundliche Absage mit offener Tür für später. Schau kurz drüber, bevor du ihn abschickst.",
       },
     ],
   },
@@ -1863,8 +1959,8 @@ Monatliche Rechnung nach tatsächlichem Aufwand, Zeiterfassung wird auf Anfrage 
 Acme fragt bei praktisch jeder Rechnung nach einer detaillierten Aufschlüsselung — künftig direkt mitschicken statt erst auf Nachfrage.`,
   },
   {
-    filename: "Rechnungsuebersicht-2026-Q2.md",
-    content: `# Rechnungsübersicht Q2 2026 — Nordwind Studio
+    filename: `Rechnungsuebersicht-${new Date().getFullYear()}-Q2.md`,
+    content: `# Rechnungsübersicht Q2 ${new Date().getFullYear()} — Nordwind Studio
 
 | Kunde | Rechnung | Betrag | Status |
 |---|---|---|---|
@@ -1904,7 +2000,7 @@ Von Mara für den Quartalsabschluss benötigt: alle Belege bis Ende der letzten 
 - Speaker-Slot beim Design & Code Meetup im September — Jonas übernimmt, Thema: Markenarbeit für kleine Studios
 - Freelancer-Pool erweitern, Yusuf war zuverlässig, evtl. für größere Projekte fest einplanen
 
-**Offene Punkte:** Preisliste für 2027 vor Jahresende aktualisieren.`,
+**Offene Punkte:** Preisliste für ${new Date().getFullYear() + 1} vor Jahresende aktualisieren.`,
   },
   {
     filename: "Ferienwohnung-Seeblick-Buchung.txt",

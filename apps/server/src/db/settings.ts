@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { isLanguage, type Language } from "@trailin/shared";
+import { isLanguage, THINKING_LEVELS, type Language, type ThinkingLevelSetting } from "@trailin/shared";
 import { db, schema } from "./index.js";
 
 /** Simple key/value settings persisted in SQLite. */
@@ -57,6 +57,23 @@ export async function getEmailWriteSetting(): Promise<boolean> {
   return (await getSetting(EMAIL_WRITE_SETTING_KEY)) === "true";
 }
 
+export const THINKING_LEVEL_SETTING_KEY = "model.thinkingLevel";
+
+/**
+ * How much the model reasons before answering. Defaults to "off"; the agent
+ * re-reads this per prompt, so no session reset is needed when it changes.
+ */
+export async function getThinkingLevelSetting(): Promise<ThinkingLevelSetting> {
+  const value = await getSetting(THINKING_LEVEL_SETTING_KEY);
+  return (THINKING_LEVELS as readonly string[]).includes(value ?? "")
+    ? (value as ThinkingLevelSetting)
+    : "off";
+}
+
+export async function setThinkingLevelSetting(level: ThinkingLevelSetting): Promise<void> {
+  await setSetting(THINKING_LEVEL_SETTING_KEY, level);
+}
+
 export const LIBRARY_FOLDER_SETTING_KEY = "library.folder";
 
 /** The user-chosen library drop folder, or null to fall back to the LIBRARY_PATH env default. */
@@ -100,6 +117,25 @@ export async function setAccountDescriptions(
   descriptions: import("@trailin/shared").AccountDescription[],
 ): Promise<void> {
   await setSetting(ACCOUNT_DESCRIPTIONS_SETTING_KEY, JSON.stringify(descriptions));
+}
+
+export const ACCOUNT_VOICES_SETTING_KEY = "account.voices";
+
+/** All persisted per-account voices (signature + style notes for drafting). */
+export async function getAccountVoices(): Promise<import("@trailin/shared").AccountVoice[]> {
+  const raw = await getSetting(ACCOUNT_VOICES_SETTING_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export async function setAccountVoices(
+  voices: import("@trailin/shared").AccountVoice[],
+): Promise<void> {
+  await setSetting(ACCOUNT_VOICES_SETTING_KEY, JSON.stringify(voices));
 }
 
 export const DEMO_DRAFTS_SETTING_KEY = "demo.drafts";

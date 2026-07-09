@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import type { MemoryEntry } from "@trailin/shared";
+import { MEMORY_MAX_LENGTH, type MemoryEntry } from "@trailin/shared";
 import { emitServerEvent } from "../events.js";
 import { db, schema } from "./index.js";
 
@@ -12,7 +12,8 @@ import { db, schema } from "./index.js";
  * in the document library as a note instead (see library_write).
  */
 
-export const MEMORY_MAX_LENGTH = 300;
+// Re-exported so existing server imports of the cap from this module keep working.
+export { MEMORY_MAX_LENGTH };
 export const MEMORY_MAX_COUNT = 200;
 
 export async function listMemories(): Promise<MemoryEntry[]> {
@@ -35,6 +36,7 @@ export interface CreateMemoryResult {
 export async function createMemory(
   content: string,
   source: MemoryEntry["source"],
+  accountId: string | null = null,
 ): Promise<CreateMemoryResult> {
   const trimmed = content.trim();
   if (!trimmed) throw new Error("memory content must not be empty");
@@ -42,10 +44,12 @@ export async function createMemory(
     throw new Error(`memory content must be at most ${MEMORY_MAX_LENGTH} characters`);
   }
 
+  // Dedup within the same scope only — the same fact may legitimately exist
+  // for two different accounts (or once globally and once account-specific).
   const rows = await db.select().from(schema.memories);
   const target = normalizeForDedup(trimmed);
   for (const row of rows) {
-    if (normalizeForDedup(row.content) === target) {
+    if ((row.accountId ?? null) === accountId && normalizeForDedup(row.content) === target) {
       return { entry: row as MemoryEntry, created: false };
     }
   }
@@ -58,6 +62,7 @@ export async function createMemory(
     id: randomUUID(),
     content: trimmed,
     source,
+    accountId,
     createdAt: now,
     updatedAt: now,
   };
@@ -84,6 +89,8 @@ export async function resolveMemoryId(idOrPrefix: string): Promise<string | null
 export async function updateMemory(
   idOrPrefix: string,
   content: string,
+  /** undefined = keep the current scope; null = make it global. */
+  accountId?: string | null,
 ): Promise<MemoryEntry | null> {
   const id = await resolveMemoryId(idOrPrefix);
   if (!id) return null;
@@ -94,7 +101,11 @@ export async function updateMemory(
   }
   await db
     .update(schema.memories)
-    .set({ content: trimmed, updatedAt: new Date().toISOString() })
+    .set({
+      content: trimmed,
+      updatedAt: new Date().toISOString(),
+      ...(accountId !== undefined ? { accountId } : {}),
+    })
     .where(eq(schema.memories.id, id));
   emitServerEvent("memories");
   const [row] = await db.select().from(schema.memories).where(eq(schema.memories.id, id));

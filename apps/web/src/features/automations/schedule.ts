@@ -52,14 +52,6 @@ export function buildCron({ frequency, time, weekdays, month, day }: SchedulePre
   }
 }
 
-/** True for the fixed-date shape buildCron emits for "date" — a specific
- *  day-of-month and month, matched regardless of weekday. Cron has no year
- *  field, so this recurs annually; the server disables the automation after
- *  its first run so in practice it only fires once. */
-export function isOneOff({ frequency }: SchedulePreset): boolean {
-  return frequency === "date";
-}
-
 /** Reverse of buildCron, for exactly the shapes it emits; anything else → null. */
 export function parseCron(expr: string): SchedulePreset | null {
   const parts = expr.trim().split(/\s+/);

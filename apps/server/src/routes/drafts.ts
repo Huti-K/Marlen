@@ -1,53 +1,98 @@
 import type { FastifyInstance } from "fastify";
-import type { AccountDrafts } from "@trailin/shared";
+import { eq, inArray } from "drizzle-orm";
+import type { AccountDrafts, ConnectedAccount, EmailDraft, EmailThread } from "@trailin/shared";
+import { db, schema } from "../db/index.js";
+import "../email/registerProviders.js";
+import { getDraftProvider, type DraftProvider } from "../email/providers.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
-import { deleteGmailDraft, getGmailDraftDetail, listGmailDrafts } from "../pipedream/gmailDrafts.js";
+import { getGmailThread, updateGmailDraft } from "../pipedream/gmailDrafts.js";
 import { errorMessage } from "../util.js";
 
-/** Resolve a connected Gmail account by its Pipedream account id. */
-async function findGmailAccount(accountId: string) {
+/** Resolve a connected account (any app with a draft provider) by its Pipedream account id. */
+async function findDraftAccount(
+  accountId: string,
+): Promise<{ account: ConnectedAccount; provider: DraftProvider } | null> {
   const accounts = await listAccounts();
-  return accounts.find((a) => a.id === accountId && a.app === "gmail");
+  const account = accounts.find((a) => a.id === accountId);
+  if (!account) return null;
+  const provider = getDraftProvider(account.app);
+  return provider ? { account, provider } : null;
+}
+
+/**
+ * Attach the conversation that created each draft (draft_links), so the UI's
+ * refine action can reopen that exact chat. Joined against conversations so a
+ * deleted chat degrades to "no link" instead of navigating into a dead id.
+ */
+async function attachConversationLinks(byAccount: AccountDrafts[]): Promise<AccountDrafts[]> {
+  const draftIds = byAccount.flatMap((a) => a.drafts.map((d) => d.id));
+  if (draftIds.length === 0) return byAccount;
+
+  const links = await db
+    .select({
+      draftId: schema.draftLinks.draftId,
+      conversationId: schema.draftLinks.conversationId,
+    })
+    .from(schema.draftLinks)
+    .innerJoin(schema.conversations, eq(schema.conversations.id, schema.draftLinks.conversationId))
+    .where(inArray(schema.draftLinks.draftId, draftIds));
+  if (links.length === 0) return byAccount;
+
+  const byDraftId = new Map(links.map((l) => [l.draftId, l.conversationId]));
+  return byAccount.map((account) => ({
+    ...account,
+    drafts: account.drafts.map((draft): EmailDraft => {
+      const conversationId = byDraftId.get(draft.id);
+      return conversationId ? { ...draft, conversationId } : draft;
+    }),
+  }));
 }
 
 export async function draftRoutes(app: FastifyInstance): Promise<void> {
-  /** Live drafts per connected account (Gmail only for now). */
-  app.get("/api/drafts", async (req, reply): Promise<AccountDrafts[] | void> => {
-    if (!(await pipedreamConfigured())) return [];
-    try {
-      const accounts = (await listAccounts()).filter((a) => a.app === "gmail");
-      return await Promise.all(
-        accounts.map(async (account): Promise<AccountDrafts> => {
-          try {
-            return {
-              account: account.name,
-              accountId: account.id,
-              drafts: await listGmailDrafts(account),
-            };
-          } catch (error) {
-            return {
-              account: account.name,
-              accountId: account.id,
-              drafts: [],
-              error: errorMessage(error),
-            };
-          }
-        }),
-      );
-    } catch (error) {
-      req.log.error(error, "listing drafts failed");
-      return reply.code(502).send({ error: errorMessage(error) });
-    }
-  });
+  /** Live drafts per connected account that has a DraftProvider (Gmail, Outlook, ...). */
+  app.get<{ Querystring: { refresh?: string } }>(
+    "/api/drafts",
+    async (req, reply): Promise<AccountDrafts[] | void> => {
+      if (!(await pipedreamConfigured())) return [];
+      const refresh = req.query.refresh === "1";
+      try {
+        const accounts = (await listAccounts()).filter((a) => getDraftProvider(a.app) !== null);
+        const byAccount = await Promise.all(
+          accounts.map(async (account): Promise<AccountDrafts> => {
+            // Filtered above, so this is never null — non-null asserted for TS.
+            const provider = getDraftProvider(account.app)!;
+            try {
+              return {
+                account: account.name,
+                accountId: account.id,
+                drafts: await provider.listDrafts(account, undefined, { refresh }),
+              };
+            } catch (error) {
+              return {
+                account: account.name,
+                accountId: account.id,
+                drafts: [],
+                error: errorMessage(error),
+              };
+            }
+          }),
+        );
+        return await attachConversationLinks(byAccount);
+      } catch (error) {
+        req.log.error(error, "listing drafts failed");
+        return reply.code(502).send({ error: errorMessage(error) });
+      }
+    },
+  );
 
   /** Full draft content for the in-app viewer. */
   app.get<{ Params: { accountId: string; draftId: string } }>(
     "/api/drafts/:accountId/:draftId",
     async (req, reply) => {
       try {
-        const account = await findGmailAccount(req.params.accountId);
-        if (!account) return reply.code(404).send({ error: "account not found" });
-        return await getGmailDraftDetail(account, req.params.draftId);
+        const found = await findDraftAccount(req.params.accountId);
+        if (!found) return reply.code(404).send({ error: "account not found" });
+        return await found.provider.getDraftDetail(found.account, req.params.draftId);
       } catch (error) {
         req.log.error(error, "reading draft failed");
         return reply.code(502).send({ error: errorMessage(error) });
@@ -60,12 +105,68 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
     "/api/drafts/:accountId/:draftId",
     async (req, reply) => {
       try {
-        const account = await findGmailAccount(req.params.accountId);
-        if (!account) return reply.code(404).send({ error: "account not found" });
-        await deleteGmailDraft(account, req.params.draftId);
+        const found = await findDraftAccount(req.params.accountId);
+        if (!found) return reply.code(404).send({ error: "account not found" });
+        await found.provider.deleteDraft(found.account, req.params.draftId);
         return { ok: true };
       } catch (error) {
         req.log.error(error, "deleting draft failed");
+        return reply.code(502).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  /**
+   * Save body/subject edits to an existing draft, exactly as typed — no
+   * humanizer, no signature (those only run in the agent's create-draft
+   * tool). Gmail-only for now, like getGmailThread below; other providers
+   * would need their own rebuild-the-message logic before this can widen.
+   */
+  app.patch<{
+    Params: { accountId: string; draftId: string };
+    Body: { body?: string; subject?: string };
+  }>("/api/drafts/:accountId/:draftId", async (req, reply) => {
+    try {
+      const found = await findDraftAccount(req.params.accountId);
+      if (!found) return reply.code(404).send({ error: "account not found" });
+      if (found.account.app !== "gmail") {
+        return reply.code(400).send({ error: "editing a draft is only supported for Gmail accounts" });
+      }
+      await updateGmailDraft(found.account, req.params.draftId, {
+        body: req.body.body,
+        subject: req.body.subject,
+      });
+      return { ok: true };
+    } catch (error) {
+      req.log.error(error, "updating draft failed");
+      return reply.code(502).send({ error: errorMessage(error) });
+    }
+  });
+
+  /**
+   * The full email thread a draft belongs to, for the in-app viewer. Gmail-only
+   * for now. `excludeMessageId` omits the draft's own message, which Gmail
+   * counts as part of the thread it replies to.
+   */
+  app.get<{
+    Params: { accountId: string; threadId: string };
+    Querystring: { excludeMessageId?: string };
+  }>(
+    "/api/threads/:accountId/:threadId",
+    async (req, reply): Promise<EmailThread | void> => {
+      try {
+        const found = await findDraftAccount(req.params.accountId);
+        if (!found) return reply.code(404).send({ error: "account not found" });
+        if (found.account.app !== "gmail") {
+          return reply.code(400).send({ error: "reading a thread is only supported for Gmail accounts" });
+        }
+        const exclude = req.query.excludeMessageId?.trim();
+        const messages = await getGmailThread(found.account, req.params.threadId, {
+          ...(exclude ? { excludeMessageId: exclude } : {}),
+        });
+        return { messages };
+      } catch (error) {
+        req.log.error(error, "reading thread failed");
         return reply.code(502).send({ error: errorMessage(error) });
       }
     },

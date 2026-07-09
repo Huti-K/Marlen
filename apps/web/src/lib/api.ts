@@ -2,6 +2,8 @@ import type {
   AccountColor,
   AccountDescription,
   AccountDrafts,
+  AccountVoice,
+  AccountWaiting,
   AppStatus,
   Automation,
   AutomationRun,
@@ -10,6 +12,7 @@ import type {
   ConnectedAccount,
   ConnectTokenResponse,
   Conversation,
+  EmailThread,
   Language,
   LibraryStatus,
   LlmProviderInfo,
@@ -20,7 +23,18 @@ import type {
   PipedreamConfigInput,
   PipedreamStatus,
   RunFeedItem,
+  SearchResult,
+  ThinkingLevelSetting,
 } from "@trailin/shared";
+
+/** One document match from GET /api/library/search. */
+export interface LibrarySearchHit {
+  id: string;
+  title: string;
+  path: string;
+  ext: string;
+  snippet: string;
+}
 
 /** Throws with the server's `error` message when a response is not ok. */
 async function throwOnError(res: Response): Promise<void> {
@@ -67,6 +81,13 @@ export const api = {
   setEmailWrite: (allowWrite: boolean) =>
     http<{ allowWrite: boolean }>("PUT", "/api/settings/email-write", { allowWrite }),
 
+  thinkingLevel: () =>
+    get<{ thinkingLevel: ThinkingLevelSetting }>("/api/settings/thinking-level"),
+  setThinkingLevel: (thinkingLevel: ThinkingLevelSetting) =>
+    http<{ thinkingLevel: ThinkingLevelSetting }>("PUT", "/api/settings/thinking-level", {
+      thinkingLevel,
+    }),
+
   accountColors: () => get<{ colors: AccountColor[] }>("/api/settings/account-colors"),
   setAccountColors: (colors: AccountColor[]) =>
     http<{ colors: AccountColor[] }>("PUT", "/api/settings/account-colors", { colors }),
@@ -76,6 +97,16 @@ export const api = {
     http<{ descriptions: AccountDescription[] }>("PUT", "/api/settings/account-descriptions", {
       descriptions,
     }),
+  accountVoices: () => get<{ voices: AccountVoice[] }>("/api/settings/account-voices"),
+  saveAccountVoices: (voices: AccountVoice[]) =>
+    http<{ voices: AccountVoice[] }>("PUT", "/api/settings/account-voices", { voices }),
+  // Long-running (30-90s): the server reads the account's sent mail and derives
+  // a signature + style notes.
+  learnAccountVoice: (accountId: string) =>
+    http<{ voice: AccountVoice }>(
+      "POST",
+      `/api/settings/account-voices/${encodeURIComponent(accountId)}/learn`,
+    ),
 
   llmProviders: () => get<LlmProviderInfo[]>("/api/llm/providers"),
   modelSettings: () => get<ModelSettings>("/api/llm/model"),
@@ -106,34 +137,85 @@ export const api = {
   deletePipedreamAccount: (id: string) =>
     http<{ ok: boolean }>("DELETE", `/api/pipedream/accounts/${id}`),
 
-  runsFeed: () => get<RunFeedItem[]>("/api/runs"),
-  drafts: () => get<AccountDrafts[]>("/api/drafts"),
+  /** Global search across chats, digests, drafts, documents and memories (command palette). */
+  search: (q: string) => get<{ results: SearchResult[] }>(`/api/search?q=${encodeURIComponent(q)}`),
+
+  runsFeed: (params?: { q?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{ items: RunFeedItem[]; total: number }>(`/api/runs${suffix}`);
+  },
+  // The pinned automation's latest successful run, for the Home page lead card.
+  // Unlike runsFeed, never filtered by showInActivity and never paginated away.
+  pinnedRun: () => get<{ run: RunFeedItem | null; automation: Automation | null }>("/api/runs/pinned"),
+  drafts: (opts?: { refresh?: boolean }) =>
+    get<AccountDrafts[]>(`/api/drafts${opts?.refresh ? "?refresh=1" : ""}`),
   draftDetail: (accountId: string, draftId: string) =>
     get<{ body: string; cc: string; bcc: string }>(`/api/drafts/${accountId}/${draftId}`),
   deleteDraft: (accountId: string, draftId: string) =>
     http<{ ok: boolean }>("DELETE", `/api/drafts/${accountId}/${draftId}`),
+  // No humanizer/signature — saves exactly what the caller passed.
+  updateDraft: (accountId: string, draftId: string, patch: { body?: string; subject?: string }) =>
+    http<{ ok: boolean }>("PATCH", `/api/drafts/${accountId}/${draftId}`, patch),
+  /** `excludeMessageId` drops the draft's own message — Gmail counts it as part of the thread. */
+  draftThread: (accountId: string, threadId: string, excludeMessageId?: string) =>
+    get<EmailThread>(
+      `/api/threads/${accountId}/${threadId}${
+        excludeMessageId ? `?excludeMessageId=${encodeURIComponent(excludeMessageId)}` : ""
+      }`,
+    ),
+  waiting: () => get<AccountWaiting[]>("/api/waiting"),
 
-  conversations: () => get<Conversation[]>("/api/conversations"),
+  conversations: (params: { q?: string; limit?: number; offset?: number } = {}) => {
+    const search = new URLSearchParams();
+    if (params.q) search.set("q", params.q);
+    if (params.limit !== undefined) search.set("limit", String(params.limit));
+    if (params.offset !== undefined) search.set("offset", String(params.offset));
+    const qs = search.toString();
+    return get<{ items: Conversation[]; total: number }>(
+      `/api/conversations${qs ? `?${qs}` : ""}`,
+    );
+  },
   conversationMessages: (id: string) =>
     get<ChatMessage[]>(`/api/conversations/${encodeURIComponent(id)}/messages`),
+  renameConversation: (id: string, title: string) =>
+    http<{ ok: boolean }>("PATCH", `/api/conversations/${encodeURIComponent(id)}`, { title }),
+  deleteConversation: (id: string) =>
+    http<{ ok: boolean }>("DELETE", `/api/conversations/${encodeURIComponent(id)}`),
 
   automations: () => get<Automation[]>("/api/automations"),
   createAutomation: (body: { name: string; instruction: string; schedule: string; showInActivity?: boolean }) =>
     http<Automation>("POST", "/api/automations", body),
   updateAutomation: (id: string, body: Partial<Automation>) =>
     http<Automation>("PATCH", `/api/automations/${id}`, body),
+  // Setting pinned true unpins every other automation server-side (exactly one may lead Home).
+  setAutomationPinned: (id: string, pinned: boolean) =>
+    http<Automation>("PATCH", `/api/automations/${id}`, { pinned }),
   deleteAutomation: (id: string) => http<{ ok: boolean }>("DELETE", `/api/automations/${id}`),
   runAutomation: (id: string) => http<{ ok: boolean }>("POST", `/api/automations/${id}/run`),
   automationRuns: (id: string) => get<AutomationRun[]>(`/api/automations/${id}/runs`),
 
   memories: () => get<MemoryEntry[]>("/api/memories"),
-  addMemory: (content: string) => http<MemoryEntry>("POST", "/api/memories", { content }),
-  updateMemory: (id: string, content: string) =>
-    http<MemoryEntry>("PUT", `/api/memories/${id}`, { content }),
+  // `accountId` is only sent when the caller passes it explicitly — omitting it
+  // must not appear in the JSON body, so the server keeps the entry's current scope.
+  addMemory: (content: string, accountId?: string | null) =>
+    http<MemoryEntry>(
+      "POST",
+      "/api/memories",
+      accountId !== undefined ? { content, accountId } : { content },
+    ),
+  updateMemory: (id: string, content: string, accountId?: string | null) =>
+    http<MemoryEntry>(
+      "PUT",
+      `/api/memories/${id}`,
+      accountId !== undefined ? { content, accountId } : { content },
+    ),
   deleteMemory: (id: string) => http<{ ok: boolean }>("DELETE", `/api/memories/${id}`),
 
   library: () => get<LibraryStatus>("/api/library"),
-  libraryScan: () => http<LibraryStatus>("POST", "/api/library/scan"),
   setLibraryFolder: (folder: string) =>
     http<LibraryStatus>("PUT", "/api/library/folder", { folder }),
   // Opens the OS's native folder dialog on the server's machine; the request
@@ -142,6 +224,8 @@ export const api = {
     http<LibraryStatus | { canceled: true }>("POST", "/api/library/folder/pick"),
   deleteLibraryDocument: (id: string) =>
     http<LibraryStatus>("DELETE", `/api/library/documents/${id}`),
+  searchLibrary: (q: string) =>
+    get<{ results: LibrarySearchHit[] }>(`/api/library/search?q=${encodeURIComponent(q)}`),
   // Raw file body (not JSON), so this bypasses the `http` helper.
   uploadLibraryFile: async (file: File): Promise<LibraryStatus> => {
     const res = await fetch(`/api/library/files?name=${encodeURIComponent(file.name)}`, {

@@ -1,55 +1,96 @@
 import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useTranslation } from "react-i18next";
+import { Mail } from "lucide-react";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 const components: Components = {
-  p: ({ children }) => <p className="leading-relaxed">{children}</p>,
-  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  a: ({ children, ...props }) => (
-    <a
-      {...props}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-accent underline underline-offset-2 hover:no-underline"
-    >
-      {children}
-    </a>
-  ),
-  ul: ({ children }) => <ul className="list-disc space-y-1 pl-5">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal space-y-1 pl-5">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  h1: ({ children }) => <h1 className="font-semibold tracking-tight">{children}</h1>,
-  h2: ({ children }) => <h2 className="font-semibold tracking-tight">{children}</h2>,
-  h3: ({ children }) => <h3 className="font-semibold tracking-tight">{children}</h3>,
+  p: ({ children }) => <p className="leading-relaxed text-foreground/90">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+  a: ({ children, href, ...props }) => {
+    const { t } = useTranslation();
+
+    if (href?.includes("mail.google.com")) {
+      return (
+        <a
+          {...props}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-0.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-2/80 active:bg-surface-2/60 align-baseline mx-0.5"
+          title={t("markdown.openInMailbox")}
+        >
+          <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+          <span>{children}</span>
+        </a>
+      );
+    }
+
+    if (href?.startsWith("mailto:")) {
+      return (
+        <a
+          {...props}
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            const email = href.replace("mailto:", "");
+            navigator.clipboard.writeText(email);
+            toast.success(t("markdown.copiedToClipboard", { email }));
+          }}
+          className="font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:decoration-accent"
+          title={t("markdown.copyEmailAddress")}
+        >
+          {children}
+        </a>
+      );
+    }
+
+    return (
+      <a
+        {...props}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-accent underline decoration-accent/30 underline-offset-4 transition-colors hover:decoration-accent"
+      >
+        {children}
+      </a>
+    );
+  },
+  ul: ({ children }) => <ul className="my-2 ml-5 list-disc space-y-1.5 marker:text-accent/80">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 ml-5 list-decimal space-y-1.5 marker:text-muted-foreground/80">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed text-foreground/90 pl-1">{children}</li>,
+  h1: ({ children }) => <h1 className="mt-6 mb-3 text-xl font-semibold tracking-tight text-foreground">{children}</h1>,
+  h2: ({ children }) => <h2 className="mt-5 mb-2 text-lg font-semibold tracking-tight text-foreground">{children}</h2>,
+  h3: ({ children }) => <h3 className="mt-4 mb-2 text-base font-semibold tracking-tight text-foreground">{children}</h3>,
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-muted-foreground/25 pl-3 text-muted-foreground">
+    <blockquote className="my-3 border-l-2 border-muted-foreground/30 pl-4 text-[0.95em] text-muted-foreground italic">
       {children}
     </blockquote>
   ),
-  hr: () => <hr className="border-muted-foreground/20" />,
+  hr: () => <hr className="my-6 border-border/40" />,
   code: ({ children, ...props }) => (
-    <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[0.9em]" {...props}>
+    <code className="rounded bg-surface-2/60 px-1.5 py-0.5 font-mono text-[0.85em] text-foreground/80" {...props}>
       {children}
     </code>
   ),
-  // Block code is <pre><code>; style the wrapper and neutralize the nested
-  // <code> so it doesn't double up on background/padding.
   pre: ({ children }) => (
-    <pre className="overflow-x-auto rounded-lg bg-surface-2 p-3 font-mono text-[0.85em] leading-relaxed [&_code]:bg-transparent [&_code]:p-0">
+    <pre className="my-4 overflow-x-auto rounded-lg bg-surface-2/40 p-4 font-mono text-[0.85em] leading-relaxed [&_code]:bg-transparent [&_code]:p-0">
       {children}
     </pre>
   ),
   table: ({ children }) => (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left">{children}</table>
+    <div className="my-4 overflow-x-auto">
+      <table className="w-full border-collapse text-left text-sm">{children}</table>
     </div>
   ),
   th: ({ children }) => (
-    <th className="border-b border-muted-foreground/20 px-2 py-1 font-medium">{children}</th>
+    <th className="border-b border-muted-foreground/20 px-3 py-2 font-medium text-muted-foreground">{children}</th>
   ),
   td: ({ children }) => (
-    <td className="border-b border-muted-foreground/10 px-2 py-1 align-top">{children}</td>
+    <td className="border-b border-muted-foreground/10 px-3 py-2 align-top">{children}</td>
   ),
 };
 

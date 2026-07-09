@@ -31,7 +31,7 @@ export function Dialog({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-sm" />
+        <DialogPrimitive.Overlay className="scrim fixed inset-0 z-[110]" />
         <DialogPrimitive.Content
           className={cn(
             "surface-soft fixed left-1/2 top-1/2 z-[120] flex max-h-[85vh] w-[calc(100%-2.5rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-4 p-5",

@@ -11,10 +11,63 @@ import {
   setLibraryFolder,
 } from "../library/ingest.js";
 import { pickFolder } from "../library/pickFolder.js";
-import { getDocument, listDocuments } from "../library/store.js";
+import { getDocument, listDocuments, searchChunks, type SearchHit } from "../library/store.js";
 import { errorMessage } from "../util.js";
 
 const UPLOAD_LIMIT = 64 * 1024 * 1024;
+
+export interface LibrarySearchHit {
+  id: string;
+  title: string;
+  path: string;
+  ext: string;
+  snippet: string;
+}
+
+// Over-fetch chunk-level hits so collapsing them to one entry per document
+// still leaves close to SEARCH_DOC_LIMIT distinct documents.
+const SEARCH_DOC_LIMIT = 20;
+const SEARCH_CHUNK_LIMIT = 80;
+
+/** Collapse whitespace and cap length, breaking on a word boundary. */
+function trimSnippet(value: string, max = 200): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= max) return collapsed;
+  return `${collapsed.slice(0, max - 1).trimEnd()}…`;
+}
+
+/** BM25 chunk search collapsed to one best-ranked hit per document. */
+function searchDocuments(q: string): LibrarySearchHit[] {
+  let hits: SearchHit[];
+  try {
+    hits = searchChunks(q, SEARCH_CHUNK_LIMIT);
+  } catch {
+    // buildMatch() already quotes extracted terms, but guard here too in
+    // case the FTS5 engine still rejects the input — retry sanitized rather
+    // than letting the request 500.
+    try {
+      hits = searchChunks(q.replace(/[^\p{L}\p{N}\s]/gu, " "), SEARCH_CHUNK_LIMIT);
+    } catch {
+      hits = [];
+    }
+  }
+
+  const seen = new Set<string>();
+  const results: LibrarySearchHit[] = [];
+  for (const hit of hits) {
+    if (seen.has(hit.documentId)) continue;
+    seen.add(hit.documentId);
+    results.push({
+      id: hit.documentId,
+      title: hit.title,
+      path: hit.path,
+      ext: hit.ext,
+      snippet: trimSnippet(hit.snippet),
+    });
+    if (results.length >= SEARCH_DOC_LIMIT) break;
+  }
+  return results;
+}
 
 /** Map file extension to a browser-friendly MIME type. */
 function mimeForExt(ext: string): string {
@@ -52,6 +105,12 @@ export async function libraryRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get("/api/library", async () => status());
+
+  app.get<{ Querystring: { q?: string } }>("/api/library/search", async (req) => {
+    const q = (req.query.q ?? "").trim();
+    if (!q) return { results: [] };
+    return { results: searchDocuments(q) };
+  });
 
   app.put<{ Body: { folder?: string } }>("/api/library/folder", async (req, reply) => {
     try {

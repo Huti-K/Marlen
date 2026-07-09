@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Check } from "lucide-react";
 
@@ -9,6 +10,7 @@ export function Select({
   onChange,
   options,
   className,
+  placeholder,
   "aria-label": ariaLabel,
 }: {
   id: string;
@@ -16,8 +18,11 @@ export function Select({
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   className?: string;
+  /** Shown when nothing is selected yet; defaults to a localized "Select…". */
+  placeholder?: string;
   "aria-label"?: string;
 }) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -59,7 +64,7 @@ export function Select({
             setSearch("");
           }}
           className="field h-9 w-full px-3 text-sm pr-8"
-          placeholder={selectedOption?.label || "Select..."}
+          placeholder={selectedOption?.label || placeholder || t("ui.select.placeholder")}
           autoComplete="off"
         />
         <ChevronDown 
@@ -71,7 +76,7 @@ export function Select({
         <div className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-md border border-surface bg-surface-2 p-1 shadow-md">
           {filteredOptions.length === 0 ? (
             <div className="p-2 text-center text-sm text-muted-foreground">
-              No results found.
+              {t("ui.select.noResults")}
             </div>
           ) : (
             filteredOptions.map((option) => (

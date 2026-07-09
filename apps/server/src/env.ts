@@ -11,6 +11,9 @@ const demoMode = optional("TRAILIN_DEMO") === "1";
 export const env = {
   port: Number(optional("PORT") ?? 3001),
   demoMode,
+  isProduction: process.env.NODE_ENV === "production",
+  /** pino level: fatal | error | warn | info | debug | trace | silent. */
+  logLevel: optional("LOG_LEVEL") ?? "info",
   // Demo mode defaults to a sibling database file so it can never touch the
   // user's real data — an explicit DATABASE_PATH still always wins.
   databasePath:

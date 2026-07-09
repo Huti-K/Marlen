@@ -53,11 +53,36 @@ bare or `surface-2` on hover — that is the maximum depth.
 ## Shape & elevation
 
 - Radius: `--radius` (0.7rem ≈ 11px) for panels/inputs/buttons; smaller for chips. No
-  `rounded-full` on containers or primary buttons — pills are reserved for status badges
-  only.
+  `rounded-full` on primary buttons or in-flow containers — pills are reserved for status
+  badges, filter chips (the shared `Chip`), and floating chrome (the dock).
 - **Shadows are almost invisible.** Only elevated `surface` panels (composer, popover-like
   blocks) get a soft, low-opacity, warm-tinted shadow to lift them off the canvas without
   a line. Flat sections get none.
+
+## Floating chrome — dock, dialogs & command palette
+
+Elements that float *over* content (the dock nav, dialogs, the Cmd+K palette) get
+deeper elevation: a soft high-blur shadow lifts the panel, and everything modal shares
+the `.scrim` backdrop — a light dim plus a **2px** backdrop blur. Backdrop blur is
+welcome on floating chrome and scrims; just keep it turned down. The page underneath
+should stay readable through it, never frost over. Everything else about floating
+panels still follows the rules above:
+
+- **Zones inside a floating panel separate by tone, never by line.** The palette's
+  preview pane and footer are recessed fills (`surface-2/50`) on the panel surface —
+  the borderless equivalent of a divider.
+- **Loading is an accent sweep, not a spinner swap.** While a query is in flight the
+  previous results stay on screen and a thin accent bar sweeps; the strip is invisible
+  at rest.
+- **Matched text** is marked with the same pale accent tint as `::selection`
+  (`accent` at ~22%), so "found" and "selected" read as one idea.
+
+## Texture
+
+- A fixed, near-invisible SVG grain overlays the whole app (`body::before`,
+  soft-light) so large surfaces read as paper, not flat vector.
+- Scrollbars are thin, trackless, and rounded; `scrollbar-gutter: stable` wherever a
+  list can grow, so nothing shifts when one appears.
 
 ## Layout & motion
 
@@ -74,4 +99,10 @@ bare or `surface-2` on hover — that is the maximum depth.
 - **Buttons:** `default` = ink fill; `secondary`/`ghost` = subtle tonal fills; there is
   **no** outline variant (it maps to a tonal fill).
 - **Badges:** pill, pastel tonal fill, no border.
+- **Filter chips:** the shared `Chip` (`ui/chip.tsx`) — pill, ink fill when active,
+  recessed `surface-2` fill otherwise. Every "pick one/many" row uses it; never restyle
+  a one-off.
+- **Keyboard hints:** the shared `Kbd` chip — tiny `surface-2` rounded square. Shown in
+  the palette footer and on the header search trigger; any new shortcut surfaces the
+  same way.
 - **Lists:** rows separated by spacing or a hover fill, never a divider line.
