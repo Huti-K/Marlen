@@ -1,22 +1,36 @@
 import * as React from "react";
 import { ChevronDown, ChevronUp, MessageSquareShare, RefreshCw, Sunrise } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { RunFeedItem } from "@trailin/shared";
+import type { AccountColor, AgentCard, RunFeedItem } from "@trailin/shared";
 import type { View } from "@/lib/nav";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/feedback";
+import { BriefingCard } from "@/features/chat/cards/BriefingCard";
 import { DigestView, parseDigest } from "@/features/automations/DigestView";
 import { openRunInChat } from "@/lib/runNavigation";
 import { cn, errorMessage } from "@/lib/utils";
 
-/** Count of ⚠️-flagged items across every account section of a digest run —
- *  exported so GlanceStrip's urgent figure never drifts from this card's own
- *  badge. */
-export function countUrgentItems(result: string): number {
-  return parseDigest(result).accounts.reduce(
+type BriefingCardData = Extract<AgentCard, { kind: "briefing" }>;
+
+/** The run's structured briefing card, if its turn produced one — a run from
+ *  before `compose_briefing` shipped has no `cards` and falls through. */
+export function findBriefingCard(run: RunFeedItem): BriefingCardData | undefined {
+  const match = run.cards?.find((c) => c.card.kind === "briefing");
+  return match ? (match.card as BriefingCardData) : undefined;
+}
+
+/** Count of urgent items in a briefing run — exported so GlanceStrip's urgent
+ *  figure never drifts from this card's own badge. Prefers the structured
+ *  card's own `items`; a run that predates the card (or never got matched to
+ *  one) falls back to reverse-parsing the ⚠️-flagged bullets out of the
+ *  legacy markdown digest. */
+export function countUrgentItems(run: RunFeedItem): number {
+  const briefing = findBriefingCard(run);
+  if (briefing) return briefing.items.filter((item) => item.priority === "urgent").length;
+  return parseDigest(run.result).accounts.reduce(
     (n, section) => n + section.items.filter((item) => item.urgent).length,
     0,
   );
@@ -25,7 +39,10 @@ export function countUrgentItems(result: string): number {
 /**
  * The flagship "Today's briefing" card — the most recent successful,
  * digest-shaped automation run (see HomePanel's heroRun selection), shown
- * expanded above the rest of the activity feed.
+ * expanded above the rest of the activity feed. Three-tier degrade for the
+ * body: a structured `BriefingCard` when the run's turn produced one, else
+ * the legacy `DigestView` markdown reverse-parse, else (inside DigestView)
+ * plain markdown — so runs from every era keep rendering.
  */
 export function BriefingHero({
   run,
@@ -44,8 +61,17 @@ export function BriefingHero({
   const [expanded, setExpanded] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [colors, setColors] = React.useState<AccountColor[]>([]);
 
-  const urgentCount = React.useMemo(() => countUrgentItems(run.result), [run.result]);
+  React.useEffect(() => {
+    api
+      .accountColors()
+      .then((r) => setColors(r.colors))
+      .catch(() => {});
+  }, []);
+
+  const briefingCard = React.useMemo(() => findBriefingCard(run), [run]);
+  const urgentCount = React.useMemo(() => countUrgentItems(run), [run]);
 
   // Cover both "I just clicked refresh" and "a schedule/chat kicked off a run
   // for this automation elsewhere" — either way the spinner should be lit.
@@ -122,7 +148,10 @@ export function BriefingHero({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {urgentCount > 0 && (
+          {/* The briefing card carries this same count in its own stat row, so
+              the header badge would double it up. Keep it while collapsed —
+              there it's the only urgency signal on screen. */}
+          {urgentCount > 0 && !(expanded && briefingCard) && (
             <Badge variant="destructive">{t("home.briefingUrgent", { count: urgentCount })}</Badge>
           )}
           <Button
@@ -152,7 +181,11 @@ export function BriefingHero({
 
       {expanded && (
         <div className="mt-1 border-t border-border/40 pt-3">
-          <DigestView content={run.result} automationName={run.automationName} runDate={run.startedAt} />
+          {briefingCard ? (
+            <BriefingCard card={briefingCard} colors={colors} />
+          ) : (
+            <DigestView content={run.result} automationName={run.automationName} runDate={run.startedAt} />
+          )}
         </div>
       )}
     </Card>

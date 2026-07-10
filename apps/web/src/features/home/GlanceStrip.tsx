@@ -34,7 +34,7 @@ export function GlanceStrip({
   const { t, i18n } = useTranslation();
 
   const draftsCount = drafts?.reduce((n, a) => n + a.drafts.length, 0) ?? 0;
-  const urgentCount = heroRun ? countUrgentItems(heroRun.result) : 0;
+  const urgentCount = heroRun ? countUrgentItems(heroRun) : 0;
   const waitingCount = waiting?.reduce((n, a) => n + a.items.length, 0) ?? 0;
 
   const nextRunAt = React.useMemo(() => {

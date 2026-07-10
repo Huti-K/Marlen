@@ -67,7 +67,11 @@ const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 // the match. The email must be inside the bold span itself — trailing text
 // is appended to the heading but never searched for an email.
 const HEADING_RE = /^\*\*(.+?)\*\*(.*)$/;
-const ITEM_RE = /^-\s*\*\*(.+?)\*\*\s*—\s*(.+?)\s*—\s*(.+)$/;
+// Accepts an em dash, an en dash, or a spaced hyphen as the "— " separator —
+// emailAgent.ts's system prompt tells the model to avoid em/en dashes, so a
+// model that obeys was silently falling through to the plain-markdown
+// fallback below (hasDigestShape returning false) instead of parsing.
+const ITEM_RE = /^-\s*\*\*(.+?)\*\*(?:\s*[—–]\s*|\s-\s)(.+?)(?:\s*[—–]\s*|\s-\s)(.+)$/;
 const URGENT_PREFIX = "⚠️ ";
 
 /** Parses one `- **Sender** — Subject — gist` bullet; null if the line

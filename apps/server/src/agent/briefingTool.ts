@@ -251,6 +251,17 @@ const composeBriefingTool: AgentTool = {
       if (rolledUpCount > 0) summaryParts.push(`${rolledUpCount} messages rolled up`);
       if (draftedCount > 0) summaryParts.push(`${draftedCount} draft${draftedCount === 1 ? "" : "s"} linked`);
 
+      // Items are dropped silently above so one bad entry can't sink the call,
+      // but the model still needs to know it sent something unusable — most
+      // often a missing threadId, which is exactly what breaks the row actions.
+      const dropped = rawItems.length - items.length;
+      if (dropped > 0) {
+        summaryParts.push(
+          `${dropped} item${dropped === 1 ? "" : "s"} dropped for a missing threadId, sender, ` +
+            `subject or gist`,
+        );
+      }
+
       const confirmation =
         `${summaryParts.join(", ")}. The user is now looking at this card. Do not repeat the ` +
         `items in prose — close with two or three sentences naming what needs them first and ` +

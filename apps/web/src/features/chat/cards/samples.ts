@@ -131,6 +131,87 @@ const DRAFT_CARD: AgentCard = {
   },
 };
 
+/** The structured Morning-briefing card — flat and cross-account, mixing the
+ *  work and personal demo inboxes so the priority-first layout has something
+ *  to prove. Reuses the Acme thread/draft ids from HITS_CARD/DRAFT_CARD and
+ *  the Seeblick thread id from THREAD_CARD, so the "Review draft"/"Ask about
+ *  this" quick actions land on the same demo data those cards already show. */
+const BRIEFING_CARD: AgentCard = {
+  kind: "briefing",
+  headline: "Zwei Dinge brauchen dich heute.",
+  periodLabel: "seit gestern Morgen",
+  accounts: [WORK_ACCOUNT, PERSONAL_ACCOUNT],
+  scanned: 43,
+  items: [
+    {
+      threadId: "thread-acme-2291",
+      accountId: "demo-work",
+      sender: "Thomas Brandt",
+      senderEmail: "t.brandt@acme-gmbh.de",
+      subject: "Re: Rechnung #A-2291 – Zahlungserinnerung",
+      gist: "Bittet erneut um die Rechnung als PDF, sonst folgt eine Mahngebühr.",
+      priority: "urgent",
+      deadline: "Freitag 17:00",
+      draftId: "draft-acme-2291-reply",
+    },
+    {
+      threadId: "thread-seeblick-august",
+      accountId: "demo-personal",
+      sender: "Sabine Möller",
+      senderEmail: "sabine.moeller@seeblick-ferien.de",
+      subject: "Ferienwohnung Seeblick – Buchung im August",
+      gist: "Fragt nach der Adresse für die Buchungsbestätigung.",
+      priority: "reply",
+    },
+    {
+      threadId: "thread-rebrand-elif",
+      accountId: "demo-work",
+      sender: "Elif Aydın",
+      subject: "Angebot Rebranding – Rückfragen",
+      gist: "Möchte vor der Freigabe zwei Layout-Varianten sehen.",
+      priority: "reply",
+    },
+    {
+      threadId: "thread-zahnarzt",
+      accountId: "demo-personal",
+      sender: "Zahnarztpraxis Dr. Yıldız",
+      subject: "Terminerinnerung nächste Woche",
+      gist: "Termin muss bis Mittwoch bestätigt oder abgesagt werden.",
+      priority: "action",
+      deadline: "Mittwoch",
+    },
+    {
+      threadId: "thread-team-update",
+      accountId: "demo-work",
+      sender: "Team Nordwind",
+      subject: "Wöchentliches Update",
+      gist: "Kurzer Statusbericht, keine Rückmeldung nötig.",
+      priority: "fyi",
+    },
+    {
+      threadId: "thread-fitzone-hours",
+      accountId: "demo-personal",
+      sender: "FitZone Studio",
+      subject: "Neue Öffnungszeiten ab August",
+      gist: "Reine Information, keine Handlung nötig.",
+      priority: "fyi",
+    },
+  ],
+  rollups: [
+    {
+      accountId: "demo-work",
+      label: "Newsletter & Angebote",
+      count: 12,
+      examples: ["Spotify", "Duolingo", "Zalando"],
+    },
+    {
+      accountId: "demo-personal",
+      label: "Quittungen",
+      count: 5,
+    },
+  ],
+};
+
 /** A digest-style reply exercising the markdown vocabulary: heading, bold, mailto, list, table, link. */
 const MARKDOWN_SAMPLE = `### Was heute wichtig ist
 
@@ -158,6 +239,7 @@ export const SHOWCASE_TURNS: ShowcaseTurn[] = [
     ],
   },
   { cards: [HITS_CARD, THREAD_CARD, DRAFT_CARD, EMPTY_HITS_CARD] },
+  { cards: [BRIEFING_CARD] },
   { content: MARKDOWN_SAMPLE },
   { thinking: true },
 ];

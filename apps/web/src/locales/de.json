@@ -131,9 +131,7 @@
           "rolledUp_one": "{{count}} zusammengefasst",
           "rolledUp_other": "{{count}} zusammengefasst",
           "scanned_one": "{{count}} geprüft",
-          "scanned_other": "{{count}} geprüft",
-          "scannedOf_one": "von {{count}} geprüft",
-          "scannedOf_other": "von {{count}} geprüft"
+          "scanned_other": "{{count}} geprüft"
         },
         "rollup": "{{count}} {{label}}"
       }

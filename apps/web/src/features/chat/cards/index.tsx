@@ -1,4 +1,5 @@
 import type { AccountColor, AgentCard, CardAccount } from "@trailin/shared";
+import { BriefingCard } from "./BriefingCard";
 import { EmailDraftCard } from "./EmailDraftCard";
 import { EmailHitsCard } from "./EmailHitsCard";
 import { EmailThreadCard } from "./EmailThreadCard";
@@ -21,6 +22,8 @@ export function AgentCardView({ card, colors }: { card: AgentCard; colors?: Acco
       return <EmailThreadCard card={card} color={hex(card.account)} />;
     case "email_draft":
       return <EmailDraftCard card={card} color={hex(card.account)} />;
+    case "briefing":
+      return <BriefingCard card={card} colors={colors} />;
     default:
       return null;
   }

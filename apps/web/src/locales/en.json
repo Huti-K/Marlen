@@ -131,9 +131,7 @@
           "rolledUp_one": "{{count}} rolled up",
           "rolledUp_other": "{{count}} rolled up",
           "scanned_one": "{{count}} reviewed",
-          "scanned_other": "{{count}} reviewed",
-          "scannedOf_one": "of {{count}} reviewed",
-          "scannedOf_other": "of {{count}} reviewed"
+          "scanned_other": "{{count}} reviewed"
         },
         "rollup": "{{count}} {{label}}"
       }

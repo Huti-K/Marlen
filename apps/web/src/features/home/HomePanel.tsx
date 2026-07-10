@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { DraftRow } from "@/features/home/DraftRow";
-import { BriefingHero } from "@/features/home/BriefingHero";
+import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
 import { GlanceStrip } from "@/features/home/GlanceStrip";
 import { WaitingSection } from "@/features/home/WaitingSection";
 import { DigestView, hasDigestShape, parseDigest } from "@/features/automations/DigestView";
@@ -127,17 +127,25 @@ export function HomePanel({
 
   // The flagship output: the pinned automation's latest successful run, when
   // one is pinned. Otherwise fall back to the most recent successful,
-  // digest-shaped run across all automations, so installs with nothing
+  // briefing-shaped run across all automations, so installs with nothing
   // pinned yet behave exactly as before pinning existed. Sorted explicitly
   // rather than trusting feed order, since that's a server-side detail this
   // component shouldn't depend on.
+  //
+  // A run qualifies two ways, matching BriefingHero's own render fallback: it
+  // carries a structured briefing card, or — for runs predating
+  // compose_briefing — its result text still parses as a markdown digest.
+  // Checking only the latter would hide every new briefing, whose closing
+  // text is now a couple of prose sentences rather than the digest itself.
   const heroRun = React.useMemo(() => {
     if (pinned?.run) return pinned.run;
     if (!runs) return null;
     let best: RunFeedItem | null = null;
     for (const run of runs) {
-      if (run.status !== "success" || !run.result) continue;
-      if (!hasDigestShape(parseDigest(run.result))) continue;
+      if (run.status !== "success") continue;
+      const isBriefing =
+        !!findBriefingCard(run) || (!!run.result && hasDigestShape(parseDigest(run.result)));
+      if (!isBriefing) continue;
       if (!best || new Date(run.startedAt).getTime() > new Date(best.startedAt).getTime()) {
         best = run;
       }
