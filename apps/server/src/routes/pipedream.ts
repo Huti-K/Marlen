@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PipedreamConfigInput } from "@trailin/shared";
 import "../email/registerProviders.js";
-import { invalidateDraftsCacheEverywhere } from "../email/providers.js";
+import { invalidateDraftsCache } from "../email/draftsService.js";
 import {
   clearConnectSettings,
   createConnectToken,
@@ -10,6 +10,7 @@ import {
   getPipedreamStatus,
   getSavedClientSecret,
   getDefaultApps,
+  invalidateAccountsCache,
   listAccounts,
   saveConnectSettings,
   searchApps,
@@ -86,7 +87,11 @@ export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/pipedream/accounts", async (req, reply) => {
     try {
-      return await listAccounts();
+      // This is the Settings/Connections screen, which refetches right after
+      // the user finishes linking a new account in the Connect popup — it
+      // must see that account immediately, and a forced refresh here
+      // repopulates the shared cache for everyone else's next default-path call too.
+      return await listAccounts({ refresh: true });
     } catch (error) {
       req.log.error(error, "listing accounts failed");
       return reply.code(502).send({ error: errorMessage(error) });
@@ -125,9 +130,9 @@ export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
       await deleteAccount(req.params.id);
       // Live agents may hold tools for the removed account.
       await resetSessions();
-      // The account's app slug is gone along with it, so sweep every
-      // provider's drafts cache rather than looking the app up first.
-      invalidateDraftsCacheEverywhere(req.params.id);
+      invalidateDraftsCache(req.params.id);
+      // The account list itself just changed.
+      invalidateAccountsCache();
       return { ok: true };
     } catch (error) {
       req.log.error(error, "deleting account failed");

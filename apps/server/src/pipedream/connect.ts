@@ -94,6 +94,9 @@ export async function getUseCustom(): Promise<boolean> {
 
 export async function setUseCustom(useCustom: boolean): Promise<void> {
   await setSetting(KEYS.useCustom, String(useCustom));
+  // Switching modes switches which Pipedream project's accounts are "the"
+  // accounts — the cache from the old mode would otherwise leak into the new one.
+  invalidateAccountsCache();
 }
 
 /** Resolve the active credentials for the selected mode (null = not usable yet). */
@@ -150,11 +153,15 @@ export async function saveConnectSettings(input: {
   await setSetting(KEYS.clientSecret, input.clientSecret);
   await setSetting(KEYS.projectId, input.projectId);
   await setSetting(KEYS.environment, input.environment);
+  // New credentials mean a different Pipedream project/account list —
+  // whatever was cached under the old ones is no longer meaningful.
+  invalidateAccountsCache();
 }
 
 /** Remove app-saved credentials; built-in ones (if any) become active again. */
 export async function clearConnectSettings(): Promise<void> {
   for (const key of Object.values(KEYS)) await deleteSetting(key);
+  invalidateAccountsCache();
 }
 
 /** ---- SDK client (cached; rebuilt when credentials change) ---- */
@@ -235,9 +242,33 @@ export async function createConnectToken(app: string): Promise<ConnectTokenRespo
   };
 }
 
-/** All connected accounts, any app, any number per app. */
-export async function listAccounts(): Promise<ConnectedAccount[]> {
-  if (env.demoMode) return getDemoAccounts();
+/**
+ * `listAccounts` cache: a live Pipedream accounts.list call is a real
+ * round-trip (paginated, one HTTP request per page), and it used to run on
+ * every call — including every browser tab focus, and every one of
+ * /api/status, /api/drafts, /api/waiting and Settings hitting it
+ * independently on the same page load. A short TTL plus in-flight dedup
+ * turns "N callers on boot" into "one Pipedream request", without ever
+ * serving data older than the TTL.
+ *
+ * Failed fetches never populate `accountsCache` — a broken/rate-limited
+ * Pipedream call simply keeps throwing to its caller (who already handles
+ * that) rather than quietly serving a stale list past its TTL.
+ */
+const ACCOUNTS_TTL_MS = 60_000;
+
+let accountsCache: { accounts: ConnectedAccount[]; expiresAt: number } | null = null;
+// Shared by both the normal path and refresh: concurrent callers (including a
+// refresh landing mid-fetch) join the one request already in flight instead
+// of firing a second one at Pipedream.
+let accountsInFlight: Promise<ConnectedAccount[]> | null = null;
+
+/** Drop the cache so the next call fetches live. Call on anything that changes which accounts exist or which Pipedream project is active. */
+export function invalidateAccountsCache(): void {
+  accountsCache = null;
+}
+
+async function fetchAccountsLive(): Promise<ConnectedAccount[]> {
   const { pd, config } = await getClient();
   const page = await pd.accounts.list({ externalUserId: config.externalUserId });
 
@@ -263,6 +294,35 @@ export async function listAccounts(): Promise<ConnectedAccount[]> {
   }
   // Stable order: oldest first, so tool names stay stable as accounts are added.
   return accounts.sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+}
+
+/**
+ * All connected accounts, any app, any number per app.
+ *
+ * `refresh: true` bypasses a fresh cache entry (used by the Settings/
+ * Connections screen right after linking a new account, so it — and everyone
+ * else's next default-path call — sees the new account immediately) but
+ * still joins an in-flight fetch rather than starting a second one.
+ */
+export async function listAccounts(opts: { refresh?: boolean } = {}): Promise<ConnectedAccount[]> {
+  if (env.demoMode) return getDemoAccounts();
+
+  if (!opts.refresh && accountsCache && accountsCache.expiresAt > Date.now()) {
+    return accountsCache.accounts;
+  }
+
+  if (accountsInFlight) return accountsInFlight;
+
+  accountsInFlight = fetchAccountsLive()
+    .then((accounts) => {
+      accountsCache = { accounts, expiresAt: Date.now() + ACCOUNTS_TTL_MS };
+      return accounts;
+    })
+    .finally(() => {
+      accountsInFlight = null;
+    });
+
+  return accountsInFlight;
 }
 
 /** Search Pipedream's app catalog (for the "connect an account" picker). */
@@ -329,11 +389,12 @@ export async function deleteAccount(accountId: string): Promise<void> {
  * components fall short (e.g. their draft/send components need a paid
  * workspace for attachment handling; the proxy is available on all plans).
  *
- * GET/DELETE take `params` (query string); POST/PUT take `body` (JSON).
+ * GET/DELETE take `params` (query string); POST/PUT/PATCH take `body` (JSON).
+ * PATCH is Microsoft Graph's verb for partial updates (e.g. editing a draft).
  */
 export async function proxyRequest(
   accountId: string,
-  method: "get" | "post" | "put" | "delete",
+  method: "get" | "post" | "put" | "patch" | "delete",
   url: string,
   opts: { params?: Record<string, string>; body?: unknown } = {},
 ): Promise<unknown> {
@@ -347,5 +408,6 @@ export async function proxyRequest(
   if (method === "get") return pd.proxy.get(request);
   if (method === "delete") return pd.proxy.delete(request);
   if (method === "put") return pd.proxy.put({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
+  if (method === "patch") return pd.proxy.patch({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
   return pd.proxy.post({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
 }

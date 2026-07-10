@@ -8,6 +8,7 @@ import { env } from "../env.js";
 import { listMemories } from "../db/memories.js";
 import { listDocuments, searchChunks } from "../library/store.js";
 import "../email/registerProviders.js";
+import { listDraftsCached } from "../email/draftsService.js";
 import { getDraftProvider } from "../email/providers.js";
 import { listAccounts } from "../pipedream/connect.js";
 
@@ -210,9 +211,11 @@ async function searchDrafts(query: string): Promise<SearchResult[]> {
   }
 
   const accounts = (await listAccounts()).filter((a) => getDraftProvider(a.app) !== null);
-  const settled = await Promise.allSettled(
-    accounts.map((account) => getDraftProvider(account.app)!.listDrafts(account)),
-  );
+  // Cached (and, on a stale hit, stale-while-revalidate) rather than a live
+  // fetch — the palette searches drafts on every keystroke, and a live
+  // Gmail/Outlook round-trip per account per keystroke would make it feel
+  // sluggish for no benefit (drafts don't change that fast).
+  const settled = await Promise.allSettled(accounts.map((account) => listDraftsCached(account)));
   for (let i = 0; i < accounts.length; i++) {
     if (results.length >= PER_TYPE_LIMIT) break;
     const outcome = settled[i];

@@ -1,6 +1,7 @@
 import type { ConnectedAccount, WaitingThread } from "@trailin/shared";
 import { env } from "../env.js";
 import { daysAgo } from "../demo/content.js";
+import { registerWaitingProvider } from "../email/waitingProviders.js";
 import { MAILBOX } from "../demo/mailbox.js";
 import { proxyRequest } from "./connect.js";
 
@@ -11,6 +12,10 @@ import { proxyRequest } from "./connect.js";
  * the Connect proxy, a small per-account cache) but is read-only — there's
  * no create/delete counterpart, so there's nothing here to invalidate a
  * cache for.
+ *
+ * Registered as the "gmail" WaitingProvider at the bottom of this file so
+ * routes/waiting.ts reaches it through ../email/waitingProviders.ts's
+ * registry instead of hardcoding the "gmail" app slug.
  */
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -183,3 +188,5 @@ export async function listGmailWaiting(
   waitingCache.set(account.id, items);
   return items;
 }
+
+registerWaitingProvider("gmail", { listWaiting: listGmailWaiting });

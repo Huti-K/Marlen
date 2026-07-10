@@ -3,9 +3,9 @@ import { eq, inArray } from "drizzle-orm";
 import type { AccountDrafts, ConnectedAccount, EmailDraft, EmailThread } from "@trailin/shared";
 import { db, schema } from "../db/index.js";
 import "../email/registerProviders.js";
+import { listDraftsCached } from "../email/draftsService.js";
 import { getDraftProvider, type DraftProvider } from "../email/providers.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
-import { getGmailThread, updateGmailDraft } from "../pipedream/gmailDrafts.js";
 import { errorMessage } from "../util.js";
 
 /** Resolve a connected account (any app with a draft provider) by its Pipedream account id. */
@@ -59,13 +59,11 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
         const accounts = (await listAccounts()).filter((a) => getDraftProvider(a.app) !== null);
         const byAccount = await Promise.all(
           accounts.map(async (account): Promise<AccountDrafts> => {
-            // Filtered above, so this is never null — non-null asserted for TS.
-            const provider = getDraftProvider(account.app)!;
             try {
               return {
                 account: account.name,
                 accountId: account.id,
-                drafts: await provider.listDrafts(account, undefined, { refresh }),
+                drafts: await listDraftsCached(account, { refresh }),
               };
             } catch (error) {
               return {
@@ -119,8 +117,9 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
   /**
    * Save body/subject edits to an existing draft, exactly as typed — no
    * humanizer, no signature (those only run in the agent's create-draft
-   * tool). Gmail-only for now, like getGmailThread below; other providers
-   * would need their own rebuild-the-message logic before this can widen.
+   * tool). `updateDraft` is an optional DraftProvider capability — a provider
+   * without one (no driver written yet) reports 400 rather than assuming
+   * every connected account works like Gmail.
    */
   app.patch<{
     Params: { accountId: string; draftId: string };
@@ -129,10 +128,10 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
     try {
       const found = await findDraftAccount(req.params.accountId);
       if (!found) return reply.code(404).send({ error: "account not found" });
-      if (found.account.app !== "gmail") {
-        return reply.code(400).send({ error: "editing a draft is only supported for Gmail accounts" });
+      if (!found.provider.updateDraft) {
+        return reply.code(400).send({ error: "editing a draft is not supported for this account" });
       }
-      await updateGmailDraft(found.account, req.params.draftId, {
+      await found.provider.updateDraft(found.account, req.params.draftId, {
         body: req.body.body,
         subject: req.body.subject,
       });
@@ -144,9 +143,10 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * The full email thread a draft belongs to, for the in-app viewer. Gmail-only
-   * for now. `excludeMessageId` omits the draft's own message, which Gmail
-   * counts as part of the thread it replies to.
+   * The full email thread a draft belongs to, for the in-app viewer.
+   * `getThread` is an optional DraftProvider capability, same reasoning as
+   * updateDraft above. `excludeMessageId` omits the draft's own message,
+   * which some providers (Gmail) count as part of the thread it replies to.
    */
   app.get<{
     Params: { accountId: string; threadId: string };
@@ -157,11 +157,11 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
       try {
         const found = await findDraftAccount(req.params.accountId);
         if (!found) return reply.code(404).send({ error: "account not found" });
-        if (found.account.app !== "gmail") {
-          return reply.code(400).send({ error: "reading a thread is only supported for Gmail accounts" });
+        if (!found.provider.getThread) {
+          return reply.code(400).send({ error: "reading the thread is not supported for this account" });
         }
         const exclude = req.query.excludeMessageId?.trim();
-        const messages = await getGmailThread(found.account, req.params.threadId, {
+        const messages = await found.provider.getThread(found.account, req.params.threadId, {
           ...(exclude ? { excludeMessageId: exclude } : {}),
         });
         return { messages };

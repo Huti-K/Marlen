@@ -5,7 +5,8 @@ import { daysAgo } from "../demo/content.js";
 import { MAILBOX, resolveThread } from "../demo/mailbox.js";
 import { env } from "../env.js";
 import { emitServerEvent } from "../events.js";
-import { DraftsCache, registerDraftProvider, type DraftProvider } from "../email/providers.js";
+import { invalidateDraftsCache } from "../email/draftsService.js";
+import { registerDraftProvider, type DraftProvider } from "../email/providers.js";
 import { proxyRequest } from "./connect.js";
 
 /**
@@ -18,25 +19,14 @@ import { proxyRequest } from "./connect.js";
  * live agent (pipedream/mcp.ts's buildDraftTool) and demo mode
  * (demo/emailTools.ts, always Gmail) build their create-draft tool from
  * gmailDraftProvider rather than calling anything in this file directly.
+ *
+ * `listGmailDrafts` is a pure live fetch — no caching in here. Caching lives
+ * one layer up in ../email/draftsService.ts, shared across every provider;
+ * every mutation below calls its `invalidateDraftsCache` before emitting
+ * "drafts" so the SSE-driven refetch that follows isn't served the old list.
  */
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
-
-/**
- * Per-account cache for `listGmailDrafts`, so GET /api/drafts doesn't hit
- * Gmail on every poll/SSE-triggered refetch. Only the real (non-demo) path
- * is cached — demo mode already reads from a local settings blob, which is
- * cheap enough not to need it. Failed fetches are never cached (and never
- * overwrite a good entry), so a broken account retries live on the very next
- * request instead of serving stale data — or another account's data — for
- * the rest of the TTL.
- */
-const draftsCache = new DraftsCache();
-
-/** Drop a cached drafts list. Call before emitting "drafts" so the SSE-driven refetch is fresh. */
-export function invalidateGmailDraftsCache(accountId: string): void {
-  draftsCache.invalidate(accountId);
-}
 
 /**
  * Deep link that opens a specific draft in the Gmail web UI.
@@ -101,7 +91,6 @@ function snippetFromBody(body: string): string {
 export async function listGmailDrafts(
   account: ConnectedAccount,
   limit = 15,
-  opts: { refresh?: boolean } = {},
 ): Promise<EmailDraft[]> {
   if (env.demoMode) {
     const store = await getDemoDraftStore();
@@ -112,11 +101,6 @@ export async function listGmailDrafts(
       })
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, limit);
-  }
-
-  if (!opts.refresh) {
-    const cached = draftsCache.get(account.id);
-    if (cached) return cached;
   }
 
   const list = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts`, {
@@ -155,11 +139,9 @@ export async function listGmailDrafts(
     }),
   );
   // Newest first.
-  const drafts = settled
+  return settled
     .filter((d): d is EmailDraft => d !== null)
     .sort((a, b) => b.date.localeCompare(a.date));
-  draftsCache.set(account.id, drafts);
-  return drafts;
 }
 
 interface MessagePart {
@@ -307,13 +289,13 @@ export async function deleteGmailDraft(
     const store = await getDemoDraftStore();
     store[account.id] = (store[account.id] ?? []).filter((d) => d.id !== draftId);
     await setDemoDraftStore(store);
-    invalidateGmailDraftsCache(account.id);
+    invalidateDraftsCache(account.id);
     emitServerEvent("drafts");
     return;
   }
 
   await proxyRequest(account.id, "delete", `${GMAIL_API}/drafts/${draftId}`);
-  invalidateGmailDraftsCache(account.id);
+  invalidateDraftsCache(account.id);
   emitServerEvent("drafts");
 }
 
@@ -394,7 +376,7 @@ export async function createGmailDraft(
     const store = await getDemoDraftStore();
     store[account.id] = [record, ...(store[account.id] ?? [])];
     await setDemoDraftStore(store);
-    invalidateGmailDraftsCache(account.id);
+    invalidateDraftsCache(account.id);
     emitServerEvent("drafts");
     return { draftId: record.id, messageId, threadId };
   }
@@ -411,7 +393,7 @@ export async function createGmailDraft(
     body: { message: { raw, ...(input.threadId ? { threadId: input.threadId } : {}) } },
   })) as { id: string; message: { id: string; threadId: string } };
 
-  invalidateGmailDraftsCache(account.id);
+  invalidateDraftsCache(account.id);
   emitServerEvent("drafts");
   return { draftId: res.id, messageId: res.message.id, threadId: res.message.threadId };
 }
@@ -482,7 +464,7 @@ export async function updateGmailDraft(
     if (input.body !== undefined) record.body = input.body;
     if (input.subject !== undefined) record.subject = input.subject;
     await setDemoDraftStore(store);
-    invalidateGmailDraftsCache(account.id);
+    invalidateDraftsCache(account.id);
     emitServerEvent("drafts");
     return;
   }
@@ -501,7 +483,7 @@ export async function updateGmailDraft(
     body: { message: { raw, ...(current.threadId ? { threadId: current.threadId } : {}) } },
   });
 
-  invalidateGmailDraftsCache(account.id);
+  invalidateDraftsCache(account.id);
   emitServerEvent("drafts");
 }
 
@@ -514,7 +496,8 @@ export const gmailDraftProvider: DraftProvider = {
     return { ...result, webUrl: gmailDraftUrl(account.name, result.messageId) };
   },
   deleteDraft: deleteGmailDraft,
-  invalidateCache: invalidateGmailDraftsCache,
+  updateDraft: updateGmailDraft,
+  getThread: getGmailThread,
 };
 
 registerDraftProvider("gmail", gmailDraftProvider);

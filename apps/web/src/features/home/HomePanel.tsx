@@ -87,23 +87,35 @@ export function HomePanel({
     null,
   );
 
+  // Bumped on every load() call so a stale in-flight load — this refetches on
+  // server-sent events and can overlap a newer call — never applies its
+  // results or error banner after a fresher one has started.
+  const loadToken = React.useRef(0);
+
   const load = React.useCallback(async () => {
     setError(null);
+    const token = ++loadToken.current;
+    const isCurrent = () => loadToken.current === token;
+
+    // Applies each result to its state setter and the cache the instant its
+    // own promise settles, instead of waiting on the slowest of the six —
+    // drafts fans out to live mailbox APIs and can take several seconds cold
+    // while the rest are fast local-DB reads.
+    const apply = <T,>(promise: Promise<T>, onFulfilled: (value: T) => void) =>
+      promise.then((value) => {
+        if (isCurrent()) onFulfilled(value);
+      });
+
     const results = await Promise.allSettled([
-      api.drafts(),
-      api.runsFeed(),
-      api.automations(),
-      api.accountColors(),
-      api.waiting(),
-      api.pinnedRun(),
+      apply(api.drafts(), (v) => setDrafts((cache.drafts = v))),
+      apply(api.runsFeed(), (v) => setRuns((cache.runs = v.items))),
+      apply(api.automations(), (v) => setAutomations((cache.automations = v))),
+      apply(api.accountColors(), (v) => setColors((cache.colors = v.colors))),
+      apply(api.waiting(), (v) => setWaiting((cache.waiting = v))),
+      apply(api.pinnedRun(), (v) => setPinned((cache.pinned = v))),
     ]);
-    const [d, r, a, c, w, p] = results;
-    if (d.status === "fulfilled") setDrafts((cache.drafts = d.value));
-    if (r.status === "fulfilled") setRuns((cache.runs = r.value.items));
-    if (a.status === "fulfilled") setAutomations((cache.automations = a.value));
-    if (c.status === "fulfilled") setColors((cache.colors = c.value.colors));
-    if (w.status === "fulfilled") setWaiting((cache.waiting = w.value));
-    if (p.status === "fulfilled") setPinned((cache.pinned = p.value));
+
+    if (!isCurrent()) return;
     const failed = results.find((x) => x.status === "rejected");
     setError(failed ? errorMessage(failed.reason) : null);
   }, []);

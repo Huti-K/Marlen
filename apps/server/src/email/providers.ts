@@ -1,4 +1,4 @@
-import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import type { ConnectedAccount, EmailDraft, EmailThreadMessage } from "@trailin/shared";
 
 /**
  * Draft-provider abstraction: every mail app Trailin can list/create drafts
@@ -14,6 +14,10 @@ import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
  * Gmail. Adding a provider later is one new file (implementing DraftProvider
  * and calling registerDraftProvider) plus one import line in
  * registerProviders.ts — nothing else changes.
+ *
+ * `listDrafts` implementations are pure live fetches — no caching, no
+ * refresh flag. Caching lives one layer up, in ./draftsService.ts, shared
+ * across every provider instead of duplicated per provider.
  */
 
 export interface CreateDraftInput {
@@ -34,20 +38,31 @@ export interface CreateDraftResult {
   webUrl: string;
 }
 
+/** Body of DraftProvider.updateDraft: only body/subject are overridable. */
+export interface UpdateDraftPatch {
+  body?: string;
+  subject?: string;
+}
+
 export interface DraftProvider {
-  listDrafts(
-    account: ConnectedAccount,
-    limit?: number,
-    opts?: { refresh?: boolean },
-  ): Promise<EmailDraft[]>;
+  listDrafts(account: ConnectedAccount, limit?: number): Promise<EmailDraft[]>;
   getDraftDetail(
     account: ConnectedAccount,
     draftId: string,
   ): Promise<{ body: string; cc: string; bcc: string }>;
   createDraft(account: ConnectedAccount, input: CreateDraftInput): Promise<CreateDraftResult>;
   deleteDraft(account: ConnectedAccount, draftId: string): Promise<void>;
-  /** Drop this account's cached drafts list. Call before emitting "drafts". */
-  invalidateCache(accountId: string): void;
+  /**
+   * Optional capabilities: not every provider can do these (yet), so routes
+   * check for the method rather than assuming any one app. Absent means "not
+   * supported for this account" — the route replies 400, provider-neutral.
+   */
+  updateDraft?(account: ConnectedAccount, draftId: string, patch: UpdateDraftPatch): Promise<void>;
+  getThread?(
+    account: ConnectedAccount,
+    threadId: string,
+    opts?: { excludeMessageId?: string },
+  ): Promise<EmailThreadMessage[]>;
 }
 
 const registry = new Map<string, DraftProvider>();
@@ -60,41 +75,4 @@ export function registerDraftProvider(app: string, provider: DraftProvider): voi
 /** null when `app` has no draft driver yet — callers must handle that, not assume Gmail. */
 export function getDraftProvider(app: string): DraftProvider | null {
   return registry.get(app) ?? null;
-}
-
-/**
- * Sweep every registered provider's cache for one account id. Used on account
- * removal (routes/pipedream.ts), where the caller no longer has the account's
- * app slug handy — a Map delete on a provider that never cached this id is a
- * harmless no-op, so sweeping all of them is simpler than looking the app up
- * first.
- */
-export function invalidateDraftsCacheEverywhere(accountId: string): void {
-  for (const provider of registry.values()) provider.invalidateCache(accountId);
-}
-
-/**
- * Small per-account TTL cache shared by every DraftProvider's `listDrafts`,
- * so GET /api/drafts doesn't hit the provider's API on every poll/SSE-driven
- * refetch. Failed fetches are never cached (callers simply don't call `set`
- * on error), so a broken account retries live on the next request instead of
- * serving stale — or another account's — data for the rest of the TTL.
- */
-export class DraftsCache {
-  private readonly entries = new Map<string, { drafts: EmailDraft[]; expiresAt: number }>();
-
-  constructor(private readonly ttlMs = 60_000) {}
-
-  get(accountId: string): EmailDraft[] | undefined {
-    const cached = this.entries.get(accountId);
-    return cached && cached.expiresAt > Date.now() ? cached.drafts : undefined;
-  }
-
-  set(accountId: string, drafts: EmailDraft[]): void {
-    this.entries.set(accountId, { drafts, expiresAt: Date.now() + this.ttlMs });
-  }
-
-  invalidate(accountId: string): void {
-    this.entries.delete(accountId);
-  }
 }
