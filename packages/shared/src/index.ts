@@ -173,6 +173,11 @@ export interface ChatToolCall {
   isError: boolean;
   done: boolean;
   detail?: string;
+  /** Validated arguments and returned value, available in the expandable activity row. */
+  parameters?: unknown;
+  result?: unknown;
+  /** Character offset in the assistant text at which this call started. */
+  contentOffset?: number;
 }
 
 export interface ChatMessage {
@@ -534,10 +539,10 @@ export type ChatStreamEvent =
   | { type: "conversation"; conversationId: string }
   | { type: "text_delta"; delta: string }
   | { type: "thinking" }
-  | { type: "tool_start"; toolCallId: string; toolName: string }
+  | { type: "tool_start"; toolCallId: string; toolName: string; parameters?: unknown; contentOffset: number }
   /** Progress text from a long-running tool (e.g. delegate's "2/5 tasks done"), between its tool_start and tool_end. */
   | { type: "tool_update"; toolCallId: string; toolName: string; detail: string }
-  | { type: "tool_end"; toolCallId: string; toolName: string; isError: boolean }
+  | { type: "tool_end"; toolCallId: string; toolName: string; isError: boolean; result?: unknown }
   /**
    * A tool returned structured data the chat renders as a component. Emitted
    * between that tool's `tool_start` and `tool_end`. Cards are also persisted

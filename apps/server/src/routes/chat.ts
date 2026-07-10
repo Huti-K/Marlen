@@ -265,19 +265,27 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
               send({ type: "thinking" });
             }
           },
-          onToolStart: (toolCallId, toolName) => {
-            toolCalls.push({ id: toolCallId, name: toolName, isError: false, done: false });
-            send({ type: "tool_start", toolCallId, toolName });
+          onToolStart: (toolCallId, toolName, parameters) => {
+            const contentOffset = streamedText.length;
+            toolCalls.push({
+              id: toolCallId,
+              name: toolName,
+              isError: false,
+              done: false,
+              parameters,
+              contentOffset,
+            });
+            send({ type: "tool_start", toolCallId, toolName, parameters, contentOffset });
           },
           onToolUpdate: (toolCallId, toolName, detail) => {
             const call = toolCalls.find((item) => item.id === toolCallId);
             if (call) call.detail = detail;
             send({ type: "tool_update", toolCallId, toolName, detail });
           },
-          onToolEnd: (toolCallId, toolName, isError) => {
+          onToolEnd: (toolCallId, toolName, isError, result) => {
             const call = toolCalls.find((item) => item.id === toolCallId);
-            if (call) Object.assign(call, { done: true, isError });
-            send({ type: "tool_end", toolCallId, toolName, isError });
+            if (call) Object.assign(call, { done: true, isError, result });
+            send({ type: "tool_end", toolCallId, toolName, isError, result });
           },
           onCard: (toolCallId, card) => {
             currentTurnCards.onCard(toolCallId, card);

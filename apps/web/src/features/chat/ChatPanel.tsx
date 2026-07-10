@@ -9,7 +9,6 @@ import {
   Search,
   Send,
   Trash2,
-  Wrench,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -24,7 +23,6 @@ import { api, streamChat } from "@/lib/api";
 import { AgentCardView } from "@/features/chat/cards";
 import { SHOWCASE_TURNS } from "@/features/chat/cards/samples";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { LoadingRow } from "@/components/ui/feedback";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Markdown } from "@/components/ui/markdown";
@@ -243,7 +241,14 @@ export function ChatPanel({
           thinking: false,
           toolCalls: [
             ...m.toolCalls,
-            { id: event.toolCallId, name: event.toolName, isError: false, done: false },
+            {
+              id: event.toolCallId,
+              name: event.toolName,
+              isError: false,
+              done: false,
+              parameters: event.parameters,
+              contentOffset: event.contentOffset,
+            },
           ],
         }));
         break;
@@ -260,7 +265,7 @@ export function ChatPanel({
           ...m,
           toolCalls: m.toolCalls.map((call) =>
             call.id === event.toolCallId
-              ? { ...call, done: true, isError: event.isError }
+              ? { ...call, done: true, isError: event.isError, result: event.result }
               : call,
           ),
         }));
@@ -435,8 +440,10 @@ export function ChatPanel({
       }));
     } finally {
       if (run.conversationId) runByConversationRef.current.delete(run.conversationId);
-      if (activeRunRef.current === run) activeRunRef.current = null;
-      setBusy(false);
+      if (activeRunRef.current === run) {
+        activeRunRef.current = null;
+        setBusy(false);
+      }
       requestAnimationFrame(() => textareaRef.current?.focus());
     }
   };
@@ -455,6 +462,7 @@ export function ChatPanel({
     setHistoryOpen(false);
     const liveRun = runByConversationRef.current.get(id) ?? null;
     activeRunRef.current = liveRun;
+    setBusy(Boolean(liveRun));
     const cached = messageCacheRef.current.get(id);
     if (cached) {
       messagesRef.current = cached;
@@ -488,6 +496,7 @@ export function ChatPanel({
   const newConversation = React.useCallback(() => {
     activeConversationRef.current = undefined;
     activeRunRef.current = null;
+    setBusy(false);
     messagesRef.current = [];
     setConversationId(undefined);
     setMessages([]);
@@ -587,39 +596,12 @@ export function ChatPanel({
                         : "w-full py-1 text-foreground",
                     )}
                   >
-                    {m.toolCalls.length > 0 && (
-                      <div className={cn("flex flex-wrap gap-1.5", m.content && "mb-2")}>
-                        {m.toolCalls.map((t, i) => (
-                          <Badge
-                            key={`${t.name}-${i}`}
-                            variant={t.isError ? "destructive" : t.done ? "success" : "muted"}
-                          >
-                            <Wrench className="h-3 w-3" />
-                            {t.name}
-                            {!t.done && t.detail && (
-                              <span className="opacity-70">· {t.detail}</span>
-                            )}
-                            {!t.done && <Loader2 className="h-3 w-3 animate-spin" />}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
                     {m.systemPrompt ? (
                       <SystemPromptView prompt={m.systemPrompt} />
-                    ) : m.content ? (
-                      m.role === "assistant" ? (
-                        <Markdown content={m.content} />
-                      ) : (
-                        <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
-                      )
+                    ) : m.role === "assistant" ? (
+                      <AssistantSequence message={m} thinkingLabel={t("chat.thinking")} />
                     ) : (
-                      m.toolCalls.length === 0 && m.streaming && (
-                        <div className="leading-relaxed">
-                          <span className="animate-pulse text-muted-foreground">
-                            {t("chat.thinking")}
-                          </span>
-                        </div>
-                      )
+                      <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
                     )}
                     {m.error && (
                       <div role="alert" className={cn("text-destructive", (m.content || m.toolCalls.length > 0) && "mt-2")}>
@@ -672,6 +654,75 @@ export function ChatPanel({
       </div>
     </div>
   );
+}
+
+function formatToolValue(value: unknown): string {
+  if (value === undefined) return "Not available";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function ToolActivity({ call }: { call: ChatToolCall }) {
+  return (
+    <details className="group my-1 text-xs text-muted-foreground">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 py-0.5 hover:text-foreground">
+        {!call.done && <Loader2 className="h-3 w-3 animate-spin" />}
+        <span>{call.name}</span>
+        {call.detail && !call.done && <span className="truncate opacity-70">· {call.detail}</span>}
+        {call.isError && <span className="text-destructive">· failed</span>}
+      </summary>
+      <div className="mt-1 space-y-2 border-l border-border pl-3">
+        <div>
+          <div className="mb-0.5 font-medium">Parameters</div>
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 font-mono text-[11px] text-foreground">
+            {formatToolValue(call.parameters)}
+          </pre>
+        </div>
+        <div>
+          <div className="mb-0.5 font-medium">Result</div>
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 font-mono text-[11px] text-foreground">
+            {call.done ? formatToolValue(call.result) : "Running…"}
+          </pre>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+/** Keeps visible assistant prose in its actual position around tool calls. */
+function AssistantSequence({ message, thinkingLabel }: { message: DisplayMessage; thinkingLabel: string }) {
+  const calls = [...message.toolCalls].sort(
+    (a, b) => (a.contentOffset ?? 0) - (b.contentOffset ?? 0),
+  );
+  const parts: React.ReactNode[] = [];
+  let offset = 0;
+  for (let i = 0; i < calls.length; ) {
+    const callOffset = Math.max(offset, Math.min(message.content.length, calls[i]?.contentOffset ?? 0));
+    const text = message.content.slice(offset, callOffset);
+    if (text) parts.push(<Markdown key={`text-${i}`} content={text} />);
+    let j = i;
+    while (j < calls.length && (calls[j]?.contentOffset ?? 0) === (calls[i]?.contentOffset ?? 0)) {
+      const call = calls[j];
+      if (call) parts.push(<ToolActivity key={call.id} call={call} />);
+      j++;
+    }
+    offset = callOffset;
+    i = j;
+  }
+  const tail = message.content.slice(offset);
+  if (tail) parts.push(<Markdown key="text-tail" content={tail} />);
+  if (message.streaming && (message.thinking || parts.length === 0)) {
+    parts.push(
+      <div key="thinking" className="animate-pulse leading-relaxed text-muted-foreground">
+        {thinkingLabel}
+      </div>,
+    );
+  }
+  return <>{parts}</>;
 }
 
 function HighlightedPrompt({ text, query }: { text: string; query: string }) {

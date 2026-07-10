@@ -16,10 +16,10 @@ export interface TurnLogger {
 export interface RunHandlers {
   onTextDelta?: (delta: string) => void;
   onThinking?: () => void;
-  onToolStart?: (toolCallId: string, toolName: string) => void;
+  onToolStart?: (toolCallId: string, toolName: string, parameters: unknown) => void;
   /** Progress text a long-running tool streamed via its onUpdate callback (e.g. delegate's "2/5 tasks done"). */
   onToolUpdate?: (toolCallId: string, toolName: string, detail: string) => void;
-  onToolEnd?: (toolCallId: string, toolName: string, isError: boolean) => void;
+  onToolEnd?: (toolCallId: string, toolName: string, isError: boolean, result: unknown) => void;
   /** Fired for a tool_execution_end whose result carries a recognizable AgentCard, before onToolEnd. */
   onCard?: (toolCallId: string, card: AgentCard) => void;
 }
@@ -68,7 +68,7 @@ export async function runPrompt(
       }
       case "tool_execution_start": {
         toolStarts.set(event.toolCallId, Date.now());
-        handlers.onToolStart?.(event.toolCallId, event.toolName);
+        handlers.onToolStart?.(event.toolCallId, event.toolName, event.args);
         break;
       }
       case "tool_execution_update": {
@@ -102,7 +102,7 @@ export async function runPrompt(
         const result = event.result as { details?: unknown } | undefined;
         const card = parseAgentCard(result?.details);
         if (card) handlers.onCard?.(toolCallId, card);
-        handlers.onToolEnd?.(toolCallId, toolName, isError);
+        handlers.onToolEnd?.(toolCallId, toolName, isError, event.result);
         break;
       }
     }
