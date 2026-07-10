@@ -228,6 +228,10 @@ export function ChatPanel({
           setConversationId(event.conversationId);
           localStorage.setItem(LAST_CONVERSATION_KEY, event.conversationId);
         }
+        // The conversation row has already been committed when this stream event
+        // arrives. Invalidate same-tab history directly rather than relying only
+        // on the separate SSE connection, which may still be connecting.
+        window.dispatchEvent(new CustomEvent("trailin:conversations-changed"));
         break;
       case "thinking":
         updateRunAssistant(run, (m) => ({ ...m, thinking: true }));
@@ -569,7 +573,7 @@ export function ChatPanel({
             />
           </div>
         ) : (
-          <div className={cn("flex flex-col gap-4 py-1", isPage && "mx-auto w-full max-w-3xl")}>
+          <div className={cn("flex flex-col gap-4 py-1", isPage && "mx-auto w-full max-w-4xl")}>
             {messages.map((m) => (
               <div
                 key={m.id}
@@ -620,7 +624,7 @@ export function ChatPanel({
       <div
         className={cn(
           "flex items-end gap-2 rounded-2xl bg-surface-2 p-1.5 pl-4",
-          isPage && "mx-auto w-full max-w-3xl",
+          isPage && "mx-auto w-full max-w-4xl",
         )}
       >
         <textarea
@@ -858,6 +862,14 @@ export function HistoryList({
   // New chats and automation runs appear in the list as they happen. Simplest
   // correct behavior for an invalidation: refetch and reset to the first page.
   useServerEvents(["conversations"], load);
+
+  // Chat creation is reported on the request's stream as well as the global
+  // server-event stream. Listen to the local invalidation so a newly submitted
+  // chat appears even if EventSource had not connected when it was created.
+  React.useEffect(() => {
+    window.addEventListener("trailin:conversations-changed", load);
+    return () => window.removeEventListener("trailin:conversations-changed", load);
+  }, [load]);
 
   const loadMore = async () => {
     if (!items) return;
