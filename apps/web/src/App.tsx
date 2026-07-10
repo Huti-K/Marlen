@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { History, Menu, MessagesSquare, Moon, Sun, X, Plus, Search, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { History, Menu, MessagesSquare, Moon, Sun, X, Plus, Search, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isLanguage, isSetupComplete, type AppStatus } from "@trailin/shared";
 import { Sidebar } from "@/components/Sidebar";
@@ -22,6 +22,7 @@ import { rememberLanguage } from "@/lib/i18n";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useTheme } from "@/lib/useTheme";
 import { CursorTooltip } from "@/components/ui/cursor-tooltip";
+import { Dialog } from "@/components/ui/dialog";
 
 /** Set once setup finished (or was skipped); an established app never re-gates. */
 const SETUP_DISMISSED_KEY = "trailin-setup-dismissed";
@@ -76,7 +77,14 @@ export default function App() {
     localStorage.getItem(SETUP_DISMISSED_KEY) ? "closed" : "pending",
   );
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(
+    () => typeof window !== "undefined" && localStorage.getItem("trailin-sidebar-collapsed") === "true",
+  );
   const [chatOpen, setChatOpen] = React.useState(false);
+  const [agentCollapsed, setAgentCollapsed] = React.useState(
+    () => typeof window !== "undefined" && localStorage.getItem("trailin-agent-sidebar-collapsed") === "true",
+  );
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   // Mirrors the ChatPanel's open conversation so the Chat tab's history rail can highlight it.
   const [activeConversationId, setActiveConversationId] = React.useState<string | undefined>();
@@ -143,6 +151,43 @@ export default function App() {
   React.useEffect(() => {
     localStorage.setItem("trailin-chat-history-collapsed", String(historyCollapsed));
   }, [historyCollapsed]);
+
+  React.useEffect(() => {
+    localStorage.setItem("trailin-sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  React.useEffect(() => {
+    localStorage.setItem("trailin-agent-sidebar-collapsed", String(agentCollapsed));
+  }, [agentCollapsed]);
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const mod = event.metaKey || event.ctrlKey;
+      const editable = event.target instanceof HTMLElement &&
+        (event.target.isContentEditable || /^(input|textarea|select)$/i.test(event.target.tagName));
+
+      if (mod && key === "b") {
+        event.preventDefault();
+        if (event.shiftKey) setAgentCollapsed((value) => !value);
+        else setSidebarCollapsed((value) => !value);
+        return;
+      }
+      if (mod && event.shiftKey && event.code === "Digit7") {
+        event.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
+      if (mod && event.shiftKey && event.code === "KeyL") {
+        event.preventDefault();
+        toggleTheme();
+        return;
+      }
+      if (editable || event.metaKey || event.ctrlKey || event.altKey) return;
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleTheme]);
 
   const select = (next: string) => {
     navigate(next === "home" ? "/" : `/${next}`);
@@ -212,6 +257,8 @@ export default function App() {
         <Sidebar
           status={status}
           onClose={() => setMobileOpen(false)}
+          isCollapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
         />
       </div>
 
@@ -268,6 +315,18 @@ export default function App() {
             >
               {theme === "dark" ? <Sun /> : <Moon />}
             </Button>
+            {!onChatRoute && agentCollapsed && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setAgentCollapsed(false)}
+                className="hidden shrink-0 md:inline-flex"
+                aria-label="Expand agent chat sidebar"
+                data-tooltip="Expand agent chat sidebar"
+              >
+                <PanelRightOpen />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -335,7 +394,7 @@ export default function App() {
         aria-label={t("chat.resize")}
         className={cn(
           "group z-40 hidden w-2 shrink-0 cursor-col-resize touch-none items-center justify-center md:flex",
-          onChatRoute && "md:hidden",
+          (onChatRoute || agentCollapsed) && "md:hidden",
         )}
       >
         <div className="h-8 w-1 rounded-full bg-foreground/10 transition-colors group-hover:bg-foreground/30 group-active:bg-accent/60" />
@@ -351,7 +410,8 @@ export default function App() {
           onChatRoute
             ? "static z-auto min-w-0 flex-1 translate-x-0"
             : cn(
-                "fixed inset-y-0 right-0 w-full max-w-sm transition-transform duration-200 ease-out md:static md:z-auto md:w-[var(--chat-width)] md:max-w-none md:translate-x-0",
+                "fixed inset-y-0 right-0 w-full max-w-sm transition-[transform,width] duration-200 ease-out md:static md:z-auto md:max-w-none md:translate-x-0",
+                agentCollapsed ? "md:w-0" : "md:w-[var(--chat-width)]",
                 chatOpen ? "z-50 translate-x-0" : "z-40 translate-x-full md:translate-x-0",
               ),
         )}
@@ -510,6 +570,18 @@ export default function App() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={() => setAgentCollapsed(true)}
+                  className="hidden md:inline-flex"
+                  aria-label="Collapse agent chat sidebar"
+                  data-tooltip="Collapse agent chat sidebar"
+                >
+                  <PanelRightClose />
+                </Button>
+              )}
+              {!onChatRoute && (
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => setChatOpen(false)}
                   className="md:hidden"
                   aria-label={t("app.closeChat")}
@@ -531,6 +603,22 @@ export default function App() {
         </div>
       </div>
 
+      <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} title="Keyboard shortcuts">
+        <div className="divide-y divide-border">
+          {[
+            ["Show keyboard shortcuts", MOD_LABEL, "Shift", "7"],
+            ["Swap light / dark theme", MOD_LABEL, "Shift", "L"],
+            ["Toggle navigation sidebar", MOD_LABEL, "B"],
+            ["Toggle agent chat sidebar", MOD_LABEL, "Shift", "B"],
+            ["Open search", MOD_LABEL, "K"],
+          ].map(([label, ...keys]) => (
+            <div key={label} className="flex items-center justify-between gap-4 py-3 text-sm">
+              <span>{label}</span>
+              <span className="flex gap-1">{keys.map((key) => <Kbd key={key}>{key}</Kbd>)}</span>
+            </div>
+          ))}
+        </div>
+      </Dialog>
       <Toaster />
       <CursorTooltip />
       <SearchPalette />
