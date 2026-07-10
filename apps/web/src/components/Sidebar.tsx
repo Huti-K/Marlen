@@ -11,22 +11,14 @@ import { cn } from "@/lib/utils";
 interface SidebarProps {
   status: AppStatus | null;
   onClose: () => void;
+  isCollapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
 }
 
-export function Sidebar({ status, onClose }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = React.useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("trailin-sidebar-collapsed") === "true";
-    }
-    return false;
-  });
+export function Sidebar({ status, onClose, isCollapsed, onCollapsedChange }: SidebarProps) {
   const { t } = useTranslation();
   const location = useLocation();
   const setupIncomplete = status !== null && !isSetupComplete(status);
-
-  React.useEffect(() => {
-    localStorage.setItem("trailin-sidebar-collapsed", String(isCollapsed));
-  }, [isCollapsed]);
 
   return (
     <aside className={cn("flex h-dvh shrink-0 flex-col bg-sidebar transition-[width] duration-200", isCollapsed ? "w-64 md:w-16" : "w-64")}>
@@ -149,7 +141,7 @@ export function Sidebar({ status, onClose }: SidebarProps) {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={() => onCollapsedChange(!isCollapsed)}
           className={cn("hidden md:flex shrink-0", !isCollapsed && "ml-auto")}
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           data-tooltip={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}

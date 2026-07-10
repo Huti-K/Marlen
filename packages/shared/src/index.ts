@@ -163,6 +163,21 @@ export interface Conversation {
   title: string;
   type?: "chat" | "automation";
   createdAt: string;
+  /** True while the server is producing an assistant turn for this chat. */
+  running?: boolean;
+}
+
+export interface ChatToolCall {
+  id: string;
+  name: string;
+  isError: boolean;
+  done: boolean;
+  detail?: string;
+  /** Validated arguments and returned value, available in the expandable activity row. */
+  parameters?: unknown;
+  result?: unknown;
+  /** Character offset in the assistant text at which this call started. */
+  contentOffset?: number;
 }
 
 export interface ChatMessage {
@@ -173,6 +188,10 @@ export interface ChatMessage {
   createdAt: string;
   /** Structured tool results this turn produced, so restored history re-renders its cards. */
   cards?: MessageCard[];
+  /** Tool activity for assistant turns, persisted alongside cards and text. */
+  toolCalls?: ChatToolCall[];
+  /** Turn-level failure shown inline when a response could not complete. */
+  error?: string;
 }
 
 /** One persisted card of an assistant turn, keyed by the tool call that produced it. */
@@ -520,10 +539,10 @@ export type ChatStreamEvent =
   | { type: "conversation"; conversationId: string }
   | { type: "text_delta"; delta: string }
   | { type: "thinking" }
-  | { type: "tool_start"; toolName: string }
+  | { type: "tool_start"; toolCallId: string; toolName: string; parameters?: unknown; contentOffset: number }
   /** Progress text from a long-running tool (e.g. delegate's "2/5 tasks done"), between its tool_start and tool_end. */
-  | { type: "tool_update"; toolName: string; detail: string }
-  | { type: "tool_end"; toolName: string; isError: boolean }
+  | { type: "tool_update"; toolCallId: string; toolName: string; detail: string }
+  | { type: "tool_end"; toolCallId: string; toolName: string; isError: boolean; result?: unknown }
   /**
    * A tool returned structured data the chat renders as a component. Emitted
    * between that tool's `tool_start` and `tool_end`. Cards are also persisted
