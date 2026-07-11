@@ -4,25 +4,26 @@ import { isLanguage, SUPPORTED_LANGUAGES } from "@trailin/shared";
 import { resetSessions } from "../agent/emailAgent.js";
 import { rescheduleAll } from "../automations/scheduler.js";
 import {
-  EMAIL_WRITE_SETTING_KEY,
   getAccountColors,
   getAccountDescriptions,
-  getEmailWriteSetting,
   getLanguageSetting,
   getTimezoneSetting,
+  getWriteAccessAccounts,
   isValidTimezone,
   LANGUAGE_SETTING_KEY,
   setAccountColors,
   setAccountDescriptions,
   setSetting,
+  setWriteAccessAccounts,
   TIMEZONE_SETTING_KEY,
 } from "../db/settings.js";
+import { badRequest } from "../errors.js";
 
 const languageBody = Type.Object({ language: Type.String() });
 
 const timezoneBody = Type.Object({ timezone: Type.String() });
 
-const emailWriteBody = Type.Object({ allowWrite: Type.Boolean() });
+const writeAccessBody = Type.Object({ accountIds: Type.Array(Type.String()) });
 
 const accountColorsBody = Type.Object({
   colors: Type.Array(Type.Object({ accountId: Type.String(), hex: Type.String() })),
@@ -35,12 +36,10 @@ const accountDescriptionsBody = Type.Object({
 export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/settings/language", async () => ({ language: await getLanguageSetting() }));
 
-  app.put("/api/settings/language", { schema: { body: languageBody } }, async (req, reply) => {
+  app.put("/api/settings/language", { schema: { body: languageBody } }, async (req) => {
     const language = req.body.language;
     if (!isLanguage(language)) {
-      return reply
-        .code(400)
-        .send({ error: `language must be one of: ${SUPPORTED_LANGUAGES.join(", ")}` });
+      throw badRequest(`language must be one of: ${SUPPORTED_LANGUAGES.join(", ")}`);
     }
     await setSetting(LANGUAGE_SETTING_KEY, language);
     // The language lives in the system prompt, so drop in-memory agents —
@@ -51,10 +50,10 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
   app.get("/api/settings/timezone", async () => ({ timezone: await getTimezoneSetting() }));
 
-  app.put("/api/settings/timezone", { schema: { body: timezoneBody } }, async (req, reply) => {
+  app.put("/api/settings/timezone", { schema: { body: timezoneBody } }, async (req) => {
     const timezone = req.body.timezone;
     if (!isValidTimezone(timezone)) {
-      return reply.code(400).send({ error: "timezone must be a valid IANA timezone" });
+      throw badRequest("timezone must be a valid IANA timezone");
     }
     await setSetting(TIMEZONE_SETTING_KEY, timezone);
     // node-cron bakes the timezone into each task when it is created, so the
@@ -66,15 +65,16 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
     return { timezone };
   });
 
-  app.get("/api/settings/email-write", async () => ({
-    allowWrite: await getEmailWriteSetting(),
+  app.get("/api/settings/write-access", async () => ({
+    accountIds: await getWriteAccessAccounts(),
   }));
 
-  app.put("/api/settings/email-write", { schema: { body: emailWriteBody } }, async (req) => {
-    await setSetting(EMAIL_WRITE_SETTING_KEY, String(req.body.allowWrite));
-    // The guard decides which tools get registered — rebuild agent toolsets.
+  app.put("/api/settings/write-access", { schema: { body: writeAccessBody } }, async (req) => {
+    const accountIds = [...new Set(req.body.accountIds)];
+    await setWriteAccessAccounts(accountIds);
+    // The per-account gate decides which tools get registered — rebuild agent toolsets.
     await resetSessions();
-    return { allowWrite: req.body.allowWrite };
+    return { accountIds };
   });
 
   // ---- Account colors ----

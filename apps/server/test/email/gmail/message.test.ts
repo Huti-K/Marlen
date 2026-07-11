@@ -4,7 +4,7 @@ import {
   headerLookup,
   type MessagePart,
   plainTextBody,
-} from "../../src/email/gmailMessage.js";
+} from "../../../src/email/gmail/message.js";
 
 function b64(s: string): string {
   return Buffer.from(s, "utf8").toString("base64url");

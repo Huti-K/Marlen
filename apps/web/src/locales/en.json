@@ -54,6 +54,16 @@
     "noResultsBody": "Nothing here matches “{{query}}”.",
     "clearSearch": "Clear search"
   },
+  "errors": {
+    "network": "Can't reach the server. Check that it's running and try again.",
+    "timeout": "The server took too long to respond. Please try again.",
+    "unavailable": "The server is unavailable right now. Please try again shortly.",
+    "server": "Something went wrong on the server. Please try again.",
+    "notFound": "That couldn't be found. It may have been removed.",
+    "forbidden": "You don't have permission to do that.",
+    "request": "That didn't work. Please try again.",
+    "openSettings": "Open settings"
+  },
   "chat": {
     "newConversation": "New conversation",
     "history": "History",
@@ -89,9 +99,20 @@
       "copy": "Copy",
       "copied": "Copied"
     },
+    "mention": {
+      "empty": "No matching emails.",
+      "loading": "Searching your mail…"
+    },
+    "refs": {
+      "remove": "Remove {{label}}"
+    },
     "cards": {
       "noSubject": "(no subject)",
       "emptyBody": "(empty message)",
+      "addToChat": "Add to chat",
+      "choices": {
+        "title": "Choose one"
+      },
       "hits": {
         "title": "Email search",
         "resultCount_one": "{{count}} result",
@@ -156,8 +177,8 @@
   "search": {
     "openButton": "Search",
     "title": "Search",
-    "placeholder": "Search chats, briefings, drafts, documents, memories…",
-    "hint": "Search across your chats, briefings, drafts, documents and memories.",
+    "placeholder": "Search chats, briefings, drafts, mail, documents, memories…",
+    "hint": "Search across your chats, briefings, drafts, mail, documents and memories.",
     "shortcuts": "Go to",
     "topHit": "Top hit",
     "recent": "Recent",
@@ -176,6 +197,7 @@
       "run": "Open briefing",
       "chat": "Open chat",
       "draft": "Open draft",
+      "mail": "Open in mailbox",
       "document": "Open document",
       "memory": "Open memory"
     },
@@ -183,6 +205,7 @@
       "run": "Briefings",
       "chat": "Chats",
       "draft": "Drafts",
+      "mail": "Mail",
       "document": "Documents",
       "memory": "Memories"
     }
@@ -432,7 +455,7 @@
       },
       "permissions": {
         "title": "Permissions",
-        "description": "What the assistant is allowed to do in your mailbox — sending and changes stay off until you arm them."
+        "description": "What the assistant is allowed to do in your mailbox — access is granted per account, and sending and changes stay off until you arm each one."
       },
       "preferences": {
         "title": "Preferences",
@@ -454,14 +477,15 @@
       }
     },
     "permissions": {
-      "toggle": "Allow sending & changes",
-      "toggleOff": "Read-only: the AI can read, search and create drafts, it can never send, delete or change anything.",
-      "toggleOn": "The AI may send emails and make changes (labels, archiving, deleting) when you ask it to.",
-      "confirmTitle": "Allow the AI to send and change email?",
-      "confirmBody": "Once on, the assistant can send and reply to emails and change your mailbox, archive, label, delete, across every connected account when you ask it to. You can turn this off anytime.",
+      "rowOn": "May send emails and make changes (labels, archiving, deleting) when you ask it to.",
+      "rowOff": "Read-only: the AI can read, search and create drafts here, it can never send, delete or change anything.",
+      "confirmTitle": "Allow the AI to send and change email as {{account}}?",
+      "confirmBody": "Once on, the assistant can send and reply to emails and change this mailbox — archive, label, delete — as {{account}} when you ask it to. You can turn this off anytime.",
       "confirmCta": "Allow sending & changes",
-      "chipOn": "Send & change enabled",
-      "chipOff": "Read-only"
+      "chipOn_one": "Send & change on for {{count}} account",
+      "chipOn_other": "Send & change on for {{count}} accounts",
+      "chipOff": "Read-only",
+      "noAccounts": "No accounts connected yet — connect one under Connect email above."
     },
     "appearance": {
       "label": "Appearance",

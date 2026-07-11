@@ -39,7 +39,11 @@
   },
   "overrides": [
     {
-      "includes": ["apps/web/src/components/ErrorBoundary.tsx", "scripts/**"],
+      "includes": [
+        "apps/web/src/components/ErrorBoundary.tsx",
+        "apps/web/src/lib/api.ts",
+        "scripts/**"
+      ],
       "linter": {
         "rules": {
           "suspicious": {

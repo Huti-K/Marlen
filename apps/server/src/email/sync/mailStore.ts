@@ -1,4 +1,6 @@
 import { lazyStatement, sqlite } from "../../db/index.js";
+import { upsertSql } from "../../db/sql.js";
+import { decodeStringArray } from "./rows.js";
 import type { SyncPage } from "./syncProviders.js";
 
 /**
@@ -18,92 +20,69 @@ export interface SyncStateRow {
   lastSyncedAt: string | null;
 }
 
-const selectState = lazyStatement(
-  "SELECT account_id, cursor, status, error, last_synced_at FROM mail_sync_state WHERE account_id = ?",
-);
-
-const upsertState = lazyStatement(`
-  INSERT INTO mail_sync_state (account_id, cursor, status, error, last_synced_at)
-  VALUES (@account_id, @cursor, @status, @error, @last_synced_at)
-  ON CONFLICT(account_id) DO UPDATE SET
-    cursor = excluded.cursor,
-    status = excluded.status,
-    error = excluded.error,
-    last_synced_at = excluded.last_synced_at
+const selectState = lazyStatement(`
+  SELECT account_id AS accountId, cursor, status, error, last_synced_at AS lastSyncedAt
+  FROM mail_sync_state WHERE account_id = ?
 `);
 
 export function getSyncState(accountId: string): SyncStateRow | null {
-  const row = selectState().get(accountId) as
-    | {
-        account_id: string;
-        cursor: string | null;
-        status: string;
-        error: string | null;
-        last_synced_at: string | null;
-      }
-    | undefined;
-  if (!row) return null;
-  return {
-    accountId: row.account_id,
-    cursor: row.cursor,
-    status: row.status as SyncStateRow["status"],
-    error: row.error,
-    lastSyncedAt: row.last_synced_at,
-  };
+  return (selectState().get(accountId) as SyncStateRow | undefined) ?? null;
 }
 
-function writeState(accountId: string, patch: Partial<Omit<SyncStateRow, "accountId">>): void {
-  const current = getSyncState(accountId);
-  upsertState().run({
-    account_id: accountId,
-    cursor: patch.cursor !== undefined ? patch.cursor : (current?.cursor ?? null),
-    status: patch.status ?? current?.status ?? "idle",
-    error: patch.error !== undefined ? patch.error : (current?.error ?? null),
-    last_synced_at:
-      patch.lastSyncedAt !== undefined ? patch.lastSyncedAt : (current?.lastSyncedAt ?? null),
-  });
-}
+const upsertCursor = lazyStatement(
+  upsertSql({ table: "mail_sync_state", conflict: ["account_id"], update: ["cursor"] }),
+);
 
 /** Persist the provider's resume cursor (null = restart backfill next sweep). */
 export function setSyncCursor(accountId: string, cursor: string | null): void {
-  writeState(accountId, { cursor });
+  upsertCursor().run({ accountId, cursor });
 }
+
+// last_synced_at only moves on a successful pass (COALESCE keeps the previous
+// value when null is bound), so an error run never erases when mail was last
+// fresh; the cursor column is untouched either way.
+const upsertStatus = lazyStatement(`
+  INSERT INTO mail_sync_state (account_id, status, error, last_synced_at)
+  VALUES (@accountId, @status, @error, @lastSyncedAt)
+  ON CONFLICT(account_id) DO UPDATE SET
+    status = excluded.status,
+    error = excluded.error,
+    last_synced_at = COALESCE(excluded.last_synced_at, mail_sync_state.last_synced_at)
+`);
 
 export function markSyncStatus(
   accountId: string,
   status: SyncStateRow["status"],
   error?: string,
 ): void {
-  writeState(accountId, {
+  upsertStatus().run({
+    accountId,
     status,
     error: error ?? null,
-    ...(status === "idle" ? { lastSyncedAt: new Date().toISOString() } : {}),
+    lastSyncedAt: status === "idle" ? new Date().toISOString() : null,
   });
 }
 
-const upsertMessage = lazyStatement(`
-  INSERT INTO mail_messages (
-    id, account_id, thread_id, provider_message_id, provider_thread_id,
-    subject, from_addr, to_addrs, cc_addrs, date, snippet, body_text,
-    is_from_me, is_unread, labels, synced_at
-  ) VALUES (
-    @id, @account_id, @thread_id, @provider_message_id, @provider_thread_id,
-    @subject, @from_addr, @to_addrs, @cc_addrs, @date, @snippet, @body_text,
-    @is_from_me, @is_unread, @labels, @synced_at
-  )
-  ON CONFLICT(id) DO UPDATE SET
-    subject = excluded.subject,
-    from_addr = excluded.from_addr,
-    to_addrs = excluded.to_addrs,
-    cc_addrs = excluded.cc_addrs,
-    date = excluded.date,
-    snippet = excluded.snippet,
-    body_text = excluded.body_text,
-    is_from_me = excluded.is_from_me,
-    is_unread = excluded.is_unread,
-    labels = excluded.labels,
-    synced_at = excluded.synced_at
-`);
+const upsertMessage = lazyStatement(
+  upsertSql({
+    table: "mail_messages",
+    conflict: ["id"],
+    insertOnly: ["account_id", "thread_id", "provider_message_id", "provider_thread_id"],
+    update: [
+      "subject",
+      "from_addr",
+      "to_addrs",
+      "cc_addrs",
+      "date",
+      "snippet",
+      "body_text",
+      "is_from_me",
+      "is_unread",
+      "labels",
+      "synced_at",
+    ],
+  }),
+);
 
 const selectMessageThread = lazyStatement("SELECT thread_id FROM mail_messages WHERE id = ?");
 const deleteMessage = lazyStatement("DELETE FROM mail_messages WHERE id = ?");
@@ -118,23 +97,22 @@ const selectThreadMessages = lazyStatement(`
   FROM mail_messages WHERE thread_id = ? ORDER BY date ASC
 `);
 
-const upsertThread = lazyStatement(`
-  INSERT INTO mail_threads (
-    id, account_id, provider_thread_id, subject, participants,
-    message_count, last_message_at, has_unread, last_from_me, updated_at
-  ) VALUES (
-    @id, @account_id, @provider_thread_id, @subject, @participants,
-    @message_count, @last_message_at, @has_unread, @last_from_me, @updated_at
-  )
-  ON CONFLICT(id) DO UPDATE SET
-    subject = excluded.subject,
-    participants = excluded.participants,
-    message_count = excluded.message_count,
-    last_message_at = excluded.last_message_at,
-    has_unread = excluded.has_unread,
-    last_from_me = excluded.last_from_me,
-    updated_at = excluded.updated_at
-`);
+const upsertThread = lazyStatement(
+  upsertSql({
+    table: "mail_threads",
+    conflict: ["id"],
+    insertOnly: ["account_id", "provider_thread_id"],
+    update: [
+      "subject",
+      "participants",
+      "message_count",
+      "last_message_at",
+      "has_unread",
+      "last_from_me",
+      "updated_at",
+    ],
+  }),
+);
 
 const deleteThread = lazyStatement("DELETE FROM mail_threads WHERE id = ?");
 
@@ -160,7 +138,7 @@ function recomputeThread(accountId: string, threadId: string, nowIso: string): v
   const participants: string[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
-    for (const addr of [row.from_addr, ...(JSON.parse(row.to_addrs) as string[])]) {
+    for (const addr of [row.from_addr, ...decodeStringArray(row.to_addrs)]) {
       if (!addr || seen.has(addr)) continue;
       seen.add(addr);
       if (participants.length < MAX_PARTICIPANTS) participants.push(addr);
@@ -168,16 +146,16 @@ function recomputeThread(accountId: string, threadId: string, nowIso: string): v
   }
   upsertThread().run({
     id: threadId,
-    account_id: accountId,
-    provider_thread_id: first.provider_thread_id,
+    accountId,
+    providerThreadId: first.provider_thread_id,
     // Threads are titled by their opening message; fall back for empty subjects.
     subject: first.subject || last.subject,
     participants: JSON.stringify(participants),
-    message_count: rows.length,
-    last_message_at: last.date,
-    has_unread: rows.some((r) => r.is_unread === 1) ? 1 : 0,
-    last_from_me: last.is_from_me,
-    updated_at: nowIso,
+    messageCount: rows.length,
+    lastMessageAt: last.date,
+    hasUnread: rows.some((r) => r.is_unread === 1) ? 1 : 0,
+    lastFromMe: last.is_from_me,
+    updatedAt: nowIso,
   });
 }
 
@@ -188,21 +166,21 @@ const applyTxn = sqlite.transaction((accountId: string, page: SyncPage, nowIso: 
     const threadId = `${accountId}:${m.providerThreadId}`;
     upsertMessage().run({
       id: messageId,
-      account_id: accountId,
-      thread_id: threadId,
-      provider_message_id: m.providerMessageId,
-      provider_thread_id: m.providerThreadId,
+      accountId,
+      threadId,
+      providerMessageId: m.providerMessageId,
+      providerThreadId: m.providerThreadId,
       subject: m.subject,
-      from_addr: m.from,
-      to_addrs: JSON.stringify(m.to),
-      cc_addrs: JSON.stringify(m.cc),
+      fromAddr: m.from,
+      toAddrs: JSON.stringify(m.to),
+      ccAddrs: JSON.stringify(m.cc),
       date: m.date,
       snippet: m.snippet,
-      body_text: m.bodyText,
-      is_from_me: m.isFromMe ? 1 : 0,
-      is_unread: m.isUnread ? 1 : 0,
+      bodyText: m.bodyText,
+      isFromMe: m.isFromMe ? 1 : 0,
+      isUnread: m.isUnread ? 1 : 0,
       labels: m.labels.length > 0 ? JSON.stringify(m.labels) : null,
-      synced_at: nowIso,
+      syncedAt: nowIso,
     });
     ftsDelete().run(messageId);
     ftsInsert().run(m.subject, m.bodyText, m.from, messageId);

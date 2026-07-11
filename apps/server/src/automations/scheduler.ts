@@ -6,6 +6,7 @@ import { db, schema } from "../db/index.js";
 import { getTimezoneSetting } from "../db/settings.js";
 import { env } from "../env.js";
 import { emitServerEvent } from "../events.js";
+import { KeyedJobs } from "../jobs.js";
 import { moduleLogger } from "../logger.js";
 import { errorMessage } from "../util.js";
 
@@ -13,10 +14,10 @@ const log = moduleLogger("scheduler");
 
 const tasks = new Map<string, ScheduledTask>();
 
-// Automations with a run currently executing, so a cron tick (or a "Run now"
-// click) can't stack a second agent on top of one still working — on a tight
+// One run per automation at a time, so a cron tick (or a "Run now" click)
+// can't stack a second agent on top of one still working — on a tight
 // schedule that piled up concurrent runs, each opening its own MCP sessions.
-const runningAutomations = new Set<string>();
+const runJobs = new KeyedJobs();
 
 /** Sanitized run deadline: a bad AUTOMATION_RUN_TIMEOUT_MS must not abort every run instantly. */
 const RUN_TIMEOUT_MS =
@@ -61,21 +62,16 @@ export async function runAutomation(
   automationId: string,
   opts: { manual?: boolean } = {},
 ): Promise<void> {
-  // One run per automation at a time — a cron tick (or a second "Run now")
-  // that lands while the previous run is still working is dropped, not stacked.
-  if (runningAutomations.has(automationId)) {
+  // A cron tick (or a second "Run now") that lands while the previous run is
+  // still working is dropped, not stacked.
+  if (runJobs.isRunning(automationId)) {
     log.warn(
       { automationId },
       "skipping run — previous run of this automation is still in progress",
     );
     return;
   }
-  runningAutomations.add(automationId);
-  try {
-    await executeAutomationRun(automationId, opts);
-  } finally {
-    runningAutomations.delete(automationId);
-  }
+  await runJobs.join(automationId, () => executeAutomationRun(automationId, opts));
 }
 
 async function executeAutomationRun(
@@ -118,8 +114,7 @@ async function executeAutomationRun(
   // Bound the whole agent turn: a stuck model or MCP call otherwise keeps the
   // run (and its MCP sessions) alive forever, and on a repeating schedule the
   // overlap guard above would then wedge the automation permanently.
-  const controller = new AbortController();
-  const runTimeout = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
+  const signal = AbortSignal.timeout(RUN_TIMEOUT_MS);
 
   // Gates the one-off retire below: a one-time schedule whose only run
   // errored or timed out must not be silently disabled with zero successful
@@ -146,7 +141,7 @@ async function executeAutomationRun(
     const { text, cards } = await turn.run({
       prompt: instructionMessage,
       session: "ephemeral",
-      signal: controller.signal,
+      signal,
       log: runLog,
     });
 
@@ -165,7 +160,7 @@ async function executeAutomationRun(
   } catch (error) {
     // The run's row records the message for the UI; the log keeps the stack,
     // which is the only place it survives for an unattended run.
-    const timedOut = controller.signal.aborted;
+    const timedOut = signal.aborted;
     const message = timedOut
       ? `Run stopped after exceeding the ${Math.round(RUN_TIMEOUT_MS / 1000)}s time limit.`
       : errorMessage(error);
@@ -182,8 +177,6 @@ async function executeAutomationRun(
       })
       .where(eq(schema.automationRuns.id, runId));
     emitServerEvent("runs");
-  } finally {
-    clearTimeout(runTimeout);
   }
 
   if (isOneOffSchedule(automation.schedule)) {
@@ -237,43 +230,29 @@ export function unschedule(automationId: string): void {
   }
 }
 
-// Serializes schedule-mutating operations per automation id — mirrors
-// FileCredentialStore.enqueue in auth/credentialStore.ts, keyed by id
-// instead of a single instance-wide chain. refreshSchedule and
-// rescheduleAll's per-automation step both funnel through this so two
-// concurrent callers for the same id (double-click save, or rescheduleAll
+// Serializes schedule-mutating operations per automation id: refreshSchedule
+// and rescheduleAll's per-automation step both funnel through this queue so
+// two concurrent callers for the same id (double-click save, or rescheduleAll
 // racing an edit) can never interleave their unschedule/select/schedule
 // steps — whichever runs second sees the first's result rather than
 // clobbering the tasks map entry out from under it.
-const scheduleChains = new Map<string, Promise<unknown>>();
+const scheduleJobs = new KeyedJobs();
 
-function withScheduleLock(automationId: string, fn: () => Promise<void>): Promise<void> {
-  const prior = scheduleChains.get(automationId) ?? Promise.resolve();
-  const next = prior.then(fn, fn);
-  // Chain is always-resolving so one failed link never wedges later calls
-  // for this id; the caller still observes `next`'s real rejection.
-  scheduleChains.set(
-    automationId,
-    next.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  return next;
+/** Unschedule an automation, then reschedule it if its current row says it should run. */
+async function applySchedule(automationId: string): Promise<void> {
+  unschedule(automationId);
+  const [automation] = await db
+    .select()
+    .from(schema.automations)
+    .where(eq(schema.automations.id, automationId));
+  if (automation?.enabled && isValidCron(automation.schedule)) {
+    await schedule(automation);
+  }
 }
 
 /** (Re)register the cron job for an automation based on its current state. */
 export async function refreshSchedule(automationId: string): Promise<void> {
-  return withScheduleLock(automationId, async () => {
-    unschedule(automationId);
-    const [automation] = await db
-      .select()
-      .from(schema.automations)
-      .where(eq(schema.automations.id, automationId));
-    if (automation?.enabled && isValidCron(automation.schedule)) {
-      await schedule(automation);
-    }
-  });
+  return scheduleJobs.enqueue(automationId, () => applySchedule(automationId));
 }
 
 /**
@@ -286,14 +265,9 @@ export async function rescheduleAll(): Promise<void> {
   if (!schedulerStarted) return;
   const all = await db.select().from(schema.automations);
   for (const automation of all) {
-    // Routed through the same per-id lock as refreshSchedule so this can't
+    // Routed through the same per-id queue as refreshSchedule so this can't
     // interleave with a concurrent edit's own refreshSchedule call.
-    await withScheduleLock(automation.id, async () => {
-      unschedule(automation.id);
-      if (automation.enabled && isValidCron(automation.schedule)) {
-        await schedule(automation);
-      }
-    });
+    await scheduleJobs.enqueue(automation.id, () => applySchedule(automation.id));
   }
 }
 

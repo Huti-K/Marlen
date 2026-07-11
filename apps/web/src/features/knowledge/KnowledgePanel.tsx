@@ -308,7 +308,7 @@ function MemoryStrip({
     try {
       setMemories(await api.memories());
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setLoading(false);
     }
@@ -458,7 +458,7 @@ function MemoryStrip({
       suppressComposerOpenRef.current = true;
       composerInputRef.current?.focus();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setAdding(false);
     }
@@ -917,7 +917,7 @@ function MemoryRow({
       setEditing(false);
       await onChanged();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setSaving(false);
     }
@@ -929,7 +929,7 @@ function MemoryRow({
       await api.deleteMemory(entry.id);
       await onChanged();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
       setDeleting(false);
     } finally {
       setConfirmOpen(false);
@@ -1126,7 +1126,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
         last = await api.uploadLibraryFile(file);
         added += 1;
       } catch (err) {
-        toast.error(errorMessage(err));
+        toast.error(err);
       }
     }
     if (last) setStatus(last);
@@ -1141,7 +1141,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
     try {
       setStatus(await api.deleteLibraryDocument(docToDelete.id));
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setDeleting(false);
       setDocToDelete(null);
@@ -1408,7 +1408,7 @@ function LibraryFolderControl({
       setState("saved");
       setTimeout(() => setState("idle"), SAVED_FLASH_MS);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
       startEdit();
     } finally {
       setPicking(false);
@@ -1441,7 +1441,7 @@ function LibraryFolderControl({
         setState("idle");
       }, SAVED_FLASH_MS);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
       setState("idle");
     } finally {
       busy.current = false;

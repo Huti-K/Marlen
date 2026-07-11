@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { ThreadTriage, ThreadUrgency } from "@trailin/shared";
 import { lazyStatement } from "../../db/index.js";
+import { upsertSql } from "../../db/sql.js";
+import { decodeStringArray } from "../sync/rows.js";
 
 /**
  * Read/write side of thread enrichment. Staleness is DERIVED, never queued:
@@ -14,6 +16,22 @@ import { lazyStatement } from "../../db/index.js";
  * third branch re-surfaces threads left in `error` state once ERROR_BACKOFF_MS
  * has elapsed since the failing attempt, so a transient LLM/network failure
  * doesn't leave a quiet thread un-triaged forever.
+ *
+ * The three conditions are expressed as separate UNIONed branches rather
+ * than one LEFT JOIN with an OR across both tables' columns: an OR spanning
+ * mail_threads and mail_thread_state columns can't be satisfied by any
+ * single index, so the planner falls back to a full unindexed scan plus a
+ * temporary sort for the ORDER BY on every call (this query reruns on every
+ * "mail" event, 2s-debounced). Each branch below drives its scan off
+ * mail_threads in idx_mail_threads_last_message_at order — already in the
+ * ORDER BY's direction, so no temp sort — and reaches the other table only
+ * through a primary-key lookup. Each branch is independently capped at
+ * `limit`, then re-merged and capped again; that preserves the exact
+ * top-`limit` result a single global ORDER BY would produce (any row in the
+ * true global top-`limit` must also rank within its own branch's top-`limit`,
+ * since restricting to a subset of rows cannot push a row's rank down). UNION
+ * (not UNION ALL) dedupes a thread that qualifies on more than one branch
+ * (e.g. errored and also touched by new mail) to a single row.
  */
 
 export interface StaleCandidate {
@@ -50,40 +68,52 @@ export interface EnrichmentResult {
   deadline?: string;
 }
 
-/**
- * A failed thread isn't retried until this long after the failing attempt.
- * Exported so enrichService can reason about the same window (e.g. for
- * logging) without a second constant drifting out of sync with this query.
- */
-export const ERROR_BACKOFF_MS = 10 * 60_000;
+/** A failed thread isn't retried until this long after the failing attempt. */
+const ERROR_BACKOFF_MS = 10 * 60_000;
 
 const selectStale = lazyStatement(`
-  SELECT t.id AS thread_id, t.account_id, s.error AS last_error, s.enriched_at AS last_enriched_at
-  FROM mail_threads t
-  LEFT JOIN mail_thread_state s ON s.thread_id = t.id
-  WHERE s.thread_id IS NULL
-    OR t.updated_at > s.enriched_at
-    OR (s.error IS NOT NULL AND s.enriched_at < ?)
-  ORDER BY t.last_message_at DESC
-  LIMIT ?
+  SELECT * FROM (
+    SELECT t.id AS threadId, t.account_id AS accountId, NULL AS lastError, NULL AS lastEnrichedAt,
+           t.last_message_at AS lastMessageAt
+    FROM mail_threads t
+    WHERE NOT EXISTS (SELECT 1 FROM mail_thread_state s WHERE s.thread_id = t.id)
+    ORDER BY t.last_message_at DESC
+    LIMIT @limit
+  )
+  UNION
+  SELECT * FROM (
+    SELECT t.id AS threadId, t.account_id AS accountId, s.error AS lastError,
+           s.enriched_at AS lastEnrichedAt, t.last_message_at AS lastMessageAt
+    FROM mail_threads t
+    JOIN mail_thread_state s ON s.thread_id = t.id
+    WHERE t.updated_at > s.enriched_at
+    ORDER BY t.last_message_at DESC
+    LIMIT @limit
+  )
+  UNION
+  SELECT * FROM (
+    SELECT t.id AS threadId, t.account_id AS accountId, s.error AS lastError,
+           s.enriched_at AS lastEnrichedAt, t.last_message_at AS lastMessageAt
+    FROM mail_threads t
+    JOIN mail_thread_state s ON s.thread_id = t.id
+    WHERE s.error IS NOT NULL AND s.enriched_at < @errorCutoff
+    ORDER BY t.last_message_at DESC
+    LIMIT @limit
+  )
+  ORDER BY lastMessageAt DESC
+  LIMIT @limit
 `);
 
 export function findStaleCandidates(limit: number): StaleCandidate[] {
   // Recomputed per call rather than cached so a long-idle process doesn't
   // retry against a stale cutoff.
   const errorCutoff = new Date(Date.now() - ERROR_BACKOFF_MS).toISOString();
-  const rows = selectStale().all(errorCutoff, limit) as Array<{
-    thread_id: string;
-    account_id: string;
-    last_error: string | null;
-    last_enriched_at: string | null;
-  }>;
-  return rows.map((row) => ({
-    threadId: row.thread_id,
-    accountId: row.account_id,
-    lastError: row.last_error,
-    lastEnrichedAt: row.last_enriched_at,
-  }));
+  return selectStale().all({ limit, errorCutoff }) as StaleCandidate[];
+}
+
+/** The prepared statement's own SQL text, for an EXPLAIN QUERY PLAN test. */
+export function _selectStaleSqlForTest(): string {
+  return selectStale().source;
 }
 
 const selectThread = lazyStatement("SELECT subject FROM mail_threads WHERE id = ?");
@@ -128,7 +158,7 @@ export function snapshotThread(threadId: string, accountId: string): ThreadSnaps
     takenAt,
     messages: rows.map((row) => ({
       from: row.from_addr,
-      to: JSON.parse(row.to_addrs) as string[],
+      to: decodeStringArray(row.to_addrs),
       date: row.date,
       bodyText: row.body_text,
       isFromMe: row.is_from_me === 1,
@@ -136,27 +166,25 @@ export function snapshotThread(threadId: string, accountId: string): ThreadSnaps
   };
 }
 
-const upsertState = lazyStatement(`
-  INSERT INTO mail_thread_state (
-    thread_id, account_id, input_hash, gist, summary, action_items,
-    triage, urgency, deadline, model, error, enriched_at
-  ) VALUES (
-    @thread_id, @account_id, @input_hash, @gist, @summary, @action_items,
-    @triage, @urgency, @deadline, @model, @error, @enriched_at
-  )
-  ON CONFLICT(thread_id) DO UPDATE SET
-    account_id = excluded.account_id,
-    input_hash = excluded.input_hash,
-    gist = excluded.gist,
-    summary = excluded.summary,
-    action_items = excluded.action_items,
-    triage = excluded.triage,
-    urgency = excluded.urgency,
-    deadline = excluded.deadline,
-    model = excluded.model,
-    error = excluded.error,
-    enriched_at = excluded.enriched_at
-`);
+const upsertState = lazyStatement(
+  upsertSql({
+    table: "mail_thread_state",
+    conflict: ["thread_id"],
+    update: [
+      "account_id",
+      "input_hash",
+      "gist",
+      "summary",
+      "action_items",
+      "triage",
+      "urgency",
+      "deadline",
+      "model",
+      "error",
+      "enriched_at",
+    ],
+  }),
+);
 
 export function saveEnrichment(
   snapshot: ThreadSnapshot,
@@ -164,18 +192,18 @@ export function saveEnrichment(
   model: string,
 ): void {
   upsertState().run({
-    thread_id: snapshot.threadId,
-    account_id: snapshot.accountId,
-    input_hash: snapshot.inputHash,
+    threadId: snapshot.threadId,
+    accountId: snapshot.accountId,
+    inputHash: snapshot.inputHash,
     gist: result.gist,
     summary: result.summary,
-    action_items: JSON.stringify(result.actionItems),
+    actionItems: JSON.stringify(result.actionItems),
     triage: result.triage,
     urgency: result.urgency,
     deadline: result.deadline ?? null,
     model,
     error: null,
-    enriched_at: snapshot.takenAt,
+    enrichedAt: snapshot.takenAt,
   });
 }
 
@@ -184,22 +212,22 @@ export function saveEnrichment(
  * beats none) but stamps error + snapshot hash/time so the candidate query
  * stops flagging it until something changes or the backoff elapses.
  */
-const markErrorStmt = lazyStatement(`
-  INSERT INTO mail_thread_state (thread_id, account_id, input_hash, error, enriched_at)
-  VALUES (@thread_id, @account_id, @input_hash, @error, @enriched_at)
-  ON CONFLICT(thread_id) DO UPDATE SET
-    input_hash = excluded.input_hash,
-    error = excluded.error,
-    enriched_at = excluded.enriched_at
-`);
+const markErrorStmt = lazyStatement(
+  upsertSql({
+    table: "mail_thread_state",
+    conflict: ["thread_id"],
+    insertOnly: ["account_id"],
+    update: ["input_hash", "error", "enriched_at"],
+  }),
+);
 
 export function saveEnrichmentError(snapshot: ThreadSnapshot, error: string): void {
   markErrorStmt().run({
-    thread_id: snapshot.threadId,
-    account_id: snapshot.accountId,
-    input_hash: snapshot.inputHash,
+    threadId: snapshot.threadId,
+    accountId: snapshot.accountId,
+    inputHash: snapshot.inputHash,
     error,
-    enriched_at: snapshot.takenAt,
+    enrichedAt: snapshot.takenAt,
   });
 }
 

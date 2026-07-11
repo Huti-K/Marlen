@@ -63,7 +63,7 @@ export function Providers({
       await api.llmLogout(id);
       await onChanged();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     }
   };
 
@@ -326,7 +326,7 @@ function LoginFlowCard({ flow, onClose }: { flow: LoginFlowStatus; onClose: () =
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  void api.loginSelect(option.id).catch((err) => toast.error(errorMessage(err)));
+                  void api.loginSelect(option.id).catch((err) => toast.error(err));
                 }}
               >
                 {option.label}
@@ -394,7 +394,7 @@ function LoginFlowCard({ flow, onClose }: { flow: LoginFlowStatus; onClose: () =
                 await api.loginInput(input.trim());
                 setInput("");
               } catch (err) {
-                toast.error(errorMessage(err));
+                toast.error(err);
               }
             }}
           >

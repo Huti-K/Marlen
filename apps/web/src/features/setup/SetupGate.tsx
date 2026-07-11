@@ -10,7 +10,7 @@ import { Accounts } from "@/features/connections/Accounts";
 import { Providers } from "@/features/settings/Providers";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 /**
  * If the freshly signed-in provider isn't the active one, silently make it
@@ -62,7 +62,7 @@ export function SetupGate({
       setProviders(list);
       await ensureActiveModel(list);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     }
     onStatusChanged();
   }, [onStatusChanged]);

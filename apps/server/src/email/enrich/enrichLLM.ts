@@ -140,6 +140,9 @@ function buildReportTool(onReport: (result: EnrichmentResult) => void): AgentToo
 const MAX_MESSAGES = 12;
 const MAX_BODY_CHARS = 1200;
 
+/** Hard cap on one thread's model call — a stuck provider can't wedge the whole batch. */
+const ENRICH_TIMEOUT_MS = 60_000;
+
 function renderSnapshot(snapshot: ThreadSnapshot, accountName: string): string {
   const omitted = snapshot.messages.length - MAX_MESSAGES;
   const shown = omitted > 0 ? snapshot.messages.slice(omitted) : snapshot.messages;
@@ -163,11 +166,19 @@ function renderSnapshot(snapshot: ThreadSnapshot, accountName: string): string {
     .join("\n");
 }
 
-/** Enrich one thread. Throws when the model never produced a usable report. */
+/**
+ * Enrich one thread. Throws when the model never produced a usable report,
+ * including on timeout — runPrompt forwards the abort into the agent's own
+ * run and surfaces it as agent.state.errorMessage, which runPrompt then
+ * throws (see run.ts). The caller (enrichService.ts) already routes any
+ * enrichThread rejection through saveEnrichmentError, so a timeout lands
+ * there like any other failed attempt rather than crashing the batch.
+ */
 export async function enrichThread(
   snapshot: ThreadSnapshot,
   accountName: string,
   model: Model<Api>,
+  timeoutMs = ENRICH_TIMEOUT_MS,
 ): Promise<EnrichmentResult> {
   let captured: EnrichmentResult | undefined;
   const agent = new Agent({
@@ -178,7 +189,12 @@ export async function enrichThread(
     },
     streamFn: (m, c, o) => modelRegistry.streamSimple(m, c, o),
   });
-  await runPrompt({ agent }, renderSnapshot(snapshot, accountName));
+  await runPrompt(
+    { agent },
+    renderSnapshot(snapshot, accountName),
+    {},
+    AbortSignal.timeout(timeoutMs),
+  );
   if (!captured) throw new Error("model finished without calling report_thread_state");
   return captured;
 }

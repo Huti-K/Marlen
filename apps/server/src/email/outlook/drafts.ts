@@ -1,43 +1,33 @@
-import type { ConnectedAccount, EmailDraft, EmailThreadMessage } from "@trailin/shared";
-import { emitServerEvent } from "../events.js";
-import { moduleLogger } from "../logger.js";
-import { proxyRequest } from "../pipedream/connect.js";
-import { invalidateDraftsCache } from "./draftsService.js";
-import {
-  addressListOf,
-  formatRecipient,
-  GRAPH_API,
-  type GraphRecipient,
-  newestByReceivedDate,
-  recipientAddresses,
-} from "./graphMessage.js";
+import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import { moduleLogger } from "../../logger.js";
+import { proxyRequest } from "../../pipedream/connect.js";
+import { draftsMutated } from "../draftsService.js";
 import type {
   CreateDraftInput,
   CreateDraftResult,
   DraftProvider,
   UpdateDraftPatch,
-} from "./providers.js";
-import { snippetFrom, stripHtml } from "./textUtils.js";
+} from "../providers.js";
+import { snippetFrom, stripHtml } from "../textUtils.js";
+import { OUTLOOK_WEB_ROOT } from "../webLinks.js";
+import { addressListOf, GRAPH_API, type GraphRecipient, newestByReceivedDate } from "./message.js";
 
 /**
  * Outlook / Microsoft 365 draft provider, via the Connect proxy against
- * Microsoft Graph v1.0 — the same proxy mechanism gmailDrafts.ts uses for
+ * Microsoft Graph v1.0 — the same proxy mechanism ../gmail/drafts.ts uses for
  * Gmail, just pointed at a different API. Registered under app slug
  * "microsoft_outlook" at the bottom of this file.
  *
  * `listOutlookDrafts` is a pure live fetch — no caching in here (see
- * ./draftsService.ts, the shared cache every provider's listDrafts sits
- * behind). Every mutation below invalidates that shared cache before
- * emitting "drafts", mirroring gmailDrafts.ts's flow.
+ * ../draftsService.ts, the shared cache every provider's listDrafts sits
+ * behind). Every mutation below ends with draftsService's `draftsMutated`
+ * epilogue, mirroring ../gmail/drafts.ts's flow.
  */
 
 const log = moduleLogger("outlook-drafts");
 
 /** Fields fetched for the drafts list — detail uses its own $select (see getOutlookDraftDetail), and the list view only needs bodyPreview for its snippet, not the full body. */
 const LIST_SELECT = "id,subject,toRecipients,ccRecipients,bodyPreview,lastModifiedDateTime,webLink";
-
-/** Fields fetched for getOutlookThread — enough to build an EmailThreadMessage per message. */
-const THREAD_SELECT = "id,from,toRecipients,ccRecipients,receivedDateTime,body";
 
 /** Fields fetched when a reply draft just needs to find the conversation's newest message id. */
 const REPLY_TARGET_SELECT = "id,receivedDateTime";
@@ -46,10 +36,10 @@ const REPLY_TARGET_SELECT = "id,receivedDateTime";
 const CONVERSATION_PAGE_SIZE = 50;
 
 /**
- * Hard cap on how many messages one conversation fetch will page through.
- * Sane for the "read a thread" / "find the newest message to reply to" use
- * cases here; a runaway thread shouldn't turn either into an unbounded loop
- * of Graph requests.
+ * Hard cap on how many messages one conversation fetch will page through
+ * while looking for the reply target — a runaway thread shouldn't turn the
+ * lookup into an unbounded loop of Graph requests, and the newest message of
+ * any thread this size is overwhelmingly inside the cap.
  */
 const CONVERSATION_MESSAGE_CAP = 100;
 
@@ -85,7 +75,7 @@ function toRecipientsPayload(addresses: string[]): { emailAddress: { address: st
  * than a broken deep link to the specific message.
  */
 function outlookFallbackUrl(): string {
-  return "https://outlook.office.com/mail/drafts";
+  return `${OUTLOOK_WEB_ROOT}drafts`;
 }
 
 function toEmailDraft(message: GraphMessage): EmailDraft {
@@ -135,19 +125,17 @@ async function getOutlookDraftDetail(
 
 async function deleteOutlookDraft(account: ConnectedAccount, draftId: string): Promise<void> {
   await proxyRequest(account.id, "delete", `${GRAPH_API}/messages/${draftId}`);
-  invalidateDraftsCache(account.id);
-  emitServerEvent("drafts");
+  draftsMutated(account.id);
 }
 
 /**
  * Every message in a conversation, paging through `@odata.nextLink` up to
- * CONVERSATION_MESSAGE_CAP. Shared by getOutlookThread (needs the whole
- * thread) and the reply-draft path below (only needs enough to find the
- * newest message).
+ * CONVERSATION_MESSAGE_CAP, for the reply-draft path below (which scans the
+ * result for the newest message).
  *
  * `$orderby` is deliberately not combined with `$filter` here — Graph often
- * rejects that pairing as an inefficient query — so callers sort/scan the
- * result themselves; Graph's per-page order isn't otherwise guaranteed.
+ * rejects that pairing as an inefficient query — so the caller scans the
+ * result itself; Graph's per-page order isn't otherwise guaranteed.
  */
 async function fetchConversationMessages(
   account: ConnectedAccount,
@@ -201,7 +189,7 @@ async function createStandaloneOutlookDraft(
 /**
  * A reply draft threaded onto an existing conversation, via Graph's
  * createReply + a follow-up PATCH. createReply (rather than createReplyAll)
- * mirrors gmailDrafts.ts's createGmailDraft, which never derives recipients
+ * mirrors ../gmail/drafts.ts's createGmailDraft, which never derives recipients
  * from the thread at all — the caller's to/cc/bcc there are the entire
  * recipient list, full stop. createReply's narrower "To: original sender
  * only" prefill is the closer match: it risks silently adding fewer
@@ -256,8 +244,7 @@ async function createOutlookDraft(
     ? await createOutlookReplyDraft(account, input, input.threadId)
     : await createStandaloneOutlookDraft(account, input);
 
-  invalidateDraftsCache(account.id);
-  emitServerEvent("drafts");
+  draftsMutated(account.id);
   return {
     draftId: res.id,
     messageId: res.id,
@@ -268,7 +255,7 @@ async function createOutlookDraft(
 
 /**
  * Save body/subject edits to an existing draft — the Outlook counterpart of
- * gmailDrafts.ts's updateGmailDraft. Graph's PATCH only touches the fields
+ * ../gmail/drafts.ts's updateGmailDraft. Graph's PATCH only touches the fields
  * sent, so (unlike Gmail's drafts.update, which replaces the whole message)
  * there's no need to first fetch and re-send the fields the caller didn't
  * change.
@@ -280,60 +267,21 @@ async function updateOutlookDraft(
 ): Promise<void> {
   const body: Record<string, unknown> = {};
   if (patch.subject !== undefined) body.subject = patch.subject;
-  // Always Text, matching gmailDrafts.ts's updateGmailDraft — an edit made in
+  // Always Text, matching ../gmail/drafts.ts's updateGmailDraft — an edit made in
   // Trailin's plain-text editor should save as plain text, not silently
   // become (or stay) HTML.
   if (patch.body !== undefined) body.body = { contentType: "Text", content: patch.body };
 
   await proxyRequest(account.id, "patch", `${GRAPH_API}/messages/${draftId}`, { body });
 
-  invalidateDraftsCache(account.id);
-  emitServerEvent("drafts");
+  draftsMutated(account.id);
 }
 
-/**
- * The full thread a draft (or any message) belongs to, oldest message first —
- * the Outlook counterpart of gmailDrafts.ts's getGmailThread. Graph has no
- * single "get thread" call; conversationId is its rough equivalent of a
- * Gmail threadId, so this pages through every message sharing it instead
- * (fetchConversationMessages above), capped at CONVERSATION_MESSAGE_CAP.
- *
- * The ascending sort happens in code, same as gmailDrafts.ts does for Gmail
- * (which already returns thread messages in order, but sorts explicitly
- * anyway so a future API quirk can't silently reorder the viewer) — here it
- * also undoes whatever order paging happened to return, since $orderby can't
- * be combined with the $filter fetchConversationMessages uses.
- */
-async function getOutlookThread(
-  account: ConnectedAccount,
-  threadId: string,
-  opts: { excludeMessageId?: string } = {},
-): Promise<EmailThreadMessage[]> {
-  const allMessages = await fetchConversationMessages(account, threadId, THREAD_SELECT);
-
-  const messages = allMessages
-    .filter((m) => !opts.excludeMessageId || m.id !== opts.excludeMessageId)
-    .map((m): EmailThreadMessage => {
-      const cc = recipientAddresses(m.ccRecipients);
-      const raw = m.body?.content ?? "";
-      const body = m.body?.contentType?.toLowerCase() === "html" ? stripHtml(raw) : raw.trim();
-      return {
-        from: formatRecipient(m.from) ?? "",
-        to: recipientAddresses(m.toRecipients),
-        ...(cc.length ? { cc } : {}),
-        date: m.receivedDateTime ?? "",
-        body,
-      };
-    });
-  return messages.sort((a, b) => a.date.localeCompare(b.date));
-}
-
-/** This module's DraftProvider — registered by ./registerProviders.ts. */
+/** This module's DraftProvider — registered by ../registerProviders.ts. */
 export const outlookDraftProvider: DraftProvider = {
   listDrafts: listOutlookDrafts,
   getDraftDetail: getOutlookDraftDetail,
   createDraft: createOutlookDraft,
   deleteDraft: deleteOutlookDraft,
   updateDraft: updateOutlookDraft,
-  getThread: getOutlookThread,
 };

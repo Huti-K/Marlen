@@ -1,9 +1,9 @@
 # Trailin — local email agent
 
-A locally-run AI email agent for **Gmail and Outlook / Microsoft 365**, built on:
+A locally-run AI email agent for **any email provider** — Gmail, Outlook / Microsoft 365 / Exchange Online, and anything else Pipedream can connect — built on:
 
 - **[pi](https://github.com/badlogic/pi-mono)** (`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`) — the agent loop and LLM layer
-- **Pipedream Connect + MCP** — managed OAuth for Google/Microsoft; email tools come from Pipedream's MCP server, one session per connected account, so **several Gmail and Outlook accounts work at the same time**
+- **Pipedream Connect + MCP** — managed OAuth for every app in Pipedream's catalog; email tools come from Pipedream's MCP server, one session per connected account, so **several accounts — same provider or mixed — work at the same time**
 - **Fastify** API server with **SQLite** (Drizzle) persistence and a **node-cron** automation scheduler
 - **Vite + React + shadcn-style UI** (Tailwind v4)
 
@@ -48,7 +48,7 @@ pnpm start   # everything on http://localhost:3001
 
 - Each chat conversation gets its own **pi Agent**. On creation, the server connects to Pipedream's MCP server (`https://remote.mcp.pipedream.net/v3`) **once per connected account**, pinned with `x-pd-account-id` and in `tools-only` mode (structured parameters, no sub-agent), lists the tools, and bridges them into pi `AgentTool`s. With several accounts of the same app, tool names carry an account suffix (`gmail-find-email__work`) and every description names the account it acts as.
 - **Automations** are cron-scheduled standing instructions ("summarize unread mail every weekday at 8am"). Each run spins up a fresh agent, executes the instruction, and stores the result in SQLite (visible under *Recent runs*).
-- A **local mail mirror** syncs each connected account into SQLite (`mail_*` tables + FTS5 full-text search) through provider registries (Gmail, Outlook). It currently powers waiting-for detection; briefing and enrichment build on it.
+- A **local mail mirror** syncs each connected account into SQLite (`mail_*` tables + FTS5 full-text search) through provider registries (drivers today: Gmail, Outlook). It currently powers waiting-for detection; briefing and enrichment build on it.
 - Provider-specific code (drafts, sync, attachments) lives behind registries in `src/email/` — new providers register in the `register*.ts` files, nothing else hardcodes a provider.
 - Conversation transcripts, automations, and the mail mirror live in `data/trailin.db`. Agent context (tool-call history) is in-memory per conversation and resets on server restart.
 

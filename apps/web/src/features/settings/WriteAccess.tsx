@@ -1,4 +1,5 @@
-import { ShieldCheck, TriangleAlert } from "lucide-react";
+import type { ConnectedAccount } from "@trailin/shared";
+import { Mail, ShieldCheck, TriangleAlert } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -7,100 +8,152 @@ import { ListRow } from "@/components/ui/list-row";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+
+/** App logo from Pipedream, falling back to a generic mail glyph — mirrors the connections row icon. */
+function AppIcon({ src }: { src?: string }) {
+  const [failed, setFailed] = React.useState(false);
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt=""
+        onError={() => setFailed(true)}
+        className="h-4 w-4 shrink-0 object-contain"
+      />
+    );
+  }
+  return <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />;
+}
 
 /**
- * The write-access toggle, factored out of ConnectionsPanel so Settings can
- * surface it under its own Permissions section. Behavior is unchanged: enabling
- * is consequential and gated by a confirm dialog, disabling is immediate.
+ * Per-account write-access list, factored out of ConnectionsPanel so Settings can
+ * surface it under its own Permissions section. Arming an account is consequential
+ * and gated by a confirm dialog; disarming is immediate.
  */
-export function WriteAccess({ onState }: { onState?: (allow: boolean) => void }) {
+export function WriteAccess({ onState }: { onState?: (armedCount: number) => void }) {
   const { t } = useTranslation();
-  const [allowWrite, setAllowWrite] = React.useState<boolean | null>(null);
+  const [accounts, setAccounts] = React.useState<ConnectedAccount[] | null>(null);
+  const [armedIds, setArmedIds] = React.useState<string[] | null>(null);
+  const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [confirmAccount, setConfirmAccount] = React.useState<ConnectedAccount | null>(null);
+  const [confirmBusy, setConfirmBusy] = React.useState(false);
+
+  const reportState = (accts: ConnectedAccount[], ids: string[]) => {
+    onState?.(accts.filter((a) => ids.includes(a.id)).length);
+  };
 
   // Only the initial load — onState is stable enough not to need re-running this.
   // biome-ignore lint/correctness/useExhaustiveDependencies: run-once mount fetch; re-running on every onState identity change would refire the request
   React.useEffect(() => {
-    api
-      .emailWrite()
-      .then((r) => {
-        setAllowWrite(r.allowWrite);
-        onState?.(r.allowWrite);
+    Promise.all([api.pipedreamAccounts(), api.writeAccess()])
+      .then(([accts, access]) => {
+        setAccounts(accts);
+        setArmedIds(access.accountIds);
+        reportState(accts, access.accountIds);
       })
-      .catch((err) => toast.error(errorMessage(err)));
+      .catch((err) => toast.error(err));
   }, []);
 
-  const toggleWrite = async (next: boolean) => {
+  const persist = async (nextIds: string[]): Promise<void> => {
+    const { accountIds: updated } = await api.setWriteAccess(nextIds);
+    setArmedIds(updated);
+    if (accounts) reportState(accounts, updated);
+  };
+
+  const disarm = async (accountId: string) => {
+    if (!armedIds) return;
+    setSavingId(accountId);
     try {
-      const { allowWrite: updated } = await api.setEmailWrite(next);
-      setAllowWrite(updated);
-      onState?.(updated);
+      await persist(armedIds.filter((id) => id !== accountId));
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
+    } finally {
+      setSavingId(null);
     }
   };
 
-  // Enabling send/change access is consequential, so confirm it first; turning
-  // it back off is safe and immediate.
-  const [confirmWrite, setConfirmWrite] = React.useState(false);
-  const [writeBusy, setWriteBusy] = React.useState(false);
-
-  const handleWriteToggle = (next: boolean) => {
-    if (next) setConfirmWrite(true);
-    else void toggleWrite(false);
+  const confirmArm = async () => {
+    if (!confirmAccount || !armedIds) return;
+    setConfirmBusy(true);
+    try {
+      await persist([...armedIds, confirmAccount.id]);
+      setConfirmAccount(null);
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setConfirmBusy(false);
+    }
   };
 
-  const confirmEnableWrite = async () => {
-    setWriteBusy(true);
-    await toggleWrite(true);
-    setWriteBusy(false);
-    setConfirmWrite(false);
+  // Arming send/change access for an account is consequential, so confirm it
+  // first; turning it back off is safe and immediate.
+  const handleToggle = (account: ConnectedAccount, next: boolean) => {
+    if (next) setConfirmAccount(account);
+    else void disarm(account.id);
   };
+
+  if (!accounts || !armedIds) return null;
 
   return (
     <>
-      <ListRow
-        className={cn(
-          "py-2.5 transition-colors",
-          // Armed = the agent can send/delete. Tint the whole row amber so it
-          // reads as a live danger zone, not a neutral setting.
-          allowWrite && "bg-warning/10",
-        )}
-      >
-        <div className="min-w-0">
-          <Label
-            htmlFor="pd-write-toggle"
-            className="flex items-center gap-1.5 text-sm font-medium"
-          >
-            {allowWrite ? (
-              <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-warning" />
-            ) : (
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-success" />
-            )}
-            {t("settings.permissions.toggle")}
-          </Label>
-          <p className={cn("text-xs", allowWrite ? "text-warning" : "text-muted-foreground")}>
-            {allowWrite ? t("settings.permissions.toggleOn") : t("settings.permissions.toggleOff")}
-          </p>
+      {accounts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("settings.permissions.noAccounts")}</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {accounts.map((account) => {
+            const armed = armedIds.includes(account.id);
+            const switchId = `write-access-${account.id}`;
+            return (
+              <ListRow
+                key={account.id}
+                className={cn("py-2.5 transition-colors", armed && "bg-warning/10")}
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <AppIcon src={account.imgSrc} />
+                  <div className="min-w-0">
+                    <Label htmlFor={switchId} className="truncate text-sm font-medium">
+                      {account.name}
+                    </Label>
+                    <p
+                      className={cn(
+                        "flex items-center gap-1 text-xs",
+                        armed ? "text-warning" : "text-muted-foreground",
+                      )}
+                    >
+                      {armed ? (
+                        <TriangleAlert className="h-3 w-3 shrink-0" />
+                      ) : (
+                        <ShieldCheck className="h-3 w-3 shrink-0" />
+                      )}
+                      {armed ? t("settings.permissions.rowOn") : t("settings.permissions.rowOff")}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id={switchId}
+                  tone="warning"
+                  checked={armed}
+                  disabled={savingId === account.id}
+                  onCheckedChange={(next) => handleToggle(account, next)}
+                />
+              </ListRow>
+            );
+          })}
         </div>
-        <Switch
-          id="pd-write-toggle"
-          tone="warning"
-          checked={allowWrite ?? false}
-          disabled={allowWrite === null}
-          onCheckedChange={handleWriteToggle}
-        />
-      </ListRow>
+      )}
 
       <ConfirmDialog
-        open={confirmWrite}
-        onOpenChange={(next) => !writeBusy && setConfirmWrite(next)}
-        title={t("settings.permissions.confirmTitle")}
-        description={t("settings.permissions.confirmBody")}
+        open={confirmAccount !== null}
+        onOpenChange={(next) => !confirmBusy && !next && setConfirmAccount(null)}
+        title={t("settings.permissions.confirmTitle", { account: confirmAccount?.name ?? "" })}
+        description={t("settings.permissions.confirmBody", {
+          account: confirmAccount?.name ?? "",
+        })}
         confirmLabel={t("settings.permissions.confirmCta")}
         variant="destructive"
-        busy={writeBusy}
-        onConfirm={() => void confirmEnableWrite()}
+        busy={confirmBusy}
+        onConfirm={() => void confirmArm()}
       />
     </>
   );

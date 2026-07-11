@@ -8,11 +8,14 @@ import type {
 import { EMAIL_APPS, POPULAR_APPS } from "@trailin/shared";
 import { deleteSetting, getSetting, setSetting } from "../db/settings.js";
 import { env } from "../env.js";
+import { AppError } from "../errors.js";
+import { deleteClientSecret, readClientSecret, writeClientSecret } from "./secretFile.js";
 
 /**
  * Pipedream Connect (developer mode): the user's own Pipedream project powers
- * managed OAuth for any number of Gmail/Outlook accounts. Configured once in
- * Settings with an OAuth client (id + secret) and a project id.
+ * managed OAuth for any number of accounts, any app in Pipedream's catalog.
+ * Configured once in Settings with an OAuth client (id + secret) and a
+ * project id.
  */
 
 export type PipedreamEnvironment = "development" | "production";
@@ -26,9 +29,10 @@ export interface ConnectConfig {
   source: "settings" | "env";
 }
 
+// The client secret is not among these: it lives in secretFile.ts, outside
+// the SQLite settings table (see that module's doc comment for why).
 const KEYS = {
   clientId: "pipedream.clientId",
-  clientSecret: "pipedream.clientSecret",
   projectId: "pipedream.projectId",
   environment: "pipedream.environment",
   useCustom: "pipedream.useCustom",
@@ -61,11 +65,11 @@ function builtinConfig(): ConnectConfig | null {
 }
 
 async function customConfig(): Promise<ConnectConfig | null> {
-  const [clientId, clientSecret, projectId, environment] = await Promise.all([
+  const [clientId, projectId, environment, clientSecret] = await Promise.all([
     getSetting(KEYS.clientId),
-    getSetting(KEYS.clientSecret),
     getSetting(KEYS.projectId),
     getSetting(KEYS.environment),
+    readClientSecret(),
   ]);
   if (!clientId || !clientSecret || !projectId) return null;
   return {
@@ -123,7 +127,7 @@ export async function getPipedreamStatus(): Promise<PipedreamStatus> {
 
 /** The client secret saved in the app (not the .env one), for edits that keep it. */
 export async function getSavedClientSecret(): Promise<string | undefined> {
-  return getSetting(KEYS.clientSecret);
+  return readClientSecret();
 }
 
 export async function saveConnectSettings(input: {
@@ -132,10 +136,16 @@ export async function saveConnectSettings(input: {
   projectId: string;
   environment: PipedreamEnvironment;
 }): Promise<void> {
+  // Sequential, not Promise.all: db/settings.ts's whole-table cache is
+  // rebuilt by whichever concurrent setSetting call's loadCache() resolves
+  // first, and each call's write lands on the cache snapshot live at that
+  // moment — concurrent calls can each mutate a different, later-discarded
+  // snapshot, silently dropping keys from the in-memory cache (the DB rows
+  // themselves would still be correct, but reads through getSetting would not).
   await setSetting(KEYS.clientId, input.clientId);
-  await setSetting(KEYS.clientSecret, input.clientSecret);
   await setSetting(KEYS.projectId, input.projectId);
   await setSetting(KEYS.environment, input.environment);
+  await writeClientSecret(input.clientSecret);
   // New credentials mean a different Pipedream project/account list —
   // whatever was cached under the old ones is no longer meaningful.
   invalidateAccountsCache();
@@ -143,7 +153,10 @@ export async function saveConnectSettings(input: {
 
 /** Remove app-saved credentials; built-in ones (if any) become active again. */
 export async function clearConnectSettings(): Promise<void> {
+  // Sequential — see the comment in saveConnectSettings on why concurrent
+  // settings writes are unsafe.
   for (const key of Object.values(KEYS)) await deleteSetting(key);
+  await deleteClientSecret();
   invalidateAccountsCache();
 }
 
@@ -167,8 +180,12 @@ function buildClient(config: ConnectConfig): PipedreamClient {
 async function getClient(): Promise<{ pd: PipedreamClient; config: ConnectConfig }> {
   const config = await getConnectConfig();
   if (!config) {
-    throw new Error(
-      "Pipedream is not set up. Add your Pipedream credentials under Settings → Connect email.",
+    throw new AppError(
+      "Pipedream is not set up. Add your Pipedream credentials in Settings → Email.",
+      409,
+      {
+        code: "pipedream_not_configured",
+      },
     );
   }
   const signature = signatureOf(config);
@@ -322,15 +339,22 @@ export async function listAccounts(opts: { refresh?: boolean } = {}): Promise<Co
   return accountsInFlight;
 }
 
+/** Pipedream's catalog entries are untyped; pull the fields the app picker needs. */
+function mapPipedreamApp(app: unknown): PipedreamApp | null {
+  const a = app as { nameSlug?: string; name?: string; imgSrc?: string };
+  if (!a.nameSlug || !a.name) return null;
+  return { slug: a.nameSlug, name: a.name, imgSrc: a.imgSrc };
+}
+
 /** Search Pipedream's app catalog (for the "connect an account" picker). */
 export async function searchApps(query: string): Promise<PipedreamApp[]> {
   const { pd } = await getClient();
   const page = await pd.apps.list({ q: query, limit: 10 });
   const apps: PipedreamApp[] = [];
   for await (const app of page) {
-    const a = app as { nameSlug?: string; name?: string; imgSrc?: string };
-    if (!a.nameSlug || !a.name) continue;
-    apps.push({ slug: a.nameSlug, name: a.name, imgSrc: a.imgSrc });
+    const mapped = mapPipedreamApp(app);
+    if (!mapped) continue;
+    apps.push(mapped);
     if (apps.length >= 10) break;
   }
   return apps;
@@ -346,13 +370,9 @@ async function resolveApp(pd: PipedreamClient, slug: string): Promise<PipedreamA
   // and pick the exact slug match.
   const page = await pd.apps.list({ q: slug, limit: 5 });
   for await (const app of page) {
-    const a = app as { nameSlug?: string; name?: string; imgSrc?: string };
-    if (a.nameSlug === slug && a.name) {
-      return {
-        slug: a.nameSlug,
-        name: DEFAULT_APP_NAME_OVERRIDES[slug] ?? a.name,
-        imgSrc: a.imgSrc,
-      };
+    const mapped = mapPipedreamApp(app);
+    if (mapped?.slug === slug) {
+      return { ...mapped, name: DEFAULT_APP_NAME_OVERRIDES[slug] ?? mapped.name };
     }
   }
   return null;

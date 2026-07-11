@@ -1,23 +1,46 @@
+import type { AccountColor, AccountDescription, AccountVoice } from "@trailin/shared";
 import { isLanguage, type Language } from "@trailin/shared";
 import { eq } from "drizzle-orm";
-import { db, schema } from "./index.js";
+import { db, dbGeneration, schema } from "./index.js";
 
-/** Simple key/value settings persisted in SQLite. */
+/**
+ * Key/value settings persisted in SQLite, read through a whole-table
+ * in-memory cache: settings are consulted on every prompt and every model
+ * call, and the table is a handful of rows. All reads and writes in the
+ * process go through this module (nothing else touches schema.settings), so
+ * write-through keeps the cache exact; the generation check reloads it after
+ * closeDb() (test teardown). A second *process* writing the same database
+ * file is not reflected until restart — acceptable for a single-user app.
+ */
+
+let cache: { entries: Map<string, string>; generation: number } | null = null;
+
+async function loadCache(): Promise<Map<string, string>> {
+  const generation = dbGeneration();
+  if (!cache || cache.generation !== generation) {
+    const rows = await db.select().from(schema.settings);
+    cache = { entries: new Map(rows.map((row) => [row.key, row.value])), generation };
+  }
+  return cache.entries;
+}
 
 export async function getSetting(key: string): Promise<string | undefined> {
-  const [row] = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
-  return row?.value;
+  return (await loadCache()).get(key);
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
+  const entries = await loadCache();
   await db
     .insert(schema.settings)
     .values({ key, value })
     .onConflictDoUpdate({ target: schema.settings.key, set: { value } });
+  entries.set(key, value);
 }
 
 export async function deleteSetting(key: string): Promise<void> {
+  const entries = await loadCache();
   await db.delete(schema.settings).where(eq(schema.settings.key, key));
+  entries.delete(key);
 }
 
 export const LANGUAGE_SETTING_KEY = "app.language";
@@ -47,16 +70,6 @@ export async function getTimezoneSetting(): Promise<string | null> {
   return isValidTimezone(value) ? value : null;
 }
 
-export const EMAIL_WRITE_SETTING_KEY = "agent.allowEmailWrite";
-
-/**
- * Whether the agent gets tools that send or change anything. Defaults to
- * false: read-only (plus drafts) until the user explicitly allows more.
- */
-export async function getEmailWriteSetting(): Promise<boolean> {
-  return (await getSetting(EMAIL_WRITE_SETTING_KEY)) === "true";
-}
-
 export const LIBRARY_FOLDER_SETTING_KEY = "library.folder";
 
 /** The user-chosen library drop folder, or null to fall back to the LIBRARY_PATH env default. */
@@ -64,61 +77,60 @@ export async function getLibraryFolderSetting(): Promise<string | null> {
   return (await getSetting(LIBRARY_FOLDER_SETTING_KEY)) ?? null;
 }
 
+/**
+ * A settings value stored as a JSON array under one key: read parses it back
+ * (missing or unparseable data reads as `[]` rather than throwing), write
+ * serializes the whole array over the previous value.
+ */
+function jsonArraySetting<T>(key: string): {
+  get: () => Promise<T[]>;
+  set: (values: T[]) => Promise<void>;
+} {
+  return {
+    async get(): Promise<T[]> {
+      const raw = await getSetting(key);
+      if (!raw) return [];
+      try {
+        return JSON.parse(raw) as T[];
+      } catch {
+        return [];
+      }
+    },
+    async set(values: T[]): Promise<void> {
+      await setSetting(key, JSON.stringify(values));
+    },
+  };
+}
+
 export const ACCOUNT_COLORS_SETTING_KEY = "account.colors";
+const accountColorsSetting = jsonArraySetting<AccountColor>(ACCOUNT_COLORS_SETTING_KEY);
 
 /** All persisted account color assignments. */
-export async function getAccountColors(): Promise<import("@trailin/shared").AccountColor[]> {
-  const raw = await getSetting(ACCOUNT_COLORS_SETTING_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-export async function setAccountColors(
-  colors: import("@trailin/shared").AccountColor[],
-): Promise<void> {
-  await setSetting(ACCOUNT_COLORS_SETTING_KEY, JSON.stringify(colors));
-}
+export const getAccountColors = accountColorsSetting.get;
+export const setAccountColors = accountColorsSetting.set;
 
 export const ACCOUNT_DESCRIPTIONS_SETTING_KEY = "account.descriptions";
+const accountDescriptionsSetting = jsonArraySetting<AccountDescription>(
+  ACCOUNT_DESCRIPTIONS_SETTING_KEY,
+);
 
 /** All persisted per-account purpose notes (fed to the agent as tool context). */
-export async function getAccountDescriptions(): Promise<
-  import("@trailin/shared").AccountDescription[]
-> {
-  const raw = await getSetting(ACCOUNT_DESCRIPTIONS_SETTING_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-export async function setAccountDescriptions(
-  descriptions: import("@trailin/shared").AccountDescription[],
-): Promise<void> {
-  await setSetting(ACCOUNT_DESCRIPTIONS_SETTING_KEY, JSON.stringify(descriptions));
-}
+export const getAccountDescriptions = accountDescriptionsSetting.get;
+export const setAccountDescriptions = accountDescriptionsSetting.set;
 
 export const ACCOUNT_VOICES_SETTING_KEY = "account.voices";
+const accountVoicesSetting = jsonArraySetting<AccountVoice>(ACCOUNT_VOICES_SETTING_KEY);
 
 /** All persisted per-account voices (signature + style notes for drafting). */
-export async function getAccountVoices(): Promise<import("@trailin/shared").AccountVoice[]> {
-  const raw = await getSetting(ACCOUNT_VOICES_SETTING_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
+export const getAccountVoices = accountVoicesSetting.get;
+export const setAccountVoices = accountVoicesSetting.set;
 
-export async function setAccountVoices(
-  voices: import("@trailin/shared").AccountVoice[],
-): Promise<void> {
-  await setSetting(ACCOUNT_VOICES_SETTING_KEY, JSON.stringify(voices));
-}
+export const WRITE_ACCESS_SETTING_KEY = "account.writeAccess";
+const writeAccessSetting = jsonArraySetting<string>(WRITE_ACCESS_SETTING_KEY);
+
+/**
+ * Connected-account ids the agent may send or change as. Every other
+ * connected account stays read-only (drafts are always allowed regardless).
+ */
+export const getWriteAccessAccounts = writeAccessSetting.get;
+export const setWriteAccessAccounts = writeAccessSetting.set;

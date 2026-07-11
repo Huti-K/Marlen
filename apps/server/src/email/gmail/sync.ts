@@ -1,13 +1,7 @@
 import type { ConnectedAccount } from "@trailin/shared";
-import { proxyRequest } from "../pipedream/connect.js";
-import { errorMessage } from "../util.js";
-import {
-  decodeHtmlEntities,
-  GMAIL_API,
-  headerLookup,
-  type MessagePart,
-  plainTextBody,
-} from "./gmailMessage.js";
+import { mapWithConcurrency } from "../../jobs.js";
+import { proxyRequest } from "../../pipedream/connect.js";
+import { errorMessage } from "../../util.js";
 import {
   parseOpaqueCursor,
   SyncCursorExpiredError,
@@ -15,8 +9,15 @@ import {
   type SyncOptions,
   type SyncPage,
   type SyncProvider,
-} from "./sync/syncProviders.js";
-import { splitAddressList } from "./textUtils.js";
+} from "../sync/syncProviders.js";
+import { splitAddressList } from "../textUtils.js";
+import {
+  decodeHtmlEntities,
+  GMAIL_API,
+  headerLookup,
+  type MessagePart,
+  plainTextBody,
+} from "./message.js";
 
 /**
  * Gmail SyncProvider: mirrors a Gmail mailbox into the local store
@@ -33,7 +34,7 @@ import { splitAddressList } from "./textUtils.js";
  *    rejected startHistoryId (aged out of Gmail's ~1 week retention) throws
  *    SyncCursorExpiredError so the engine restarts the backfill.
  *
- * Read-only, unlike gmailDrafts.ts — written against the SyncProvider
+ * Read-only, unlike ./drafts.ts — written against the SyncProvider
  * contract rather than DraftProvider; see syncProviders.ts for why the
  * cursor is opaque outside this file.
  */
@@ -86,19 +87,6 @@ function isHistoryIdExpired(error: unknown): boolean {
   if (status === 404) return true;
   if (status === 400) return /history\s?id/i.test(errorMessage(error));
   return false;
-}
-
-async function mapBatched<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  for (let i = 0; i < items.length; i += limit) {
-    const batch = items.slice(i, i + limit);
-    results.push(...(await Promise.all(batch.map(fn))));
-  }
-  return results;
 }
 
 interface GmailMessageFull {
@@ -185,7 +173,9 @@ async function fetchBackfillPage(
   })) as MessagesListResponse;
 
   const ids = (list.messages ?? []).map((m) => m.id);
-  const messages = await mapBatched(ids, BATCH_CONCURRENCY, (id) => fetchMessageFull(account, id));
+  const messages = await mapWithConcurrency(ids, BATCH_CONCURRENCY, (id) =>
+    fetchMessageFull(account, id),
+  );
   // The `-in:draft -in:trash -in:spam` query already excludes these, but a
   // label can change between the list call and this fetch — filter again
   // rather than trust the query alone.
@@ -250,7 +240,7 @@ async function resolveTouched(
   account: ConnectedAccount,
   ids: string[],
 ): Promise<{ upserts: SyncMessage[]; deletes: string[] }> {
-  const resolved = await mapBatched(ids, BATCH_CONCURRENCY, async (id) => {
+  const resolved = await mapWithConcurrency(ids, BATCH_CONCURRENCY, async (id) => {
     try {
       return { id, message: await fetchMessageFull(account, id) };
     } catch (error) {

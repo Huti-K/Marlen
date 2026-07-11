@@ -2,9 +2,9 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { LlmProviderInfo, ModelSettings } from "@trailin/shared";
-import { credentialStore } from "../auth/credentialStore.js";
 import { getSetting, setSetting } from "../db/settings.js";
 import { env } from "../env.js";
+import { credentialStore } from "./credentialStore.js";
 
 /**
  * Single model registry for the whole app. Auth resolution order per call:

@@ -39,7 +39,7 @@ import { errorMessage } from "@/lib/utils";
 export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => void }) {
   const { t } = useTranslation();
   const [providers, setProviders] = React.useState<LlmProviderInfo[] | null>(null);
-  const [allowWrite, setAllowWrite] = React.useState<boolean | null>(null);
+  const [armedCount, setArmedCount] = React.useState<number | null>(null);
   const [status, setStatus] = React.useState<AppStatus | null>(null);
 
   const refresh = React.useCallback(async () => {
@@ -49,7 +49,7 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
       setStatus(nextStatus);
       onStatusChanged?.();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     }
   }, [onStatusChanged]);
 
@@ -129,17 +129,19 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
         title={t("settings.sections.permissions.title")}
         description={t("settings.sections.permissions.description")}
         aside={
-          allowWrite !== null && (
-            <StatusChip
-              tone={allowWrite ? "warning" : "success"}
-              icon={allowWrite ? <TriangleAlert /> : <ShieldCheck />}
-            >
-              {allowWrite ? t("settings.permissions.chipOn") : t("settings.permissions.chipOff")}
+          armedCount !== null &&
+          (armedCount > 0 ? (
+            <StatusChip tone="warning" icon={<TriangleAlert />}>
+              {t("settings.permissions.chipOn", { count: armedCount })}
             </StatusChip>
-          )
+          ) : (
+            <StatusChip tone="success" icon={<ShieldCheck />}>
+              {t("settings.permissions.chipOff")}
+            </StatusChip>
+          ))
         }
       >
-        <WriteAccess onState={setAllowWrite} />
+        <WriteAccess onState={setArmedCount} />
       </Section>
 
       <Section

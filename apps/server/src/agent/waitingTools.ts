@@ -1,9 +1,9 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { type ConnectedAccount, EMAIL_APPS } from "@trailin/shared";
 import { accountSupportsWaiting, listWaiting } from "../email/waiting.js";
-import { listAccounts } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
-import { accountNotFoundText, findAccount } from "./knowledgeTools.js";
+import { resolveAccountParam } from "./accounts.js";
+import { defineTool, textResult } from "./toolResult.js";
 
 /**
  * Agent tool over email/waiting.ts's "waiting on others" threads (same data
@@ -12,17 +12,12 @@ import { accountNotFoundText, findAccount } from "./knowledgeTools.js";
  * app has a SyncProvider instead of hardcoding any one of them.
  */
 
-const text = (value: string) => ({
-  content: [{ type: "text" as const, text: value }],
-  details: undefined,
-});
-
 /** Whole days elapsed since `iso`, floored, min 1 (matches email/waiting.ts's ≥24h wait filter). */
 function daysSince(iso: string): number {
   return Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000)));
 }
 
-const listWaitingThreadsTool: AgentTool = {
+export const listWaitingThreadsTool: AgentTool = defineTool({
   name: "list_waiting_threads",
   label: "List threads awaiting replies",
   description:
@@ -41,28 +36,27 @@ const listWaitingThreadsTool: AgentTool = {
           "connected account with waiting-thread tracking.",
       },
     },
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { account } = params as { account?: string };
-    const accounts = await listAccounts();
-    const filtered = account?.trim();
+    const resolved = await resolveAccountParam(account);
+    if (resolved.error) return textResult(resolved.error);
 
     let targets: ConnectedAccount[];
-    if (filtered) {
-      const resolved = findAccount(accounts, filtered);
-      if (!resolved) return text(accountNotFoundText(filtered, accounts));
-      if (!accountSupportsWaiting(resolved.app)) {
-        return text(
-          `${resolved.name} (${resolved.app}) isn't covered by waiting-thread tracking yet (no mailbox sync for this app).`,
+    if (resolved.account) {
+      if (!accountSupportsWaiting(resolved.account.app)) {
+        return textResult(
+          `${resolved.account.name} (${resolved.account.app}) isn't covered by waiting-thread ` +
+            `tracking yet (no mailbox sync for this app).`,
         );
       }
-      targets = [resolved];
+      targets = [resolved.account];
     } else {
-      targets = accounts.filter((a) => accountSupportsWaiting(a.app));
+      targets = resolved.accounts.filter((a) => accountSupportsWaiting(a.app));
     }
 
     if (targets.length === 0) {
-      return text("No connected accounts support waiting-thread tracking yet.");
+      return textResult("No connected accounts support waiting-thread tracking yet.");
     }
 
     const sections: string[] = [];
@@ -90,10 +84,11 @@ const listWaitingThreadsTool: AgentTool = {
 
     // Collapse to one line only when every account came back clean and empty —
     // a failure is worth surfacing even if nothing else is waiting.
-    if (!anyWaiting && !anyFailed) return text("No threads are waiting on a reply right now.");
+    if (!anyWaiting && !anyFailed)
+      return textResult("No threads are waiting on a reply right now.");
 
-    if (!filtered) {
-      const uncovered = accounts.filter(
+    if (!resolved.account) {
+      const uncovered = resolved.accounts.filter(
         (a) => !accountSupportsWaiting(a.app) && (EMAIL_APPS as readonly string[]).includes(a.app),
       );
       if (uncovered.length > 0) {
@@ -103,10 +98,6 @@ const listWaitingThreadsTool: AgentTool = {
       }
     }
 
-    return text(sections.join("\n\n"));
+    return textResult(sections.join("\n\n"));
   },
-};
-
-export function buildWaitingThreadsTool(): AgentTool {
-  return listWaitingThreadsTool;
-}
+});

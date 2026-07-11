@@ -1,5 +1,5 @@
-import { gmailDraftProvider } from "./gmailDrafts.js";
-import { outlookDraftProvider } from "./outlookDrafts.js";
+import { gmailDraftProvider } from "./gmail/drafts.js";
+import { outlookDraftProvider } from "./outlook/drafts.js";
 import { registerDraftProvider } from "./providers.js";
 
 /**

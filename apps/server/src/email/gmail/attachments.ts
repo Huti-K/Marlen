@@ -1,12 +1,12 @@
 import type { ConnectedAccount } from "@trailin/shared";
-import { proxyRequest } from "../pipedream/connect.js";
-import type { AttachmentProvider, EmailAttachment } from "./attachmentProviders.js";
-import { GMAIL_API, type MessagePart } from "./gmailMessage.js";
+import { proxyRequest } from "../../pipedream/connect.js";
+import type { AttachmentProvider, EmailAttachment } from "../attachmentProviders.js";
+import { GMAIL_API, type MessagePart } from "./message.js";
 
 /**
  * Gmail AttachmentProvider: lists a message's attachments and downloads
  * their bytes through the Connect proxy (plain Gmail REST API, same pattern
- * as gmailDrafts.ts). Everything user-facing — attachment selection,
+ * as ./drafts.ts). Everything user-facing — attachment selection,
  * extension validation, library ingest — lives one layer up in the
  * provider-neutral ./attachmentTool.ts; this file only speaks Gmail's wire
  * format. Registered by ./registerAttachmentProviders.ts.
@@ -15,7 +15,7 @@ import { GMAIL_API, type MessagePart } from "./gmailMessage.js";
 /**
  * Depth-first walk collecting every part with a non-empty filename — Gmail's
  * own definition of "this part is an attachment". Mirrors findPart's
- * recursion in gmailMessage.ts, just collecting instead of stopping at a hit.
+ * recursion in ./message.ts, just collecting instead of stopping at a hit.
  */
 function collectAttachments(part: MessagePart | undefined, out: EmailAttachment[]): void {
   if (!part) return;

@@ -1,13 +1,12 @@
 import {
-  Agent,
+  type Agent,
   type AgentMessage,
   estimateTokens,
   serializeConversation,
 } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import { modelRegistry, resolveActiveModel } from "../llm/registry.js";
 import { moduleLogger } from "../logger.js";
-import { runPrompt } from "./run.js";
+import { runOneShot } from "./oneShot.js";
 
 const defaultLog = moduleLogger("compaction");
 
@@ -105,8 +104,8 @@ function isCoreMessage(message: AgentMessage): message is Message {
 
 /**
  * One-shot, tool-less summary of the messages about to be dropped from
- * context (humanizer.ts pattern). Returns "" on an empty model result; throws
- * on any other failure, which maybeCompact treats as fail-open.
+ * context. Returns "" on an empty model result; throws on any other failure,
+ * which maybeCompact treats as fail-open.
  */
 async function summarizePrefix(prefix: AgentMessage[]): Promise<string> {
   let serialized = serializeConversation(prefix.filter(isCoreMessage));
@@ -114,12 +113,7 @@ async function summarizePrefix(prefix: AgentMessage[]): Promise<string> {
     serialized = `${DROPPED_NOTE}\n\n${serialized.slice(serialized.length - MAX_SERIALIZED_CHARS)}`;
   }
 
-  const model = await resolveActiveModel();
-  const agent = new Agent({
-    initialState: { systemPrompt: SYSTEM_PROMPT, model, tools: [] },
-    streamFn: (m, c, o) => modelRegistry.streamSimple(m, c, o),
-  });
-  const raw = await runPrompt({ agent }, serialized);
+  const raw = await runOneShot({ systemPrompt: SYSTEM_PROMPT, prompt: serialized });
   return raw.trim();
 }
 

@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { MessageCard } from "@trailin/shared";
+import type { AgentCard, EmailRef, MessageCard } from "@trailin/shared";
 import { db, schema, sqlite } from "../db/index.js";
 import { emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
 import { errorMessage } from "../util.js";
 import { type AgentSession, createEphemeralSession, getOrCreateSession } from "./emailAgent.js";
+import { decoratePrompt, serializeRefs } from "./emailRefs.js";
 import type { RunHandlers, TurnLogger } from "./run.js";
-import { collectTurnCards, serializeTurnCards } from "./turnCards.js";
 
 /**
  * Writes turns: one user message and the assistant reply that ends it, with
@@ -18,9 +18,55 @@ import { collectTurnCards, serializeTurnCards } from "./turnCards.js";
  * vocabulary this file is written against: turn, run, card, draft link.
  */
 
-export { serializeTurnCards } from "./turnCards.js";
-
 const log = moduleLogger("turnRecorder");
+
+/**
+ * Collects the cards one agent turn emits so the caller can persist them with
+ * the assistant message, and records a draft_links row for every draft the
+ * turn creates — that link is what lets the Drafts list reopen the exact
+ * conversation a draft came from. Used by both the chat route and the
+ * automation runner (a run id doubles as its conversation id).
+ */
+function collectTurnCards(conversationId: string): {
+  cards: MessageCard[];
+  onCard: (toolCallId: string, card: AgentCard) => void;
+} {
+  const cards: MessageCard[] = [];
+
+  const onCard = (toolCallId: string, card: AgentCard) => {
+    // A retried tool call replaces its earlier card, same as the live chat UI.
+    const existing = cards.findIndex((c) => c.toolCallId === toolCallId);
+    if (existing >= 0) cards[existing] = { toolCallId, card };
+    else cards.push({ toolCallId, card });
+
+    if (card.kind === "email_draft" && card.draft.draftId) {
+      // Fire-and-forget: the link is a navigation nicety and must never fail
+      // or stall the turn. Re-emit "drafts" once the link exists — the draft
+      // tool's own emit can race ahead of this insert, and the refetch it
+      // triggers would miss the conversationId.
+      db.insert(schema.draftLinks)
+        .values({
+          draftId: card.draft.draftId,
+          accountId: card.account?.accountId ?? "",
+          conversationId,
+          createdAt: new Date().toISOString(),
+        })
+        .onConflictDoUpdate({
+          target: schema.draftLinks.draftId,
+          set: { conversationId },
+        })
+        .then(() => emitServerEvent("drafts"))
+        .catch(() => {});
+    }
+  };
+
+  return { cards, onCard };
+}
+
+/** Serializes a turn's cards for the messages.cards column; null when there were none. */
+export function serializeTurnCards(cards: MessageCard[]): string | null {
+  return cards.length > 0 ? JSON.stringify(cards) : null;
+}
 
 /**
  * Thrown by beginTurn() when a turn is already running for the conversation.
@@ -66,6 +112,8 @@ export function _setSessionsForTest(override: TurnSessions | null): void {
 
 export interface TurnRunOptions {
   prompt: string;
+  /** Composer @-mentions attached to this turn's user message; see agent/emailRefs.ts. */
+  refs?: EmailRef[];
   session: "pooled" | "ephemeral";
   /** The caller's own streaming pass-through (chat's SSE handlers); the scheduler passes none. */
   handlers?: RunHandlers;
@@ -129,11 +177,17 @@ export function beginTurn(conversationId: string): Turn {
         // inserting this turn's user row first would make the rebuilt
         // session see its own turn as prior history and prompt over it a
         // second time.
+        //
+        // `content` stays the raw prompt — it's what the UI shows back to the
+        // user — while the prompt actually run against the model (below) gets
+        // the attached-email note appended, so a rebuilt session (loadHistory)
+        // can reconstruct exactly what this turn saw.
         await db.insert(schema.messages).values({
           id: randomUUID(),
           conversationId,
           role: "user",
           content: opts.prompt,
+          refs: serializeRefs(opts.refs),
           createdAt: new Date().toISOString(),
         });
 
@@ -169,8 +223,14 @@ export function beginTurn(conversationId: string): Turn {
           // inFlight bookkeeping covers this call too — emailAgent.ts's idle
           // sweep refuses to close a session's toolset out from under a turn
           // still running against it, but only for turns that went through
-          // runTurn.
-          text = await session.runTurn(opts.prompt, handlers, opts.signal, opts.log);
+          // runTurn. The prompt is decorated with any attached-email notes
+          // right before it reaches the model.
+          text = await session.runTurn(
+            decoratePrompt(opts.prompt, opts.refs),
+            handlers,
+            opts.signal,
+            opts.log,
+          );
         } catch (error) {
           // Cancelled: the agent threw because the signal fired mid-turn (a
           // client disconnect, an automation timeout). Record the

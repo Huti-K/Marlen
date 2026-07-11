@@ -1,9 +1,9 @@
 import { decodeHTML } from "entities";
-import { stripHtml } from "./textUtils.js";
+import { stripHtml } from "../textUtils.js";
 
 /**
  * Gmail message-payload helpers shared by every file that reads the Gmail
- * REST API (gmailDrafts.ts, gmailSync.ts, gmailAttachments.ts) — one
+ * REST API (drafts.ts, sync.ts, attachments.ts) — one
  * provider's wire format in one place.
  */
 
@@ -17,7 +17,7 @@ export interface MessagePart {
   parts?: MessagePart[];
 }
 
-export type MessageHeaders = { headers?: { name: string; value: string }[] };
+type MessageHeaders = { headers?: { name: string; value: string }[] };
 
 /** Case-insensitive header lookup, the way Gmail's `payload.headers` needs to be read. */
 export function headerLookup(payload: MessageHeaders | undefined) {

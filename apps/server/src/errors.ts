@@ -1,3 +1,4 @@
+import type { ApiErrorCode } from "@trailin/shared";
 import type { FastifyInstance } from "fastify";
 import { errorMessage } from "./util.js";
 
@@ -6,16 +7,22 @@ import { errorMessage } from "./util.js";
  * helpers below from anywhere under a route and the handler registered by
  * registerErrorHandler turns it into the API's standard `{ error }` body.
  *
+ * `code` marks a failure the user can fix in the app (the web client turns it
+ * into a click-through on the error toast); most errors don't carry one.
+ *
  * Anything else that escapes a route is a bug, and becomes a 500.
  */
 export class AppError extends Error {
+  readonly code?: ApiErrorCode;
+
   constructor(
     message: string,
     readonly statusCode: number,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; code?: ApiErrorCode },
   ) {
-    super(message, options);
+    super(message, { cause: options?.cause });
     this.name = "AppError";
+    this.code = options?.code;
   }
 }
 
@@ -28,12 +35,24 @@ export const notFound = (message: string): AppError => new AppError(message, 404
 /** The request is valid but conflicts with the current state (e.g. a login already running). */
 export const conflict = (message: string): AppError => new AppError(message, 409);
 
-/** Trailin is not configured well enough to serve this yet (no model, no Pipedream). */
-export const notConfigured = (message: string): AppError => new AppError(message, 503);
-
-/** An upstream dependency failed: Pipedream, a mail provider, the model API. */
+/**
+ * An upstream dependency failed: Pipedream, a mail provider, the model API.
+ * An AppError cause passes through unwrapped — it already knows its status,
+ * message, and code, and flattening it to a 502 would lose all three.
+ */
 export const upstreamError = (message: string, cause?: unknown): AppError =>
-  new AppError(message, 502, { cause });
+  cause instanceof AppError ? cause : new AppError(message, 502, { cause });
+
+/**
+ * Await a single-row select and throw notFound(message) if it came back
+ * empty — the guard every PATCH/DELETE/action route runs before it mutates
+ * or acts on a row that might not exist.
+ */
+export async function requireRow<T>(rows: Promise<T[]>, message: string): Promise<T> {
+  const [row] = await rows;
+  if (!row) throw notFound(message);
+  return row;
+}
 
 /**
  * Duck-typed HTTP status off whatever an upstream SDK call threw — e.g.
@@ -53,6 +72,8 @@ export function upstreamStatusCode(error: unknown): number | undefined {
 export interface ErrorResponse {
   error: string;
   requestId: string;
+  /** Present when the failure is user-fixable in the app (see AppError.code). */
+  code?: ApiErrorCode;
 }
 
 function statusOf(error: unknown): number {
@@ -91,6 +112,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     if (reply.raw.headersSent) return;
 
     const body: ErrorResponse = { error: errorMessage(error), requestId: String(req.id) };
+    if (error instanceof AppError && error.code) body.code = error.code;
     reply.code(statusCode).send(body);
   });
 }

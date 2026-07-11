@@ -51,7 +51,7 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
       setStatus(await api.setPipedreamMode(useCustom));
       onStatusChanged?.();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     }
   };
 
@@ -212,7 +212,7 @@ function SetupWizard({
       });
       await onSaved();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setBusy(null);
     }
@@ -224,7 +224,7 @@ function SetupWizard({
       await api.clearPipedream();
       await onSaved();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setBusy(null);
       setConfirmRemove(false);

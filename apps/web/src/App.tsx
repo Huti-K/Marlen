@@ -184,6 +184,16 @@ export default function App() {
     };
   }, [refreshStatus]);
 
+  // Navigation requests from non-React code (e.g. a toast's click-through action).
+  React.useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const path = (event as CustomEvent<string>).detail;
+      if (typeof path === "string" && path.startsWith("/")) navigate(path);
+    };
+    window.addEventListener("trailin:navigate", onNavigate);
+    return () => window.removeEventListener("trailin:navigate", onNavigate);
+  }, [navigate]);
+
   React.useEffect(() => {
     if (!status) return;
     const complete = isSetupComplete(status);

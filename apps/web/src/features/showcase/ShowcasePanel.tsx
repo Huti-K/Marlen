@@ -68,6 +68,7 @@ import { SHOWCASE_TURNS, type ShowcaseTurn } from "@/features/chat/cards/samples
 import { GlanceStrip } from "@/features/home/GlanceStrip";
 import { ThreadHistory } from "@/features/home/ThreadHistory";
 import { WaitingSection } from "@/features/home/WaitingSection";
+import { ApiError } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -989,6 +990,25 @@ export function ShowcasePanel() {
             variant="secondary"
           >
             Error toast
+          </Button>
+          <Button
+            onClick={() => toast.info("A new draft is waiting for review.")}
+            variant="secondary"
+          >
+            Info toast
+          </Button>
+          <Button
+            onClick={() =>
+              toast.error(
+                new ApiError(
+                  "Pipedream is not set up. Add your Pipedream credentials in Settings → Email.",
+                  "pipedream_not_configured",
+                ),
+              )
+            }
+            variant="secondary"
+          >
+            Error toast with action
           </Button>
         </div>
       </Section>

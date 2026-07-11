@@ -20,6 +20,8 @@ export const messages = sqliteTable("messages", {
   toolCalls: text("tool_calls"),
   /** Turn-level agent/provider error, if the response ended unsuccessfully. */
   error: text("error"),
+  /** JSON-encoded EmailRef[] — emails the user pinned to this message; null for none. */
+  refs: text("refs"),
   createdAt: text("created_at").notNull(),
 });
 

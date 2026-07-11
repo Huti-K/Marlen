@@ -34,13 +34,19 @@ export function gmailDraftUrl(accountName: string, messageId: string): string {
   return `https://mail.google.com/mail/${gmailAuthUser(accountName)}#drafts?compose=${messageId}`;
 }
 
+/**
+ * Landing page for Outlook web when no more specific deep link is known.
+ * Shared with outlook/drafts.ts's per-draft fallback (a specific drafts-folder
+ * URL built from this same root) so both land on the one Outlook web root.
+ */
+export const OUTLOOK_WEB_ROOT = "https://outlook.office.com/mail/";
+
 const THREAD_LINKS: Record<string, ThreadLinkBuilder> = {
   gmail: (account, threadId) => gmailThreadUrl(account.name, threadId),
   // Graph's per-message webLink isn't mirrored, and Outlook's web UI has no
   // stable thread-by-conversationId URL — land on the mailbox rather than
-  // risk a broken deep link (same fallback rationale as outlookDrafts.ts's
-  // outlookFallbackUrl).
-  microsoft_outlook: () => "https://outlook.office.com/mail/",
+  // risk a broken deep link.
+  microsoft_outlook: () => OUTLOOK_WEB_ROOT,
 };
 
 /** Deep link to a thread in the account's webmail UI; "" when the app has no known web UI. */

@@ -54,6 +54,16 @@
     "noResultsBody": "Hier passt nichts zu „{{query}}“.",
     "clearSearch": "Suche zurücksetzen"
   },
+  "errors": {
+    "network": "Der Server ist nicht erreichbar. Prüfen Sie, ob er läuft, und versuchen Sie es erneut.",
+    "timeout": "Der Server hat zu lange nicht geantwortet. Bitte versuchen Sie es erneut.",
+    "unavailable": "Der Server ist gerade nicht verfügbar. Bitte versuchen Sie es gleich noch einmal.",
+    "server": "Auf dem Server ist etwas schiefgelaufen. Bitte versuchen Sie es erneut.",
+    "notFound": "Das wurde nicht gefunden. Möglicherweise wurde es entfernt.",
+    "forbidden": "Dafür fehlt Ihnen die Berechtigung.",
+    "request": "Das hat nicht funktioniert. Bitte versuchen Sie es erneut.",
+    "openSettings": "Einstellungen öffnen"
+  },
   "chat": {
     "newConversation": "Neue Unterhaltung",
     "history": "Verlauf",
@@ -89,9 +99,20 @@
       "copy": "Kopieren",
       "copied": "Kopiert"
     },
+    "mention": {
+      "empty": "Keine passenden E-Mails.",
+      "loading": "Durchsucht Ihre E-Mails…"
+    },
+    "refs": {
+      "remove": "{{label}} entfernen"
+    },
     "cards": {
       "noSubject": "(kein Betreff)",
       "emptyBody": "(leere Nachricht)",
+      "addToChat": "Zum Chat hinzufügen",
+      "choices": {
+        "title": "Option wählen"
+      },
       "hits": {
         "title": "E-Mail-Suche",
         "resultCount_one": "{{count}} Ergebnis",
@@ -156,8 +177,8 @@
   "search": {
     "openButton": "Suchen",
     "title": "Suche",
-    "placeholder": "Chats, Übersichten, Entwürfe, Dokumente, Erinnerungen durchsuchen…",
-    "hint": "Durchsuchen Sie Ihre Chats, Übersichten, Entwürfe, Dokumente und Erinnerungen.",
+    "placeholder": "Chats, Übersichten, Entwürfe, E-Mails, Dokumente, Erinnerungen durchsuchen…",
+    "hint": "Durchsuchen Sie Ihre Chats, Übersichten, Entwürfe, E-Mails, Dokumente und Erinnerungen.",
     "shortcuts": "Gehe zu",
     "topHit": "Bester Treffer",
     "recent": "Zuletzt gesucht",
@@ -176,6 +197,7 @@
       "run": "Übersicht öffnen",
       "chat": "Chat öffnen",
       "draft": "Entwurf öffnen",
+      "mail": "Im Postfach öffnen",
       "document": "Dokument öffnen",
       "memory": "Erinnerung öffnen"
     },
@@ -183,6 +205,7 @@
       "run": "Übersichten",
       "chat": "Chats",
       "draft": "Entwürfe",
+      "mail": "E-Mails",
       "document": "Dokumente",
       "memory": "Erinnerungen"
     }
@@ -432,7 +455,7 @@
       },
       "permissions": {
         "title": "Berechtigungen",
-        "description": "Was der Assistent in Ihrem Postfach darf — Senden und Änderungen bleiben aus, bis Sie sie aktivieren."
+        "description": "Was der Assistent in Ihrem Postfach darf — der Zugriff wird pro Konto vergeben, Senden und Änderungen bleiben aus, bis Sie das jeweilige Konto aktivieren."
       },
       "preferences": {
         "title": "Darstellung & Sprache",
@@ -454,14 +477,15 @@
       }
     },
     "permissions": {
-      "toggle": "Senden & Änderungen erlauben",
-      "toggleOff": "Nur Lesen: Die KI kann lesen, suchen und Entwürfe erstellen, niemals senden, löschen oder etwas ändern.",
-      "toggleOn": "Die KI darf auf Ihre Anweisung E-Mails senden und Änderungen vornehmen (Labels, Archivieren, Löschen).",
-      "confirmTitle": "Der KI das Senden und Ändern von E-Mails erlauben?",
-      "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung E-Mails senden und beantworten sowie Ihr Postfach ändern, archivieren, beschriften, löschen, für alle verbundenen Konten. Sie können dies jederzeit wieder deaktivieren.",
+      "rowOn": "Darf auf Ihre Anweisung E-Mails senden und Änderungen vornehmen (Labels, Archivieren, Löschen).",
+      "rowOff": "Nur Lesen: Die KI kann hier lesen, suchen und Entwürfe erstellen, niemals senden, löschen oder etwas ändern.",
+      "confirmTitle": "Der KI das Senden und Ändern von E-Mails als {{account}} erlauben?",
+      "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung E-Mails als {{account}} senden und beantworten sowie dieses Postfach ändern — archivieren, beschriften, löschen. Sie können dies jederzeit wieder deaktivieren.",
       "confirmCta": "Senden & Änderungen erlauben",
-      "chipOn": "Senden & Ändern aktiv",
-      "chipOff": "Nur Lesen"
+      "chipOn_one": "Senden & Ändern aktiv für {{count}} Konto",
+      "chipOn_other": "Senden & Ändern aktiv für {{count}} Konten",
+      "chipOff": "Nur Lesen",
+      "noAccounts": "Noch keine Konten verbunden — verbinden Sie oben unter E-Mail verbinden eines."
     },
     "appearance": {
       "label": "Erscheinungsbild",

@@ -28,13 +28,13 @@ const DEFAULT_AUTOMATIONS: DefaultAutomation[] = [
     showInActivity: true,
     instruction: `Across all connected email accounts, review the messages received since yesterday (roughly the last 24 hours), triage them, draft the replies that are warranted, and publish the result as a structured briefing.
 
-REVIEW: Search each connected account for mail from the last 24 hours, fanning the per-account searches out with the delegate tool rather than working through them serially. Read enough of each noteworthy thread to say what it actually wants. Also call list_waiting_threads, so a thread that has been sitting unanswered for days can be raised alongside today's mail.
+REVIEW: List the threads with mail from the last 24 hours across all connected accounts (list_threads covers every account in one call; pass refresh true so the very latest mail is included). Read enough of each noteworthy thread (read_thread) to say what it actually wants — when many threads need reading, fan the read-and-summarize work out with the delegate tool rather than working through them serially. Also call list_waiting_threads, so a thread that has been sitting unanswered for days can be raised alongside today's mail.
 
 TRIAGE: Put every noteworthy message in exactly one tier. "urgent" when it is time-sensitive, a deadline could pass, or somebody is blocked on me. "reply" when a real person is waiting on my answer but nothing is on fire. "action" when it needs a decision or a task from me and nobody is waiting. "fyi" when it is worth knowing and needs nothing. Newsletters, promotions, receipts, shipping updates and automated notifications are not items at all: count them into a rollup instead.
 
-DRAFTS (only where it genuinely makes sense): For threads that actually warrant a reply from me, ACTUALLY CREATE THE DRAFT by calling that account's create-draft tool (the exact tool name varies by provider and account, use the one whose description says it acts as that account) so a real unsent draft is saved to my Drafts folder; do not merely write the draft text in your report. Attach it to the original thread by passing the thread's threadId from the find/search results so it threads correctly. A reply is warranted when a real person is asking me something, is awaiting my response, or the thread needs an action or acknowledgement from me. Do NOT draft for newsletters, marketing/promotions, receipts, shipping/order updates, calendar invites, automated or no-reply notifications, or threads I have already answered (when in doubt, skip it). Write each draft concisely, in my usual tone, and in the same language as the email it replies to. Never send, reply, forward, label, or delete anything, only save drafts for me to review.
+DRAFTS (only where it genuinely makes sense): For threads that actually warrant a reply from me, ACTUALLY CREATE THE DRAFT by calling that account's create-draft tool (the exact tool name varies by provider and account, use the one whose description says it acts as that account) so a real unsent draft is saved to my Drafts folder; do not merely write the draft text in your report. Attach it to the original thread by passing the thread's threadId from the list_threads/read_thread results so it threads correctly. A reply is warranted when a real person is asking me something, is awaiting my response, or the thread needs an action or acknowledgement from me. Do NOT draft for newsletters, marketing/promotions, receipts, shipping/order updates, calendar invites, automated or no-reply notifications, or threads I have already answered (when in doubt, skip it). Write each draft concisely, in my usual tone, and in the same language as the email it replies to. Never send, reply, forward, label, or delete anything, only save drafts for me to review.
 
-PUBLISH: Call compose_briefing exactly once, at the very end, with every triaged item. Give each item the real threadId from the search results and the account it arrived in, and set draftId on any item you drafted a reply for, so the card's actions work. Roll the low-value mail up by kind ("Newsletters", "Receipts", "Promotions") with counts and a few example senders.
+PUBLISH: Call compose_briefing exactly once, at the very end, with every triaged item. Give each item the real threadId from the list_threads/read_thread results and the account it arrived in, and set draftId on any item you drafted a reply for, so the card's actions work. Roll the low-value mail up by kind ("Newsletters", "Receipts", "Promotions") with counts and a few example senders.
 
 CLOSE: The card is the report, so do not repeat the items in prose. Write at most two or three sentences: what needs me first, which drafts are waiting for my review, and anything borderline you chose to skip.`,
   },
@@ -45,7 +45,7 @@ CLOSE: The card is the report, so do not repeat the items in prose. Write at mos
     showInActivity: false,
     instruction: `Review today's outgoing email so you can learn how I actually communicate, and save durable learnings to long-term memory so future drafts match my style and decisions. This run is review-only: do not create drafts or send, label, or modify any email.
 
-GATHER: Using each account's email search, look at (a) messages I sent today (on Gmail: \`in:sent newer_than:1d\`) and (b) drafts still sitting in my Drafts folder (on Gmail: \`in:drafts\`); on other providers use the closest equivalent. Read the relevant ones.
+GATHER: Look at (a) the messages I sent today — list_sent_messages across all accounts, keeping the ones from the last 24 hours — and (b) the drafts still sitting in my Drafts folders (list_drafts). Read the relevant threads in full with read_thread.
 
 COMPARE: Where something I sent corresponds to a draft you (Trailin) had prepared earlier, compare them. The edits I made before sending are the strongest signal: they reveal my real preferences (tone, length, greeting and sign-off, formality, what I add or cut, factual corrections). Note what changed.
 
@@ -74,14 +74,18 @@ const SUPERSEDED_INSTRUCTION_HASHES: Record<string, readonly string[]> = {
   // v2 — hard-coded Gmail tool names / query syntax (gmail-create-draft, in:sent).
   // v3 — prose digest with ⚠️ markers and manual importance ordering, replaced by the
   //   compose_briefing tool call and its REVIEW/TRIAGE/DRAFTS/PUBLISH/CLOSE structure.
+  // v4 — per-account live searches and Gmail query syntax, replaced by the mirror
+  //   read tools (list_threads/read_thread/list_sent_messages/list_drafts).
   "Morning briefing": [
     "0998189fc3533bde38d61e1d508ec6e77378a3d73209cc8e5dbeb6f2d6511034",
     "eb629153709687168e1bd914a1bcf2f8ff2aedcbcc20003b232225b7c95eb59f",
     "e68d5f2bca75eec90583f9f9d39d1772b52a567e1f7408b343727bd44338c572",
+    "faa799adad451168271033bbac979f2b140ef593d282e8a10c0fa39760f3e86a",
   ],
   "End-of-day learnings": [
     "fbbf5a07ae2963b257a682dab09599c3c2bcb9de1271619536a25a67e524eb7b",
     "08ee74126c321b179a202b032c3541e10e01c10e7b8bffeaef02c0b85395c7a5",
+    "944403fe4707b98f730902c6e83355808ee509c1844f772ae769fecd24a9fa9d",
   ],
 };
 

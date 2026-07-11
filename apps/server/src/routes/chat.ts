@@ -5,10 +5,14 @@ import type { ChatStreamEvent, ChatToolCall } from "@trailin/shared";
 import { desc, eq, inArray, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
 import { buildSystemPrompt, disposeSession } from "../agent/emailAgent.js";
+import { parseStoredRefs } from "../agent/emailRefs.js";
 import { beginTurn, type Turn, TurnInFlightError } from "../agent/turnRecorder.js";
-import { db, schema, sqlite } from "../db/index.js";
+import { db, lazyStatement, schema, sqlite } from "../db/index.js";
+import { buildFtsMatch } from "../db/sql.js";
+import { badRequest, conflict, requireRow } from "../errors.js";
 import { emitServerEvent } from "../events.js";
-import { errorMessage, escapeLikeInput, likePattern } from "../util.js";
+import { errorMessage, likeContains, likePattern } from "../util.js";
+import { openSse } from "./sse.js";
 
 const conversationsQuery = Type.Object({
   q: Type.Optional(Type.String()),
@@ -23,6 +27,23 @@ const conversationTitleBody = Type.Object({ title: Type.String() });
 const chatBody = Type.Object({
   conversationId: Type.Optional(Type.String()),
   message: Type.String(),
+  // Composer @-mentions: emails the user explicitly pinned to this message.
+  // See agent/emailRefs.ts — these become an authoritative note appended to
+  // the prompt actually run, while the persisted row keeps `message` raw.
+  refs: Type.Optional(
+    Type.Array(
+      Type.Object({
+        threadId: Type.String(),
+        accountId: Type.String(),
+        accountName: Type.Optional(Type.String()),
+        messageId: Type.Optional(Type.String()),
+        subject: Type.Optional(Type.String()),
+        from: Type.Optional(Type.String()),
+        date: Type.Optional(Type.String()),
+      }),
+      { maxItems: 8 },
+    ),
+  ),
 });
 
 // Conversation ids with a visibly in-flight turn, purely for the history
@@ -42,6 +63,21 @@ const deleteConversation = sqlite.transaction((id: string) => {
   sqlite.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);
   sqlite.prepare("DELETE FROM conversations WHERE id = ?").run(id);
 });
+
+/**
+ * Message-content half of conversation search: messages_fts is the FTS5
+ * external-content index over `messages` (db/schemaSteps.ts), kept in sync by
+ * insert/update/delete triggers, so this never scans message bodies with
+ * LIKE. Every hit is joined back to `messages` by rowid to read the owning
+ * conversation id; DISTINCT collapses a conversation with several matching
+ * messages to one row. Same idiom as search/sources.ts's messageHitsStmt.
+ */
+const messageMatchStmt = lazyStatement(`
+  SELECT DISTINCT m.conversation_id AS conversationId
+  FROM messages_fts
+  JOIN messages m ON m.rowid = messages_fts.rowid
+  WHERE messages_fts MATCH ?
+`);
 
 function parseToolCalls(value: string | null): ChatToolCall[] | undefined {
   if (!value) return undefined;
@@ -66,18 +102,24 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
     const limit = Math.min(req.query.limit ?? 50, 200);
     const offset = req.query.offset ?? 0;
 
-    // Matches conversations by title, or that contain at least one matching message.
-    const pattern = q ? `%${escapeLikeInput(q)}%` : undefined;
+    // Matches conversations by title (LIKE — titles are short and few), or
+    // that contain at least one message hit against messages_fts. buildFtsMatch
+    // mirrors search/sources.ts's searchChats: null when the query has no
+    // word/number characters, so a query like "***" degrades to a title-only
+    // match rather than an empty MATCH expression (which SQLite rejects).
+    const pattern = q ? likeContains(q) : undefined;
+    const ftsMatch = q ? buildFtsMatch(q, "AND") : null;
+    const matchedConversationIds = ftsMatch
+      ? (messageMatchStmt().all(ftsMatch) as { conversationId: string }[]).map(
+          (row) => row.conversationId,
+        )
+      : [];
     const where = pattern
       ? or(
           likePattern(schema.conversations.title, pattern),
-          inArray(
-            schema.conversations.id,
-            db
-              .select({ id: schema.messages.conversationId })
-              .from(schema.messages)
-              .where(likePattern(schema.messages.content, pattern)),
-          ),
+          ...(matchedConversationIds.length > 0
+            ? [inArray(schema.conversations.id, matchedConversationIds)]
+            : []),
         )
       : undefined;
 
@@ -99,18 +141,16 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.patch(
     "/api/conversations/:id",
     { schema: { params: idParams, body: conversationTitleBody } },
-    async (req, reply) => {
+    async (req) => {
       const title = req.body.title.trim();
-      if (!title) {
-        return reply.code(400).send({ error: "title is required" });
-      }
-      const [existing] = await db
-        .select({ id: schema.conversations.id })
-        .from(schema.conversations)
-        .where(eq(schema.conversations.id, req.params.id));
-      if (!existing) {
-        return reply.code(404).send({ error: "not found" });
-      }
+      if (!title) throw badRequest("title is required");
+      await requireRow(
+        db
+          .select({ id: schema.conversations.id })
+          .from(schema.conversations)
+          .where(eq(schema.conversations.id, req.params.id)),
+        "not found",
+      );
       await db
         .update(schema.conversations)
         .set({ title })
@@ -120,14 +160,14 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
     },
   );
 
-  app.delete("/api/conversations/:id", { schema: { params: idParams } }, async (req, reply) => {
-    const [existing] = await db
-      .select({ id: schema.conversations.id })
-      .from(schema.conversations)
-      .where(eq(schema.conversations.id, req.params.id));
-    if (!existing) {
-      return reply.code(404).send({ error: "not found" });
-    }
+  app.delete("/api/conversations/:id", { schema: { params: idParams } }, async (req) => {
+    await requireRow(
+      db
+        .select({ id: schema.conversations.id })
+        .from(schema.conversations)
+        .where(eq(schema.conversations.id, req.params.id)),
+      "not found",
+    );
     // A turn currently running for this conversation can still insert its
     // assistant row (turnRecorder.ts's recordOutcome) after the delete below —
     // refuse instead of racing it, same 409 shape POST /api/chat itself
@@ -136,7 +176,7 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
     // with no `await` between the two, so this check can't miss a turn that
     // only just started.
     if (runningConversations.has(req.params.id)) {
-      return reply.code(409).send({ error: "a reply is in progress for this conversation" });
+      throw conflict("a reply is in progress for this conversation");
     }
     // Drop the live agent session before deleting rows, not after: once this
     // resolves, nothing can start a new turn against this conversationId (the
@@ -157,19 +197,18 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
       .where(eq(schema.messages.conversationId, req.params.id))
       .orderBy(schema.messages.createdAt);
 
-    // The cards column is a JSON blob internally; the API ships parsed cards.
-    return rows.map(({ cards, toolCalls, ...row }) => ({
+    // The cards/refs columns are JSON blobs internally; the API ships parsed values.
+    return rows.map(({ cards, toolCalls, refs, ...row }) => ({
       ...row,
       cards: parseStoredCards(cards),
       toolCalls: parseToolCalls(toolCalls),
+      refs: parseStoredRefs(refs),
     }));
   });
 
   app.post("/api/chat", { schema: { body: chatBody } }, async (req, reply) => {
     const message = req.body.message.trim();
-    if (!message) {
-      return reply.code(400).send({ error: "message is required" });
-    }
+    if (!message) throw badRequest("message is required");
 
     // Resolve the id and acquire the turn guard before hijacking the reply —
     // once hijack() hands the socket over there is no way left to answer
@@ -183,40 +222,16 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
       turn = beginTurn(conversationId);
     } catch (error) {
       if (error instanceof TurnInFlightError) {
-        return reply
-          .code(409)
-          .send({ error: "a reply is already in progress for this conversation" });
+        throw conflict("a reply is already in progress for this conversation");
       }
       throw error;
     }
 
-    // We stream on the raw socket; tell Fastify the reply is ours now.
-    reply.hijack();
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
-
     // Stop the turn as soon as the client disconnects, so an abandoned tab
-    // doesn't keep burning tool calls and model tokens (see routes/events.ts
-    // for the same pattern on the plain SSE stream). Disconnect is signalled
-    // by the *response* closing before we ended it — the request's own
-    // "close" fires as soon as its body is consumed (Node ≥ 16), long before
-    // the client goes away.
-    let clientClosed = false;
+    // doesn't keep burning tool calls and model tokens.
     const controller = new AbortController();
-    const onClientClose = () => {
-      if (reply.raw.writableEnded) return;
-      clientClosed = true;
-      controller.abort();
-    };
-    reply.raw.on("close", onClientClose);
-
-    const send = (event: ChatStreamEvent) => {
-      if (clientClosed) return;
-      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-    };
+    const stream = openSse<ChatStreamEvent>(reply, () => controller.abort());
+    const send = (event: ChatStreamEvent) => stream.send(event);
 
     const now = () => new Date().toISOString();
 
@@ -247,6 +262,7 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
       let thinkingSent = false;
       const { text } = await turn.run({
         prompt: message,
+        refs: req.body.refs,
         session: "pooled",
         handlers: {
           onTextDelta: (delta) => {
@@ -286,17 +302,16 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
       send({ type: "done", text });
     } catch (error) {
       // A client-disconnect abort surfaces here too (the recorder rethrows
-      // after writing the cancelled row); clientClosed already suppressed
-      // send() by then. The transcript is already closed out one way or
-      // another by turn.run() itself — this is only about telling a
-      // still-connected client that something went wrong.
+      // after writing the cancelled row); stream.send already suppresses
+      // writes once the stream has ended. The transcript is already closed
+      // out one way or another by turn.run() itself — this is only about
+      // telling a still-connected client that something went wrong.
       req.log.error(error, "chat failed");
       send({ type: "error", message: errorMessage(error) });
     } finally {
       runningConversations.delete(conversationId);
       emitServerEvent("conversations");
-      reply.raw.off("close", onClientClose);
-      if (!reply.raw.writableEnded) reply.raw.end();
+      stream.end();
     }
   });
 };

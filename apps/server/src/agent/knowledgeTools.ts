@@ -1,12 +1,13 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { type ConnectedAccount, formatFileSize, type MemoryEntry } from "@trailin/shared";
+import { formatFileSize, type MemoryEntry } from "@trailin/shared";
 import { and, desc, eq, gte, like } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { createMemory, deleteMemory, listMemories, updateMemory } from "../db/memories.js";
 import { getLibraryDir, SUPPORTED_FORMATS, saveNote } from "../library/ingest.js";
 import { getDocument, listDocuments, readDocumentChunks, searchChunks } from "../library/store.js";
-import { listAccounts } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
+import { fetchAccountNameMap, resolveAccountParam } from "./accounts.js";
+import { defineTool, textResult } from "./toolResult.js";
 
 /**
  * The agent's local knowledge tools: long-term memory plus the document
@@ -17,31 +18,7 @@ import { errorMessage } from "../util.js";
 /** Chunks per library_read part; ≈ 15k characters. Search hits cite these parts. */
 const PART_CHUNKS = 8;
 
-const text = (value: string) => ({
-  content: [{ type: "text" as const, text: value }],
-  details: undefined,
-});
-
-/** Case-insensitive match on a connected account's name, or an exact account id. */
-export function findAccount(
-  accounts: ConnectedAccount[],
-  raw: string,
-): ConnectedAccount | undefined {
-  const trimmed = raw.trim();
-  return (
-    accounts.find((a) => a.id === trimmed) ??
-    accounts.find((a) => a.name.toLowerCase() === trimmed.toLowerCase())
-  );
-}
-
-/** Helpful "not found" text listing what's actually connected, for a bad account param. */
-export function accountNotFoundText(raw: string, accounts: ConnectedAccount[]): string {
-  const list =
-    accounts.length > 0 ? accounts.map((a) => a.name).join(", ") : "no accounts are connected";
-  return `No connected account matches "${raw}". Connected accounts: ${list}.`;
-}
-
-const memorySave: AgentTool = {
+const memorySave: AgentTool = defineTool({
   name: "memory_save",
   label: "Save to memory",
   description:
@@ -69,28 +46,23 @@ const memorySave: AgentTool = {
       },
     },
     required: ["content"],
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { content, account } = params as { content: string; account?: string };
-    let accountId: string | null = null;
-    let scopeLabel = "general";
-    if (account?.trim()) {
-      const accounts = await listAccounts();
-      const resolved = findAccount(accounts, account);
-      if (!resolved) return text(accountNotFoundText(account, accounts));
-      accountId = resolved.id;
-      scopeLabel = resolved.name;
-    }
+    const resolved = await resolveAccountParam(account);
+    if (resolved.error) return textResult(resolved.error);
+    const accountId = resolved.account?.id ?? null;
+    const scopeLabel = resolved.account?.name ?? "general";
     const { entry, created } = await createMemory(content, "agent", accountId);
-    return text(
+    return textResult(
       created
         ? `Saved to long-term memory (${scopeLabel}): ${entry.content}`
         : `Already in memory (${scopeLabel}): ${entry.content}`,
     );
   },
-};
+});
 
-const memoryUpdate: AgentTool = {
+const memoryUpdate: AgentTool = defineTool({
   name: "memory_update",
   label: "Update memory",
   description:
@@ -118,7 +90,7 @@ const memoryUpdate: AgentTool = {
       },
     },
     required: ["id", "content"],
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { id, content, account } = params as { id: string; content: string; account?: string };
     let accountId: string | null | undefined;
@@ -127,21 +99,22 @@ const memoryUpdate: AgentTool = {
       if (trimmed.toLowerCase() === "general") {
         accountId = null;
       } else {
-        const accounts = await listAccounts();
-        const resolved = findAccount(accounts, trimmed);
-        if (!resolved) return text(accountNotFoundText(trimmed, accounts));
-        accountId = resolved.id;
+        const resolved = await resolveAccountParam(trimmed);
+        if (resolved.error) return textResult(resolved.error);
+        accountId = resolved.account?.id;
       }
     }
     const entry = await updateMemory(id, content, accountId);
     if (!entry) {
-      return text(`No memory found for id ${id} — use the id from the Long-term memory list.`);
+      return textResult(
+        `No memory found for id ${id} — use the id from the Long-term memory list.`,
+      );
     }
-    return text(`Memory updated: ${entry.content}`);
+    return textResult(`Memory updated: ${entry.content}`);
   },
-};
+});
 
-const memoryDelete: AgentTool = {
+const memoryDelete: AgentTool = defineTool({
   name: "memory_delete",
   label: "Delete memory",
   description:
@@ -157,28 +130,30 @@ const memoryDelete: AgentTool = {
       },
     },
     required: ["id"],
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { id } = params as { id: string };
     const deleted = await deleteMemory(id);
     if (!deleted) {
-      return text(`No memory found for id ${id} — use the id from the Long-term memory list.`);
+      return textResult(
+        `No memory found for id ${id} — use the id from the Long-term memory list.`,
+      );
     }
-    return text(`Memory deleted.`);
+    return textResult(`Memory deleted.`);
   },
-};
+});
 
-const libraryList: AgentTool = {
+const libraryList: AgentTool = defineTool({
   name: "library_list",
   label: "List library documents",
   description:
     `List every document in the user's local library (files they dropped into the library ` +
     `folder or uploaded in Settings). Returns each document's title and id for library_read.`,
-  parameters: { type: "object", properties: {} } as AgentTool["parameters"],
+  parameters: { type: "object", properties: {} },
   execute: async () => {
     const documents = await listDocuments();
     if (documents.length === 0) {
-      return text(
+      return textResult(
         `The library is empty. The user can drop ${SUPPORTED_FORMATS} files into ` +
           `${getLibraryDir()} (or upload them on the Knowledge page).`,
       );
@@ -190,11 +165,11 @@ const libraryList: AgentTool = {
           : `, ${Math.max(1, Math.ceil(d.chunkCount / PART_CHUNKS))} part(s)`;
       return `- ${d.title} (${d.ext}, ${formatFileSize(d.size)}${state}) — id: ${d.id}`;
     });
-    return text(lines.join("\n"));
+    return textResult(lines.join("\n"));
   },
-};
+});
 
-const librarySearch: AgentTool = {
+const librarySearch: AgentTool = defineTool({
   name: "library_search",
   label: "Search library",
   description:
@@ -209,23 +184,23 @@ const librarySearch: AgentTool = {
       limit: { type: "number", description: "Max results, 1–20 (default 8)." },
     },
     required: ["query"],
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { query, limit } = params as { query: string; limit?: number };
     const capped = Math.max(1, Math.min(20, Math.round(limit ?? 8)));
     const hits = searchChunks(query, capped);
     if (hits.length === 0) {
-      return text(`No matches for "${query}". Try other keywords, or library_list.`);
+      return textResult(`No matches for "${query}". Try other keywords, or library_list.`);
     }
     const lines = hits.map(
       (h) =>
         `[${h.title} — part ${Math.floor(h.seq / PART_CHUNKS) + 1}, id: ${h.documentId}]\n${h.snippet}`,
     );
-    return text(lines.join("\n\n"));
+    return textResult(lines.join("\n\n"));
   },
-};
+});
 
-const libraryRead: AgentTool = {
+const libraryRead: AgentTool = defineTool({
   name: "library_read",
   label: "Read library document",
   description:
@@ -238,13 +213,13 @@ const libraryRead: AgentTool = {
       part: { type: "number", description: "1-based part to read (default 1)." },
     },
     required: ["documentId"],
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { documentId, part } = params as { documentId: string; part?: number };
     const doc = await getDocument(documentId);
-    if (!doc) return text(`No document with id ${documentId} — check library_list.`);
+    if (!doc) return textResult(`No document with id ${documentId} — check library_list.`);
     if (doc.status === "error") {
-      return text(`"${doc.title}" could not be indexed: ${doc.error ?? "unknown error"}.`);
+      return textResult(`"${doc.title}" could not be indexed: ${doc.error ?? "unknown error"}.`);
     }
     const chunks = readDocumentChunks(documentId);
     const totalParts = Math.max(1, Math.ceil(chunks.length / PART_CHUNKS));
@@ -253,11 +228,11 @@ const libraryRead: AgentTool = {
     const header =
       `${doc.title} (${doc.path}) — part ${wanted}/${totalParts}` +
       (wanted < totalParts ? ` — call again with part: ${wanted + 1} for more` : "");
-    return text(`${header}\n\n${body || "(empty document)"}`);
+    return textResult(`${header}\n\n${body || "(empty document)"}`);
   },
-};
+});
 
-const libraryWrite: AgentTool = {
+const libraryWrite: AgentTool = defineTool({
   name: "library_write",
   label: "Write library note",
   description:
@@ -281,19 +256,19 @@ const libraryWrite: AgentTool = {
       },
     },
     required: ["title", "content"],
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { title, content } = params as { title: string; content: string };
     try {
       const path = await saveNote(title, content);
-      return text(
+      return textResult(
         `Saved note to the library at ${path} — it's now searchable with library_search.`,
       );
     } catch (error) {
-      return text(errorMessage(error));
+      return textResult(errorMessage(error));
     }
   },
-};
+});
 
 /** Collapses all whitespace (including newlines) to single spaces, for previews. */
 function collapseWhitespace(value: string): string {
@@ -305,7 +280,7 @@ const HISTORY_DEFAULT_LIMIT = 20;
 const HISTORY_MAX_LIMIT = 50;
 const HISTORY_PREVIEW_CHARS = 200;
 
-const automationHistory: AgentTool = {
+const automationHistory: AgentTool = defineTool({
   name: "automation_history",
   label: "Automation run history",
   description:
@@ -330,7 +305,7 @@ const automationHistory: AgentTool = {
         description: `Max runs to return, 1–${HISTORY_MAX_LIMIT} (default ${HISTORY_DEFAULT_LIMIT}).`,
       },
     },
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { automationName, days, limit } = params as {
       automationName?: string;
@@ -363,7 +338,7 @@ const automationHistory: AgentTool = {
       .limit(capped);
 
     if (rows.length === 0) {
-      return text(
+      return textResult(
         name
           ? `No automation runs matching "${name}" in the last ${windowDays} day(s).`
           : `No automation runs in the last ${windowDays} day(s).`,
@@ -379,11 +354,11 @@ const automationHistory: AgentTool = {
         (preview ? ` — ${preview}${suffix}` : "")
       );
     });
-    return text(lines.join("\n"));
+    return textResult(lines.join("\n"));
   },
-};
+});
 
-const automationRunRead: AgentTool = {
+const automationRunRead: AgentTool = defineTool({
   name: "automation_run_read",
   label: "Read automation run",
   description:
@@ -395,7 +370,7 @@ const automationRunRead: AgentTool = {
       runId: { type: "string", description: "The run id (from automation_history)." },
     },
     required: ["runId"],
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     const { runId } = params as { runId: string };
     const [row] = await db
@@ -411,7 +386,7 @@ const automationRunRead: AgentTool = {
       .where(eq(schema.automationRuns.id, runId));
 
     if (!row) {
-      return text(
+      return textResult(
         `No automation run found for id ${runId} — use automation_history to look up run ids.`,
       );
     }
@@ -419,9 +394,9 @@ const automationRunRead: AgentTool = {
     const header =
       `${row.name ?? "(deleted automation)"} — ${row.status} — started ${row.startedAt}` +
       (row.finishedAt ? `, finished ${row.finishedAt}` : "");
-    return text(`${header}\n\n${row.result || "(empty result)"}`);
+    return textResult(`${header}\n\n${row.result || "(empty result)"}`);
   },
-};
+});
 
 export function buildKnowledgeTools(): AgentTool[] {
   return [
@@ -468,15 +443,7 @@ export async function buildKnowledgeContext(): Promise<string> {
     if (global.length > 0) sections.push(format(global));
 
     if (scoped.length > 0) {
-      // Best-effort account names — fall back to the raw id so a Pipedream
-      // outage never hides the memory, it just makes it less readable (same
-      // fallback pattern buildVoiceContext uses in voice.ts).
-      let names = new Map<string, string>();
-      try {
-        names = new Map((await listAccounts()).map((a) => [a.id, a.name]));
-      } catch {
-        // fall through with an empty map — accountId is used below instead
-      }
+      const names = await fetchAccountNameMap();
       const byAccount = new Map<string, MemoryEntry[]>();
       for (const m of scoped) {
         const key = m.accountId as string;

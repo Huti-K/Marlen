@@ -3,27 +3,40 @@ import type { Message } from "@earendil-works/pi-ai";
 import { LANGUAGE_ENGLISH_NAMES, type Language } from "@trailin/shared";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
-import { getEmailWriteSetting, getLanguageSetting, getTimezoneSetting } from "../db/settings.js";
-import { modelRegistry, resolveActiveModel } from "../llm/registry.js";
+import { getLanguageSetting, getTimezoneSetting, getWriteAccessAccounts } from "../db/settings.js";
+import { resolveActiveModel } from "../llm/registry.js";
 import { type EmailToolset, loadEmailTools } from "../pipedream/mcp.js";
-import { buildBriefingTool } from "./briefingTool.js";
+import { buildAccountsContext } from "./accounts.js";
+import { composeBriefingTool } from "./briefingTool.js";
 import { parseStoredCards } from "./cards.js";
-import { buildDelegateTool } from "./delegate.js";
+import { presentChoicesTool } from "./choicesTool.js";
+import { AI_WRITING_TELLS, buildVoiceContext } from "./composition.js";
+import { delegateTool } from "./delegate.js";
+import { decoratePrompt, parseStoredRefs } from "./emailRefs.js";
 import { buildKnowledgeContext, buildKnowledgeTools } from "./knowledgeTools.js";
+import { buildMailReadTools } from "./mailTools.js";
+import { streamViaModelRegistry } from "./oneShot.js";
 import { type RunHandlers, runPrompt, type TurnLogger } from "./run.js";
-import { buildVoiceContext } from "./voice.js";
-import { buildVoiceLearnTool } from "./voiceLearn.js";
-import { buildWaitingThreadsTool } from "./waitingTools.js";
+import { voiceLearnTool } from "./voiceLearn.js";
+import { listWaitingThreadsTool } from "./waitingTools.js";
 
-const SYSTEM_PROMPT = `You are Trailin, a personal email assistant. You have tools for the user's
-connected accounts — email (Gmail / Outlook) and possibly other apps — provided through
-Pipedream Connect.
+const SYSTEM_PROMPT = `You are Trailin, a personal email assistant working over the user's
+connected accounts — email and possibly other apps.
 
 Guidelines:
-- Several accounts may be connected. Every tool's description says which account it acts as
-  ("Acts as the connected account: …"); with more than one account of the same app, tool names
-  carry an account suffix (e.g. gmail-find-email__work). Pick the account the user means; when
-  it's ambiguous and the action matters (sending, deleting), ask instead of guessing.
+- READING mail: search_mail, list_threads, read_thread and list_sent_messages serve from a local
+  index of every connected account's mail (roughly the last month, refreshed every few minutes —
+  pass refresh: true only when the user asks about mail that may have just arrived). They cover
+  all accounts in one call, or one account via their account parameter. list_drafts shows the
+  unsent drafts sitting in each account's Drafts folder.
+- ACTING on mail (drafts, sending, labels) goes through per-account tools. Each one's description
+  says which account it acts as ("Acts as the connected account: …"); with more than one account
+  of the same app, tool names carry an account suffix (e.g. gmail-create-draft__work). The
+  connected accounts and what each is for are listed at the end of this prompt. Pick the account
+  and email the user means. When more than one account, thread or draft plausibly matches a
+  request to draft, send, label or delete — and the user's message (or an attached email
+  reference) doesn't settle it — never pick one silently: call present_choices with the
+  candidates, end the turn with a short question, and act only on the user's pick.
 - If you have no email tools, tell the user to finish the email setup under Settings → Connect email.
 - Prefer reading and summarizing over acting. Look things up before you claim them.
 - Never send, reply to, forward or delete an email unless the user's request explicitly asks for it.
@@ -34,28 +47,19 @@ Guidelines:
   one-line gist), \`code\` for exact values like email addresses or filenames, and tables only for
   data that is truly tabular. For a short or single-idea answer, a sentence or two beats a decorated
   one — skip headings, bold and bullets. Never wrap a whole reply in a list or bold half the words.
-- Write like a person, not a chatbot. This matters most in email drafts and summaries. Lead with the
-  point and cut filler openers and closers ("I hope this email finds you well", "I wanted to reach out",
-  "I hope this helps", "Let me know if you have any questions"), sycophancy ("Great question", "Thanks so
-  much for reaching out"), and hollow wrap-ups ("Overall…", "Exciting times ahead"). Normal greetings and
-  sign-offs ("Hi Sarah," / "Best,") are fine.
-- Prefer plain words over the usual LLM tells: delve, leverage, utilize, foster, seamless, robust,
-  streamline, underscore, testament, tapestry, navigate, boasts, vibrant, and "stands/serves as" (just say
-  "is" or "has"). Don't force ideas into threes, "not just X but Y" parallelisms, or "-ing" tails that fake
-  depth ("…ensuring…", "…highlighting…"), and don't over-hedge ("could potentially possibly"). Vary
-  sentence length, and use no em or en dashes; a comma, period, colon, or parentheses does the job.
+- Write like a person, not a chatbot. This matters most in email drafts and summaries. Lead with
+  the point and vary sentence length. Normal greetings and sign-offs ("Hi Sarah," / "Best,") are
+  fine, but avoid these AI tells:
+${AI_WRITING_TELLS}
 - In summaries, say what's actually in the source and attribute it concretely (not "experts say" or
   "studies show"); when something isn't known, say so instead of inventing plausible filler. Match the
   user's own voice in email drafts and keep summaries neutral, and don't add opinions or personality that
   aren't theirs.
 - When you compose a digest or summary that pulls several items together, don't ship your first
-  pass. Reread it once as if you were hunting for the AI tells above, plus: forced groups of three,
-  "not just X but Y" parallelisms, "-ing" tails that fake depth ("…ensuring…", "…highlighting…"),
-  false ranges ("from X to Y" where X and Y aren't a real scale), synonym-cycling the same noun,
-  bolded inline-header lists, and generic upbeat closers. Fix what you find, then give only the
-  finished version. Do this silently in the same turn: the reader sees the final digest, never the
-  rough pass or notes about it. Skip it for short conversational replies — and for email drafts,
-  whose bodies get a mechanical humanizer edit at save time anyway.
+  pass. Reread it once as if you were hunting for the AI tells above, fix what you find, then give
+  only the finished version. Do this silently in the same turn: the reader sees the final digest,
+  never the rough pass or notes about it. Skip it for short conversational replies — and for email
+  drafts, whose bodies get a mechanical humanizer edit at save time anyway.
 - Timestamps from tools are usually UTC; present them in a human-friendly way.
 - You have a long-term memory: saved entries are listed at the end of this prompt. When the
   user asks you to remember something, or states a lasting fact or preference, save it with
@@ -76,21 +80,26 @@ Guidelines:
   covered by one of those documents, not only when the user says "my documents"; read the full
   match with library_read and say which document you used. On scheduled automation runs, search
   the library first if the task relates to any listed document.
-- Ground every email draft in real context: before drafting a reply, read the full thread (not just
-  the newest message), and pull anything relevant from memory or the library (who the correspondent
-  is, prior agreements, standing facts) so the draft is specific and consistent with what was
-  already said.
+- Ground every email draft in real context: before drafting a reply, read the full thread with
+  read_thread (not just the newest message), and pull anything relevant from memory or the library
+  (who the correspondent is, prior agreements, standing facts) so the draft is specific and
+  consistent with what was already said. Pass the thread's threadId (from search_mail, read_thread
+  or list_waiting_threads) to the create-draft tool so the draft lands on the conversation.
+- User messages may end with [Attached email: …] notes — emails the user explicitly pinned in
+  the composer. They are authoritative: act on exactly that thread and account (read_thread the
+  given threadId before drafting a reply, and pass it to the create-draft tool); never substitute
+  a different thread found by searching.
 - For work that spans many independent lookups (a digest over many threads, several senders'
   histories, cross-checking documents), fan the lookups out with the delegate tool and synthesize
   the workers' reports instead of doing every lookup serially yourself.
-- When the user asks about a person ("find everything from X", "my history with X"), search every
-  connected account, not just the obvious one — the same person can show up in several inboxes.
-  Query both the name and any address you know for them, and for a broad sweep fan the per-account
-  searches out with delegate. Present the hits as one timeline, newest first (date, account,
-  subject: one-line gist), and say which threads look worth opening.
-- When asked to summarize an email thread or chain, fetch the whole thread first (never just the
-  latest message), then summarize it chronologically: who wants what, what was agreed or decided,
-  what changed along the way, what is still open, and what (if anything) is waiting on the user.
+- When the user asks about a person ("find everything from X", "my history with X"), search_mail
+  already covers every connected account in one call — query both the name and any address you
+  know for them. Present the hits as one timeline, newest first (date, account, subject: one-line
+  gist), and say which threads look worth opening.
+- When asked to summarize an email thread or chain, read the whole thread with read_thread first
+  (never just the latest message), then summarize it chronologically: who wants what, what was
+  agreed or decided, what changed along the way, what is still open, and what (if anything) is
+  waiting on the user.
 - Past scheduled-automation runs (morning briefings, end-of-day learnings) are on record: use
   automation_history to find runs and automation_run_read for a run's full text whenever the user
   references "your briefing", something "you flagged", or what an automation found on some day.
@@ -103,8 +112,9 @@ Guidelines:
   inbox digest, and give every item its real threadId so the card's actions work. When you call
   it, the card IS the report: close with two or three sentences, never a re-listing of the items.
 - To work with an email attachment (a PDF someone sent, a document to summarize), save it into the
-  document library with that account's save-attachment tool, then find it with library_search and
-  read it with library_read once indexed.
+  document library with that account's save-attachment tool (passing the messageId from
+  search_mail or read_thread results), then find it with library_search and read it with
+  library_read once indexed.
 - Draft bodies go through a humanizer edit before they are saved. When the create-draft result
   reports a final text different from what you submitted, quote that saved version in your answer,
   never your pre-pass text.`;
@@ -129,15 +139,42 @@ function formatNow(timezone: string, locale: string): string {
   }).format(new Date());
 }
 
+export interface BuildSystemPromptOptions {
+  /** False for unattended scheduled runs: see the branch below — must match the toolset's providerWrites. */
+  interactive: boolean;
+}
+
 /** The base prompt plus the Settings rules (scheduled runs rely on them too). */
-export async function buildSystemPrompt(): Promise<string> {
+export async function buildSystemPrompt(
+  options: BuildSystemPromptOptions = { interactive: true },
+): Promise<string> {
   let prompt = SYSTEM_PROMPT;
 
-  if (!(await getEmailWriteSetting())) {
+  if (!options.interactive) {
+    // Scheduled automations run with no human to review a send before it goes
+    // out, so loadEmailTools withholds every provider write tool for this run
+    // regardless of any account's write-access setting (see providerWrites in
+    // pipedream/mcp.ts) — say so plainly rather than let the interactive
+    // write-access copy below imply sending is possible here.
     prompt += `
-- Read-only mode is on: you only have tools that read, search or create drafts. You cannot send,
-  delete or change anything. If the user asks for such an action, explain that read-only mode can
-  be turned off under Settings → Connect email.`;
+- Unattended scheduled run: provider write actions (send, reply, forward, label, move, delete) are
+  unavailable in this run, regardless of any account's write-access setting in Settings →
+  Permissions. Where a task would otherwise call for one of those, create a draft instead so the
+  user can review and send it themselves.`;
+  } else {
+    const writeAccessIds = await getWriteAccessAccounts();
+    if (writeAccessIds.length === 0) {
+      prompt += `
+- Read-only mode: you only have tools that read, search or create drafts. You cannot send, delete
+  or change anything. If the user asks for such an action, explain that write access is granted
+  per account under Settings → Permissions.`;
+    } else {
+      prompt += `
+- Write access is granted per account, not globally — see which connected accounts are armed in
+  the list below. On a read-only account you can only read, search and create drafts; if the user
+  asks for more there, explain that write access is granted per account under Settings →
+  Permissions.`;
+    }
   }
 
   const language = (await getLanguageSetting()) ?? "en";
@@ -153,6 +190,7 @@ export async function buildSystemPrompt(): Promise<string> {
 - Current date and time: ${formatNow(timezone, dateLocale)} (${timezone}). The user lives in this timezone —
   present all times in it and interpret relative dates ("today", "next Monday") against it.`;
 
+  prompt += await buildAccountsContext();
   prompt += await buildVoiceContext();
   prompt += await buildKnowledgeContext();
   return prompt;
@@ -246,30 +284,43 @@ function resolveThinkingLevel(model: { reasoning: boolean }): "off" | "low" | "m
   return model.reasoning ? "medium" : "off";
 }
 
-async function buildAgent(toolset: EmailToolset, history: Message[] = []): Promise<Agent> {
+interface BuildAgentOptions {
+  /** False for automation runs: nobody is present to click a choices card, so present_choices is withheld. */
+  interactive: boolean;
+}
+
+async function buildAgent(
+  toolset: EmailToolset,
+  history: Message[] = [],
+  options: BuildAgentOptions = { interactive: true },
+): Promise<Agent> {
   // Active model comes from Settings (SQLite), falling back to .env.
   const model = await resolveActiveModel();
   return new Agent({
     initialState: {
-      systemPrompt: await buildSystemPrompt(),
+      systemPrompt: await buildSystemPrompt({ interactive: options.interactive }),
       model,
       thinkingLevel: resolveThinkingLevel(model),
-      // Email tools from Pipedream, the local memory/library tools, and the
+      // Mirror-served mail read tools, per-account write tools (drafts,
+      // attachments, MCP writes), the local memory/library tools, the
       // delegate fan-out tool for spreading independent lookups across
-      // parallel background workers.
+      // parallel background workers, and (interactive sessions only)
+      // present_choices for disambiguating with the user instead of guessing.
       tools: [
+        ...buildMailReadTools(),
         ...toolset.tools,
         ...buildKnowledgeTools(),
-        buildDelegateTool(toolset),
-        buildVoiceLearnTool(),
-        buildWaitingThreadsTool(),
-        buildBriefingTool(),
+        delegateTool,
+        voiceLearnTool,
+        listWaitingThreadsTool,
+        composeBriefingTool,
+        ...(options.interactive ? [presentChoicesTool] : []),
       ],
       messages: history,
     },
     // Route model calls through the registry so stored credentials apply
     // (subscription OAuth with auto-refresh, saved API keys, then env vars).
-    streamFn: (model, context, options) => modelRegistry.streamSimple(model, context, options),
+    streamFn: streamViaModelRegistry,
   });
 }
 
@@ -303,6 +354,10 @@ async function loadHistory(conversationId: string): Promise<Message[]> {
     if (!content) continue;
     const timestamp = Date.parse(row.createdAt) || Date.now();
     if (row.role === "user") {
+      // Mirror of turnRecorder.ts's live prompt: the persisted row keeps
+      // `content` raw, but the model saw it with its attached-email notes
+      // appended, so a rebuilt session must see the same thing.
+      content = decoratePrompt(content, parseStoredRefs(row.refs));
       messages.push({ role: "user", content, timestamp });
     } else {
       // Tool results aren't persisted, but a turn's created drafts are (via
@@ -356,7 +411,10 @@ export async function getOrCreateSession(conversationId: string): Promise<AgentS
     const toolsetPromise = loadEmailTools();
     try {
       const [toolset, history] = await Promise.all([toolsetPromise, loadHistory(conversationId)]);
-      const session = createAgentSession(await buildAgent(toolset, history), toolset);
+      const session = createAgentSession(
+        await buildAgent(toolset, history, { interactive: true }),
+        toolset,
+      );
       sessions.set(conversationId, session);
       if (sessions.size > SESSION_MAX_COUNT) sweepSessions();
       return session;
@@ -390,11 +448,17 @@ export async function disposeSession(conversationId: string): Promise<void> {
   await session.toolset.close();
 }
 
-/** Create a throwaway session (used by scheduled automations). */
+/**
+ * Create a throwaway session (used by scheduled automations). No human
+ * reviews a scheduled run's actions before they happen, so it must not be
+ * able to send/reply/forward/delete mail even on accounts with write access
+ * armed in Settings — providerWrites: false withholds every provider write
+ * tool while leaving draft tools untouched (see loadEmailTools).
+ */
 export async function createEphemeralSession(): Promise<AgentSession> {
-  const toolset = await loadEmailTools();
+  const toolset = await loadEmailTools({ providerWrites: false });
   try {
-    return createAgentSession(await buildAgent(toolset), toolset);
+    return createAgentSession(await buildAgent(toolset, [], { interactive: false }), toolset);
   } catch (error) {
     // buildAgent failing (bad model config, a settings read failing) must not
     // leak the MCP connections loadEmailTools already opened — this runs on

@@ -4,6 +4,8 @@ import type {
   ChatStreamEvent,
   ChatToolCall,
   Conversation,
+  EmailRef,
+  MailSuggestion,
 } from "@trailin/shared";
 import type { ParseKeys } from "i18next";
 import {
@@ -28,6 +30,10 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Markdown } from "@/components/ui/markdown";
 import { AgentCardView } from "@/features/chat/cards";
 import { SHOWCASE_TURNS } from "@/features/chat/cards/samples";
+import { MentionPopover, type MentionPopoverHandle } from "@/features/chat/composer/MentionPopover";
+import { RefChips, RefChipsReadOnly } from "@/features/chat/composer/RefChips";
+import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
+import { spliceMentionPick, useMentionQuery } from "@/features/chat/composer/useMentionQuery";
 import { api, streamChat } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { useServerEvents } from "@/lib/serverEvents";
@@ -82,11 +88,22 @@ interface DisplayMessage {
   error?: string;
   /** Local-only /sys result. */
   systemPrompt?: string;
+  /** Emails the user pinned to this message (composer @-mentions or a card's "add to chat"); user messages only. */
+  refs?: EmailRef[];
 }
 
 interface ActiveRun {
   conversationId?: string;
   messages: DisplayMessage[];
+}
+
+/** A message queued by a window event, sent once the panel goes idle so it
+ *  never races the reset (when requested) or a still-streaming turn. */
+interface PendingSend {
+  text: string;
+  refs?: EmailRef[];
+  /** trailin:send-chat resets the conversation first; trailin:answer-chat (a choices-card pick) continues the open one. */
+  newConversation: boolean;
 }
 
 export function ChatPanel({
@@ -108,13 +125,18 @@ export function ChatPanel({
   const [busy, setBusy] = React.useState(false);
   const [restoring, setRestoring] = React.useState(true);
   const [conversationId, setConversationId] = React.useState<string | undefined>();
-  // A message queued by "trailin:send-chat" — sent by the effect below once the
-  // panel is idle, so it never races the conversation reset or a streaming turn.
-  const [pendingSend, setPendingSend] = React.useState<string | null>(null);
+  // A message queued by a window event — sent by the effect below once the
+  // panel is idle, so it never races a conversation reset or a streaming turn.
+  const [pendingSend, setPendingSend] = React.useState<PendingSend | null>(null);
   // Tints each card's account chip. Cosmetic, so a failed load is not surfaced.
   const [accountColors, setAccountColors] = React.useState<AccountColor[]>([]);
+  // Emails pinned to the message about to be sent (composer @-mentions, or a
+  // card's "add to chat" action) — cleared once the turn is sent.
+  const composerRefs = useComposerRefs();
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const mentionPopoverRef = React.useRef<MentionPopoverHandle>(null);
+  const mention = useMentionQuery(textareaRef);
   const activeConversationRef = React.useRef<string | undefined>(undefined);
   const messagesRef = React.useRef<DisplayMessage[]>([]);
   const activeRunRef = React.useRef<ActiveRun | null>(null);
@@ -155,6 +177,7 @@ export function ChatPanel({
           cards: m.cards ?? [],
           streaming: false,
           error: m.error,
+          refs: m.refs,
         }));
         activeConversationRef.current = savedId;
         messagesRef.current = restored;
@@ -164,7 +187,7 @@ export function ChatPanel({
       })
       .catch((err) => {
         // Unreachable or gone — start fresh, but don't make the failure silent.
-        toast.error(errorMessage(err));
+        toast.error(err);
       })
       .finally(() => {
         if (!cancelled) setRestoring(false);
@@ -377,7 +400,7 @@ export function ChatPanel({
       setMessages(done);
     } catch (err) {
       const messageText = errorMessage(err);
-      toast.error(messageText);
+      toast.error(err);
       const failed = next.map((item) =>
         item.id === loadingMessage.id
           ? { ...item, streaming: false, thinking: false, error: messageText }
@@ -392,7 +415,7 @@ export function ChatPanel({
   };
 
   /** Sends a message in the open conversation (or starts one server-side). */
-  const sendText = async (message: string) => {
+  const sendText = async (message: string, sendRefs?: EmailRef[]) => {
     if (!message || busy) return;
     setHistoryOpen(false);
 
@@ -415,6 +438,7 @@ export function ChatPanel({
         toolCalls: [],
         cards: [],
         streaming: false,
+        refs: sendRefs,
       },
       {
         id: crypto.randomUUID(),
@@ -435,12 +459,13 @@ export function ChatPanel({
     setMessages(next);
 
     try {
-      await streamChat({ conversationId: activeConversationRef.current, message }, (event) =>
-        handleRunEvent(run, event),
+      await streamChat(
+        { conversationId: activeConversationRef.current, message, refs: sendRefs },
+        (event) => handleRunEvent(run, event),
       );
     } catch (err) {
       const messageText = errorMessage(err);
-      toast.error(messageText);
+      toast.error(err);
       updateRunAssistant(run, (m) => ({
         ...m,
         error: messageText,
@@ -457,11 +482,38 @@ export function ChatPanel({
     }
   };
 
+  const pickMention = React.useCallback(
+    (item: MailSuggestion) => {
+      const range = mention.range;
+      if (!range) return;
+      const { value: nextValue, caret } = spliceMentionPick(input, range);
+      setInput(nextValue);
+      mention.clear();
+      composerRefs.add({
+        threadId: item.threadId,
+        accountId: item.accountId,
+        messageId: item.messageId,
+        subject: item.subject,
+        from: item.from,
+        date: item.date,
+      });
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+      });
+    },
+    [input, mention, composerRefs.add],
+  );
+
   const send = async () => {
     const message = input.trim();
     if (!message || busy) return;
     setInput("");
-    await sendText(message);
+    const sendRefs = composerRefs.refs.length > 0 ? composerRefs.refs : undefined;
+    composerRefs.clear();
+    await sendText(message, sendRefs);
   };
 
   // Stable identity (only refs and setState setters in its body) so effects
@@ -493,6 +545,7 @@ export function ChatPanel({
           cards: m.cards ?? [],
           streaming: false,
           error: m.error,
+          refs: m.refs,
         }));
         messageCacheRef.current.set(id, restored);
         messagesRef.current = restored;
@@ -501,7 +554,7 @@ export function ChatPanel({
         // user's next message goes (e.g. the Drafts page's refine jump).
         textareaRef.current?.focus();
       } catch (err) {
-        toast.error(errorMessage(err));
+        toast.error(err);
       }
     },
     [setHistoryOpen],
@@ -518,13 +571,17 @@ export function ChatPanel({
     localStorage.removeItem(LAST_CONVERSATION_KEY);
   }, [setHistoryOpen]);
 
-  // Deferred one render on purpose: the event handler resets the conversation,
-  // and sending in the same tick would stream into the closed-over old one.
+  // Deferred one render on purpose: waits for the panel to go idle (any
+  // streaming turn to finish) before resetting the conversation (when
+  // requested) and sending, so this can never race an in-flight turn or
+  // stream into a closed-over previous conversation.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (!pendingSend || busy || restoring) return;
+    const { text, refs: sendRefs, newConversation: reset } = pendingSend;
     setPendingSend(null);
-    void sendText(pendingSend);
+    if (reset) newConversation();
+    void sendText(text, sendRefs);
   });
 
   React.useEffect(() => {
@@ -547,20 +604,39 @@ export function ChatPanel({
     const handleSendEvent = (e: Event) => {
       const text = (e as CustomEvent<{ text: string }>).detail?.text;
       if (!text) return;
-      newConversation();
-      setPendingSend(text);
+      setPendingSend({ text, newConversation: true });
+    };
+    // A choices-card option answering the agent's clarifying question — sent
+    // in the SAME conversation (never resets it) so it lands as the next
+    // turn of the exchange that asked the question.
+    const handleAnswerChat = (e: Event) => {
+      const detail = (e as CustomEvent<{ text: string; refs?: EmailRef[] }>).detail;
+      if (!detail?.text) return;
+      setPendingSend({ text: detail.text, refs: detail.refs, newConversation: false });
+    };
+    // A card's "add to chat" action (or a picked @-mention) pinning an email
+    // to the composer's next message — never resets the conversation.
+    const handleAddChatRef = (e: Event) => {
+      const ref = (e as CustomEvent<{ ref: EmailRef }>).detail?.ref;
+      if (!ref) return;
+      composerRefs.add(ref);
+      textareaRef.current?.focus();
     };
     window.addEventListener("trailin:new-chat", newConversation);
     window.addEventListener("trailin:open-chat", handleOpenChat);
     window.addEventListener("trailin:prefill-chat", handlePrefill);
     window.addEventListener("trailin:send-chat", handleSendEvent);
+    window.addEventListener("trailin:answer-chat", handleAnswerChat);
+    window.addEventListener("trailin:add-chat-ref", handleAddChatRef);
     return () => {
       window.removeEventListener("trailin:new-chat", newConversation);
       window.removeEventListener("trailin:open-chat", handleOpenChat);
       window.removeEventListener("trailin:prefill-chat", handlePrefill);
       window.removeEventListener("trailin:send-chat", handleSendEvent);
+      window.removeEventListener("trailin:answer-chat", handleAnswerChat);
+      window.removeEventListener("trailin:add-chat-ref", handleAddChatRef);
     };
-  }, [newConversation, openConversation]);
+  }, [newConversation, openConversation, composerRefs.add]);
 
   const isPage = layout === "page";
 
@@ -618,7 +694,16 @@ export function ChatPanel({
                     ) : m.role === "assistant" ? (
                       <AssistantSequence message={m} thinkingLabel={t("chat.thinking")} />
                     ) : (
-                      <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                      <>
+                        {m.refs && m.refs.length > 0 && (
+                          <RefChipsReadOnly
+                            refs={m.refs}
+                            colors={accountColors}
+                            className="mb-1.5"
+                          />
+                        )}
+                        <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                      </>
                     )}
                     {m.error && (
                       <div
@@ -642,38 +727,88 @@ export function ChatPanel({
 
       <div
         className={cn(
-          "flex items-end gap-2 rounded-2xl bg-surface-2 p-1.5 pl-4",
+          "relative flex flex-col gap-1.5 rounded-2xl bg-surface-2 p-1.5 pl-4",
           isPage && "mx-auto w-full max-w-4xl",
         )}
       >
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-          placeholder={t("chat.placeholder")}
-          rows={1}
-          className="max-h-40 min-h-9 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-base md:text-sm leading-relaxed [scrollbar-width:none] [-webkit-scrollbar]:hidden placeholder:text-muted-foreground focus:outline-none"
-          aria-busy={busy}
-        />
-        <Button
-          onClick={() => void send()}
-          disabled={busy || !input.trim()}
-          size="icon"
-          className="mb-1 h-8 w-8 shrink-0 rounded-xl"
-          aria-label={t("chat.send")}
-        >
-          {busy ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <Send className="-translate-x-px translate-y-px" />
-          )}
-        </Button>
+        {mention.active && (
+          <MentionPopover
+            ref={mentionPopoverRef}
+            query={mention.query}
+            colors={accountColors}
+            onPick={pickMention}
+          />
+        )}
+        {composerRefs.refs.length > 0 && (
+          <RefChips
+            refs={composerRefs.refs}
+            colors={accountColors}
+            onRemove={composerRefs.remove}
+          />
+        )}
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              mention.recompute();
+            }}
+            onClick={() => mention.recompute()}
+            onKeyUp={() => mention.recompute()}
+            onBlur={() => mention.clear()}
+            onKeyDown={(e) => {
+              if (mention.active) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  mentionPopoverRef.current?.moveHighlight(1);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  mentionPopoverRef.current?.moveHighlight(-1);
+                  return;
+                }
+                // Only a pick that actually landed consumes Enter — with no
+                // results (a stray "@" mid-sentence) it falls through to send.
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  mentionPopoverRef.current?.pickHighlighted()
+                ) {
+                  e.preventDefault();
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  mention.dismiss();
+                  return;
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            placeholder={t("chat.placeholder")}
+            rows={1}
+            className="max-h-40 min-h-9 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-base md:text-sm leading-relaxed [scrollbar-width:none] [-webkit-scrollbar]:hidden placeholder:text-muted-foreground focus:outline-none"
+            aria-busy={busy}
+          />
+          <Button
+            onClick={() => void send()}
+            disabled={busy || !input.trim()}
+            size="icon"
+            className="mb-1 h-8 w-8 shrink-0 rounded-xl"
+            aria-label={t("chat.send")}
+          >
+            {busy ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Send className="-translate-x-px translate-y-px" />
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -792,7 +927,7 @@ function SystemPromptView({ prompt }: { prompt: string }) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     }
   };
 
@@ -877,7 +1012,7 @@ export function HistoryList({
         setTotal(res.total);
       })
       .catch((err) => {
-        toast.error(errorMessage(err));
+        toast.error(err);
         setItems([]);
         setTotal(0);
       });
@@ -912,7 +1047,7 @@ export function HistoryList({
       setItems([...items, ...res.items]);
       setTotal(res.total);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setLoadingMore(false);
     }
@@ -935,7 +1070,7 @@ export function HistoryList({
     try {
       await api.renameConversation(id, title);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
       load();
     }
   };
@@ -953,7 +1088,7 @@ export function HistoryList({
       setItems((prev) => prev?.filter((c) => c.id !== deleteId) ?? prev);
       setTotal((n) => Math.max(0, n - 1));
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setDeleting(false);
       setDeleteId(null);

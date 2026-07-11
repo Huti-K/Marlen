@@ -1,31 +1,29 @@
-import type { ConnectedAccount, EmailDraft, EmailThreadMessage } from "@trailin/shared";
-import { emitServerEvent } from "../events.js";
-import { moduleLogger } from "../logger.js";
-import { proxyRequest } from "../pipedream/connect.js";
-import { invalidateDraftsCache } from "./draftsService.js";
+import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import { moduleLogger } from "../../logger.js";
+import { proxyRequest } from "../../pipedream/connect.js";
+import { draftsMutated } from "../draftsService.js";
+import type { CreateDraftInput, DraftProvider, UpdateDraftPatch } from "../providers.js";
+import { gmailDraftUrl } from "../webLinks.js";
 import {
   decodeHtmlEntities,
   GMAIL_API,
   headerLookup,
   type MessagePart,
   plainTextBody,
-} from "./gmailMessage.js";
-import type { CreateDraftInput, DraftProvider, UpdateDraftPatch } from "./providers.js";
-import { splitAddressList } from "./textUtils.js";
-import { gmailDraftUrl } from "./webLinks.js";
+} from "./message.js";
 
 /**
  * Gmail drafts via the Connect proxy (plain Gmail REST API). Pipedream's
  * prebuilt create-draft component requires a paid workspace (File Stash);
  * the proxy works on every plan and returns clean JSON.
  *
- * Registered as the "gmail" DraftProvider by ./registerProviders.ts;
+ * Registered as the "gmail" DraftProvider by ../registerProviders.ts;
  * gmailDraftProvider is this module's entire interface.
  *
  * `listDrafts` is a pure live fetch — no caching in here. Caching lives one
- * layer up in ./draftsService.ts, shared across every provider; every
- * mutation below calls its `invalidateDraftsCache` before emitting "drafts"
- * so the SSE-driven refetch that follows isn't served the old list.
+ * layer up in ../draftsService.ts, shared across every provider; every
+ * mutation below ends with its `draftsMutated` epilogue (invalidate, then
+ * emit "drafts") so the SSE-driven refetch isn't served the old list.
  */
 
 const log = moduleLogger("gmail-drafts");
@@ -107,43 +105,9 @@ interface ThreadGetResponse {
   }[];
 }
 
-/**
- * The full thread a draft (or any message) belongs to, oldest message first.
- * `excludeMessageId` drops one message from the result: Gmail counts an unsent
- * reply draft as a message of its own thread, so a viewer showing the draft
- * alongside its history would otherwise print the draft body twice.
- */
-async function getGmailThread(
-  account: ConnectedAccount,
-  threadId: string,
-  opts: { excludeMessageId?: string } = {},
-): Promise<EmailThreadMessage[]> {
-  const res = (await proxyRequest(account.id, "get", `${GMAIL_API}/threads/${threadId}`, {
-    params: { format: "full" },
-  })) as ThreadGetResponse;
-
-  const messages = (res.messages ?? [])
-    .filter((m) => !opts.excludeMessageId || m.id !== opts.excludeMessageId)
-    .map((m): EmailThreadMessage => {
-      const header = headerLookup(m.payload);
-      const cc = splitAddressList(header("Cc"));
-      return {
-        from: header("From"),
-        to: splitAddressList(header("To")),
-        ...(cc.length ? { cc } : {}),
-        date: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : "",
-        body: plainTextBody(m.payload),
-      };
-    });
-  // Gmail already returns thread messages oldest-first; sort explicitly so a
-  // future API quirk can't silently reorder the viewer.
-  return messages.sort((a, b) => a.date.localeCompare(b.date));
-}
-
 async function deleteGmailDraft(account: ConnectedAccount, draftId: string): Promise<void> {
   await proxyRequest(account.id, "delete", `${GMAIL_API}/drafts/${draftId}`);
-  invalidateDraftsCache(account.id);
-  emitServerEvent("drafts");
+  draftsMutated(account.id);
 }
 
 /** RFC 2047 B-encoding — safe for any subject, including umlauts. */
@@ -275,8 +239,7 @@ async function createGmailDraft(
     body: { message: { raw, ...(input.threadId ? { threadId: input.threadId } : {}) } },
   })) as { id: string; message: { id: string; threadId: string } };
 
-  invalidateDraftsCache(account.id);
-  emitServerEvent("drafts");
+  draftsMutated(account.id);
   return { draftId: res.id, messageId: res.message.id, threadId: res.message.threadId };
 }
 
@@ -350,11 +313,10 @@ async function updateGmailDraft(
     body: { message: { raw, ...(current.threadId ? { threadId: current.threadId } : {}) } },
   });
 
-  invalidateDraftsCache(account.id);
-  emitServerEvent("drafts");
+  draftsMutated(account.id);
 }
 
-/** This module's DraftProvider — and its entire interface (registered by ./registerProviders.ts). */
+/** This module's DraftProvider — and its entire interface (registered by ../registerProviders.ts). */
 export const gmailDraftProvider: DraftProvider = {
   listDrafts: listGmailDrafts,
   getDraftDetail: getGmailDraftDetail,
@@ -364,5 +326,4 @@ export const gmailDraftProvider: DraftProvider = {
   },
   deleteDraft: deleteGmailDraft,
   updateDraft: updateGmailDraft,
-  getThread: getGmailThread,
 };

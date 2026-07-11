@@ -1,10 +1,11 @@
 import type { ConnectedAccount } from "@trailin/shared";
+import { createProviderRegistry } from "../registry.js";
 
 /**
  * Sync-provider abstraction: every mail app Trailin can mirror locally
  * implements this interface against its own change-feed API — Gmail via
- * history.list (../gmailSync.ts), Outlook via Microsoft Graph delta
- * queries (../outlookSync.ts). Mirrors the DraftProvider registry in ../providers.ts:
+ * history.list (../gmail/sync.ts), Outlook via Microsoft Graph delta
+ * queries (../outlook/sync.ts). Mirrors the DraftProvider registry in ../providers.ts:
  * adding a provider is one new file plus one import line in
  * registerSyncProviders.ts — nothing else changes.
  *
@@ -102,14 +103,10 @@ export function parseOpaqueCursor<T>(
   }
 }
 
-const registry = new Map<string, SyncProvider>();
+const registry = createProviderRegistry<SyncProvider>();
 
 /** Called once per provider module, at import time (see registerSyncProviders.ts). */
-export function registerSyncProvider(app: string, provider: SyncProvider): void {
-  registry.set(app, provider);
-}
+export const registerSyncProvider = registry.register;
 
 /** null when `app` has no sync driver yet — callers must handle that, not assume Gmail. */
-export function getSyncProvider(app: string): SyncProvider | null {
-  return registry.get(app) ?? null;
-}
+export const getSyncProvider = registry.get;

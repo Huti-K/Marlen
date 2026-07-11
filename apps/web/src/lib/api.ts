@@ -3,6 +3,7 @@ import type {
   AccountDescription,
   AccountDrafts,
   AccountWaiting,
+  ApiErrorCode,
   AppStatus,
   Automation,
   AutomationRun,
@@ -11,11 +12,13 @@ import type {
   ConnectedAccount,
   ConnectTokenResponse,
   Conversation,
+  EmailRef,
   EmailThread,
   Language,
   LibraryStatus,
   LlmProviderInfo,
   LoginFlowStatus,
+  MailSuggestion,
   MemoryEntry,
   ModelSettings,
   PipedreamApp,
@@ -24,6 +27,7 @@ import type {
   RunFeedItem,
   SearchResult,
 } from "@trailin/shared";
+import i18n from "@/lib/i18n";
 
 /** One document match from GET /api/library/search. */
 export interface LibrarySearchHit {
@@ -34,22 +38,69 @@ export interface LibrarySearchHit {
   snippet: string;
 }
 
-/** Throws with the server's `error` message when a response is not ok. */
-async function throwOnError(res: Response): Promise<void> {
-  if (res.ok) return;
-  let message = `${res.status} ${res.statusText}`;
-  try {
-    const data = (await res.json()) as { error?: string };
-    if (data.error) message = data.error;
-  } catch {
-    // keep the status text
+/**
+ * A failed API call. `code` is the server's machine-readable hint for
+ * user-fixable failures — the toast layer maps it to a click-through action
+ * (see lib/toast.ts); it's undefined for everything else.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly code?: ApiErrorCode,
+  ) {
+    super(message);
+    this.name = "ApiError";
   }
-  throw new Error(message);
 }
 
-/** Fetch JSON; non-2xx responses throw with the server's `error` message. */
+/** Plain-language message for an HTTP status class. */
+function statusMessage(status: number): string {
+  if (status === 401 || status === 403) return i18n.t("errors.forbidden");
+  if (status === 404) return i18n.t("errors.notFound");
+  if (status === 408 || status === 504) return i18n.t("errors.timeout");
+  if (status === 502 || status === 503) return i18n.t("errors.unavailable");
+  if (status >= 500) return i18n.t("errors.server");
+  return i18n.t("errors.request");
+}
+
+/**
+ * Throws when a response is not ok — with the server's `error` message when
+ * the body carries one, otherwise a plain-language message for the status
+ * class. Raw status codes go to the console, never to the user.
+ */
+async function throwOnError(res: Response): Promise<void> {
+  if (res.ok) return;
+  console.error(`API ${res.status} ${res.statusText}: ${res.url}`);
+  let message = statusMessage(res.status);
+  let code: ApiErrorCode | undefined;
+  try {
+    const data = (await res.json()) as { error?: string; code?: ApiErrorCode };
+    if (data.error) message = data.error;
+    code = data.code;
+  } catch {
+    // no JSON envelope — keep the status-class message
+  }
+  throw new ApiError(message, code);
+}
+
+/**
+ * fetch that rethrows connection failures as a plain-language error (the raw
+ * cause goes to the console). Aborts pass through untouched so callers can
+ * keep telling cancellation apart from failure.
+ */
+async function guardedFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    console.error(`API request failed: ${url}`, err);
+    throw new Error(i18n.t("errors.network"));
+  }
+}
+
+/** Fetch JSON; non-2xx responses throw with a user-facing message. */
 async function http<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await guardedFetch(url, {
     method,
     ...(body !== undefined && {
       headers: { "Content-Type": "application/json" },
@@ -75,9 +126,9 @@ export const api = {
   setTimezone: (timezone: string) =>
     http<{ timezone: string }>("PUT", "/api/settings/timezone", { timezone }),
 
-  emailWrite: () => get<{ allowWrite: boolean }>("/api/settings/email-write"),
-  setEmailWrite: (allowWrite: boolean) =>
-    http<{ allowWrite: boolean }>("PUT", "/api/settings/email-write", { allowWrite }),
+  writeAccess: () => get<{ accountIds: string[] }>("/api/settings/write-access"),
+  setWriteAccess: (accountIds: string[]) =>
+    http<{ accountIds: string[] }>("PUT", "/api/settings/write-access", { accountIds }),
 
   accountColors: () => get<{ colors: AccountColor[] }>("/api/settings/account-colors"),
   setAccountColors: (colors: AccountColor[]) =>
@@ -161,6 +212,13 @@ export const api = {
     ),
   waiting: () => get<AccountWaiting[]>("/api/waiting"),
 
+  /** The composer's @-mention search — empty `q` returns recent threads instead of no results. */
+  mailSuggest: (q: string, limit?: number) => {
+    const search = new URLSearchParams({ q });
+    if (limit !== undefined) search.set("limit", String(limit));
+    return get<{ items: MailSuggestion[] }>(`/api/mail/suggest?${search.toString()}`);
+  },
+
   conversations: (params: { q?: string; limit?: number; offset?: number } = {}) => {
     const search = new URLSearchParams();
     if (params.q) search.set("q", params.q);
@@ -227,7 +285,7 @@ export const api = {
     get<{ results: LibrarySearchHit[] }>(`/api/library/search?q=${encodeURIComponent(q)}`),
   // Raw file body (not JSON), so this bypasses the `http` helper.
   uploadLibraryFile: async (file: File): Promise<LibraryStatus> => {
-    const res = await fetch(`/api/library/files?name=${encodeURIComponent(file.name)}`, {
+    const res = await guardedFetch(`/api/library/files?name=${encodeURIComponent(file.name)}`, {
       method: "POST",
       headers: { "Content-Type": "application/octet-stream" },
       body: file,
@@ -250,11 +308,11 @@ export const api = {
  * resolves when the stream closes.
  */
 export async function streamChat(
-  body: { conversationId?: string; message: string },
+  body: { conversationId?: string; message: string; refs?: EmailRef[] },
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch("/api/chat", {
+  const res = await guardedFetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

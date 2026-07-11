@@ -1,6 +1,7 @@
 import type { ConnectedAccount } from "@trailin/shared";
 import { env } from "../../env.js";
 import { emitServerEvent } from "../../events.js";
+import { JobLoop, KeyedJobs, mapWithConcurrency } from "../../jobs.js";
 import { logger } from "../../logger.js";
 import { listAccounts } from "../../pipedream/connect.js";
 import { errorMessage } from "../../util.js";
@@ -33,8 +34,39 @@ import "./registerSyncProviders.js";
 /** Hard bound per account per sweep — a runaway provider can't loop forever. */
 const MAX_PAGES_PER_SWEEP = 500;
 
-const inFlight = new Map<string, Promise<void>>();
-let timer: NodeJS.Timeout | null = null;
+/** How many accounts sync at once — a sweep over many accounts stays bounded. */
+const ACCOUNT_CONCURRENCY = 4;
+
+/** Ceiling on the per-account failure backoff, however many times it has failed in a row. */
+const MAX_BACKOFF_MS = 60 * 60_000;
+
+const accountJobs = new KeyedJobs();
+
+/**
+ * Per-account failure backoff, keyed by account id. Module-scope and
+ * in-memory (single process, no persistence needed): a sweep skips an
+ * account until `retryAt`, and a success clears its entry so the next
+ * failure starts the backoff over from the first step. Only sweep()
+ * consults this — a direct syncAccount() call (manual refresh, waiting.ts)
+ * always attempts the sync regardless of backoff state.
+ */
+interface AccountBackoff {
+  failures: number;
+  retryAt: number;
+}
+const backoffByAccount = new Map<string, AccountBackoff>();
+
+function recordSyncFailure(accountId: string): AccountBackoff {
+  const failures = (backoffByAccount.get(accountId)?.failures ?? 0) + 1;
+  const delayMs = Math.min(env.sync.intervalMs * 2 ** failures, MAX_BACKOFF_MS);
+  const state: AccountBackoff = { failures, retryAt: Date.now() + delayMs };
+  backoffByAccount.set(accountId, state);
+  return state;
+}
+
+function recordSyncSuccess(accountId: string): void {
+  backoffByAccount.delete(accountId);
+}
 
 function syncOptions(): SyncOptions {
   return { backfillDays: env.sync.backfillDays, pageSize: env.sync.pageSize };
@@ -47,8 +79,12 @@ async function runSync(account: ConnectedAccount): Promise<void> {
   markSyncStatus(account.id, "syncing");
   let cursor = getSyncState(account.id)?.cursor ?? null;
   let changed = 0;
+  // Set once the loop exits by exhausting MAX_PAGES_PER_SWEEP rather than by
+  // a page reporting hasMore: false — i.e. there's more backfill waiting.
+  let hitPageCap = false;
   try {
-    for (let pages = 0; pages < MAX_PAGES_PER_SWEEP; pages++) {
+    let pages = 0;
+    for (; pages < MAX_PAGES_PER_SWEEP; pages++) {
       let page: SyncPage;
       try {
         page = await provider.fetchChanges(account, cursor, syncOptions());
@@ -66,24 +102,30 @@ async function runSync(account: ConnectedAccount): Promise<void> {
       setSyncCursor(account.id, cursor);
       if (!page.hasMore) break;
     }
+    hitPageCap = pages === MAX_PAGES_PER_SWEEP;
     markSyncStatus(account.id, "idle");
+    recordSyncSuccess(account.id);
   } catch (error) {
     markSyncStatus(account.id, "error", errorMessage(error));
-    logger.warn({ err: error, account: account.id, app: account.app }, "mail sync failed");
+    const backoff = recordSyncFailure(account.id);
+    logger.warn(
+      { err: error, account: account.id, app: account.app, failures: backoff.failures },
+      "mail sync failed",
+    );
   } finally {
     if (changed > 0) emitServerEvent("mail");
+    // More backfill is waiting for this account — run the next sweep now
+    // instead of idling until the next interval tick.
+    if (hitPageCap) loop.trigger();
   }
 }
 
-/** Sync one account now; concurrent calls for the same account join the run in flight. */
+/**
+ * Sync one account now; concurrent calls for the same account join the run
+ * in flight. Bypasses backoff — an explicit request always attempts.
+ */
 export function syncAccount(account: ConnectedAccount): Promise<void> {
-  const running = inFlight.get(account.id);
-  if (running) return running;
-  const run = runSync(account).finally(() => {
-    inFlight.delete(account.id);
-  });
-  inFlight.set(account.id, run);
-  return run;
+  return accountJobs.join(account.id, () => runSync(account));
 }
 
 async function sweep(): Promise<void> {
@@ -96,21 +138,27 @@ async function sweep(): Promise<void> {
     logger.debug({ err: error }, "sync sweep skipped: no account list");
     return;
   }
-  await Promise.all(accounts.map((account) => syncAccount(account)));
+  const now = Date.now();
+  const due = accounts.filter((account) => {
+    const backoff = backoffByAccount.get(account.id);
+    if (!backoff || backoff.retryAt <= now) return true;
+    logger.debug(
+      { account: account.id, failures: backoff.failures, retryInMs: backoff.retryAt - now },
+      "sync sweep skipped account: backing off after repeated failures",
+    );
+    return false;
+  });
+  await mapWithConcurrency(due, ACCOUNT_CONCURRENCY, (account) => syncAccount(account));
+}
+
+const loop = new JobLoop({ name: "mail-sync", run: sweep, intervalMs: env.sync.intervalMs });
+
+/** Kick off an immediate sweep and keep polling. */
+export function startSyncEngine(): void {
+  loop.start();
 }
 
 /** Stop polling; a sweep already in flight finishes on its own. */
 export function stopSyncEngine(): void {
-  if (!timer) return;
-  clearInterval(timer);
-  timer = null;
-}
-
-/** Kick off an immediate sweep and keep polling. */
-export function startSyncEngine(): void {
-  if (timer) return;
-  void sweep();
-  timer = setInterval(() => void sweep(), env.sync.intervalMs);
-  // Polling must not keep the process alive during shutdown.
-  timer.unref();
+  loop.stop();
 }

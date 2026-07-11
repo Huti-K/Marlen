@@ -15,8 +15,10 @@ const log = moduleLogger("backup");
  * server runs is not, because recent writes may still live only in the `-wal`
  * side file. The snapshot holds everything in the DB (conversations, memories,
  * automations, draft links, the library index, the mailbox mirror, settings)
- * but NOT `data/auth.json` (LLM/Pipedream credentials), which lives outside the
- * DB and must be backed up separately.
+ * but NOT `data/auth.json` (LLM provider credentials) or
+ * `data/pipedream-secret.json` (the custom Pipedream OAuth client secret —
+ * see pipedream/secretFile.ts), both of which live outside the DB and must be
+ * backed up separately.
  */
 export async function backupRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/backup", async (_req, reply) => {

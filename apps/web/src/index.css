@@ -307,6 +307,36 @@
     background: color-mix(in oklch, var(--filetype) 14%, transparent);
     color: var(--filetype);
   }
+  /*
+    Solid tint fills for floating chrome (toasts): the same pastel tones
+    composited onto the surface, because a translucent tint over scrolling
+    page content would let it bleed through. Mixed in srgb — alpha
+    compositing's space — so these match the translucent tints exactly;
+    an oklch mix would inherit white's hue 0 and skew every tone pink.
+    Dark mixes harder — like the other dark fills — since dark shadows
+    barely separate.
+  */
+  .tint-pop-accent {
+    background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+    color: var(--accent);
+  }
+  .tint-pop-success {
+    background: color-mix(in srgb, var(--success) 14%, var(--surface));
+    color: var(--success);
+  }
+  .tint-pop-danger {
+    background: color-mix(in srgb, var(--destructive) 13%, var(--surface));
+    color: var(--destructive);
+  }
+  .dark .tint-pop-accent {
+    background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  }
+  .dark .tint-pop-success {
+    background: color-mix(in srgb, var(--success) 22%, var(--surface));
+  }
+  .dark .tint-pop-danger {
+    background: color-mix(in srgb, var(--destructive) 22%, var(--surface));
+  }
 
   /*
     The one backdrop behind anything modal — dialogs, drawers, the palette.

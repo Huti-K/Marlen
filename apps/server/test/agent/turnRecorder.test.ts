@@ -120,7 +120,7 @@ function fakeSession(
 ): AgentSession {
   const session: AgentSession = {
     agent: agent as unknown as Agent,
-    toolset: { tools: [], readTools: [], close: closeSpy },
+    toolset: { tools: [], close: closeSpy },
     inFlight: 0,
     lastUsed: Date.now(),
     async runTurn(prompt: string, handlers?: RunHandlers, signal?: AbortSignal, log?: TurnLogger) {

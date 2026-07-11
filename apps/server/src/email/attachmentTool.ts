@@ -36,15 +36,15 @@ export function buildSaveAttachmentTool(
       `Download an attachment from an email in this account and save it into the user's local ` +
       `document library, where it is indexed — afterwards it can be found with library_search, ` +
       `read with library_read (library_list shows its id). Only these formats can be saved: ` +
-      `${SUPPORTED_FORMATS}. Pass the messageId from find/list/get email tools; if the message ` +
-      `has several attachments, call this once per attachment with its filename.\n\n` +
+      `${SUPPORTED_FORMATS}. Pass the messageId from search_mail or read_thread results; if the ` +
+      `message has several attachments, call this once per attachment with its filename.\n\n` +
       `Acts as the connected account: ${account.name}.`,
     parameters: {
       type: "object",
       properties: {
         messageId: {
           type: "string",
-          description: "The message id, from find/list/get email tools.",
+          description: "The message id, from search_mail or read_thread results.",
         },
         filename: {
           type: "string",

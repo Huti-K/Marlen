@@ -50,7 +50,7 @@ async function main(): Promise<void> {
   }
   if (!(await pipedreamConfigured())) {
     app.log.warn(
-      "Pipedream is not set up — open Settings → Connect email in the web UI to link Gmail/Outlook.",
+      "Pipedream is not set up — open Settings → Connect email in the web UI to link your email accounts.",
     );
   }
 

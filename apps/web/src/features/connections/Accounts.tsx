@@ -21,7 +21,7 @@ import { ListRow } from "@/components/ui/list-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
+import { cn, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
 
 /** App logo from Pipedream, falling back to a generic mail glyph. */
 function AppIcon({ src, className }: { src?: string; className?: string }) {
@@ -151,7 +151,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
           .pipedreamApps(q)
           .then(setResults)
           .catch((err) => {
-            toast.error(errorMessage(err));
+            toast.error(err);
             setResults([]);
           });
       },
@@ -166,7 +166,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
       setAccounts(next);
       return next;
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
       return null;
     }
   }, []);
@@ -259,7 +259,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
         onClose: () => setConnecting(false),
       });
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setBusy(null);
     }
@@ -272,7 +272,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
       await load();
       onChanged?.();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setRemoving(false);
       setConfirmId(null);
@@ -300,7 +300,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     try {
       await api.setAccountColors(next);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       state.saving = false;
       if (state.pending) void flushColorPersist();
@@ -345,7 +345,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     try {
       await api.setAccountDescriptions(next);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     }
   };
 

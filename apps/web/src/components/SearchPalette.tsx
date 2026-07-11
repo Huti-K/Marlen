@@ -5,6 +5,7 @@ import {
   CornerDownLeft,
   Database,
   FileText,
+  Inbox,
   type LucideIcon,
   Mail,
   MessageSquare,
@@ -22,25 +23,26 @@ import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { NAV_ITEMS, type NavItem } from "@/lib/nav";
 import { setPendingDraftFocus, setPendingKnowledgeFocus } from "@/lib/paletteFocus";
-import { cn, MOD_LABEL } from "@/lib/utils";
+import { cn, MOD_LABEL, openExternal } from "@/lib/utils";
 
 /**
  * Global command palette (Cmd+K / Ctrl+K), mounted once in App.tsx so the
  * shortcut works from any page. Searches chats, automation runs (briefings),
- * drafts, library documents and memories, previews the highlighted hit beside
- * the list, and jumps straight to it.
+ * drafts, mail, library documents and memories, previews the highlighted hit
+ * beside the list, and jumps straight to it.
  */
 
 type HitType = SearchResult["type"];
 type Scope = HitType | "all";
 
 /** Fixed grouping order the server already returns hits in. */
-const GROUP_ORDER: HitType[] = ["run", "chat", "draft", "document", "memory"];
+const GROUP_ORDER: HitType[] = ["run", "chat", "draft", "mail", "document", "memory"];
 
 const GROUP_ICON: Record<HitType, LucideIcon> = {
   run: Newspaper,
   chat: MessageSquare,
   draft: Mail,
+  mail: Inbox,
   document: FileText,
   memory: Database,
 };
@@ -56,6 +58,7 @@ const NO_HITS: SearchResult[] = [];
 /** Nudges hits of equal textual relevance apart. Deliberately sub-1 so text always wins. */
 const TYPE_BIAS: Record<HitType, number> = {
   draft: 0.5,
+  mail: 0.45,
   chat: 0.4,
   run: 0.3,
   document: 0.2,
@@ -372,6 +375,10 @@ export function SearchPalette() {
           detail: { accountId: hit.accountId, draftId: hit.id },
         }),
       );
+    } else if (hit.type === "mail") {
+      // No in-app thread viewer yet — same "open in webmail" affordance as
+      // the Waiting-on list and draft rows.
+      if (hit.webUrl) openExternal(hit.webUrl);
     } else {
       setPendingKnowledgeFocus({ type: hit.type, id: hit.id });
       navigate("/knowledge");
@@ -657,7 +664,7 @@ function PaletteRow({
         ? entry.query
         : entry.hit.title;
   const hit = entry.kind === "hit" ? entry.hit : null;
-  const dot = hit?.type === "draft" ? colorFor(hit.accountId) : undefined;
+  const dot = hit?.type === "draft" || hit?.type === "mail" ? colorFor(hit.accountId) : undefined;
 
   return (
     <button
@@ -795,7 +802,7 @@ function PalettePreview({ entry, query, language, navTitle, accountName, colorFo
   }
 
   const { hit } = entry;
-  const color = hit.type === "draft" ? colorFor(hit.accountId) : undefined;
+  const color = hit.type === "draft" || hit.type === "mail" ? colorFor(hit.accountId) : undefined;
   return (
     <PreviewShell
       icon={GROUP_ICON[hit.type]}
@@ -805,7 +812,7 @@ function PalettePreview({ entry, query, language, navTitle, accountName, colorFo
         (hit.date || hit.accountId) && (
           <>
             {hit.date && <time className="tabular">{dateTimeLabel(hit.date, language)}</time>}
-            {hit.type === "draft" && hit.accountId && (
+            {(hit.type === "draft" || hit.type === "mail") && hit.accountId && (
               <span className="flex min-w-0 items-center gap-1.5">
                 {color && <AccountDot color={color} />}
                 <span className="truncate">{accountName(hit.accountId)}</span>

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { LibraryDocument } from "@trailin/shared";
 import { eq } from "drizzle-orm";
 import { db, lazyStatement, schema, sqlite } from "../db/index.js";
+import { buildFtsMatch, upsertSql } from "../db/sql.js";
 
 /**
  * SQLite persistence for the document library. Document metadata lives in
@@ -31,17 +32,24 @@ export interface SearchHit {
   snippet: string;
 }
 
-const upsertDocumentStmt = lazyStatement(`
-  INSERT INTO library_documents
-    (id, path, title, ext, size, mtime_ms, status, error, chunk_count, text_length, indexed_at)
-  VALUES
-    (@id, @path, @title, @ext, @size, @mtimeMs, @status, @error, @chunkCount, @textLength, @indexedAt)
-  ON CONFLICT(path) DO UPDATE SET
-    title = excluded.title, ext = excluded.ext, size = excluded.size,
-    mtime_ms = excluded.mtime_ms, status = excluded.status, error = excluded.error,
-    chunk_count = excluded.chunk_count, text_length = excluded.text_length,
-    indexed_at = excluded.indexed_at
-`);
+const upsertDocumentStmt = lazyStatement(
+  upsertSql({
+    table: "library_documents",
+    conflict: ["path"],
+    insertOnly: ["id"],
+    update: [
+      "title",
+      "ext",
+      "size",
+      "mtime_ms",
+      "status",
+      "error",
+      "chunk_count",
+      "text_length",
+      "indexed_at",
+    ],
+  }),
+);
 const selectIdByPath = lazyStatement(`SELECT id FROM library_documents WHERE path = ?`);
 const deleteDocumentStmt = lazyStatement(`DELETE FROM library_documents WHERE id = ?`);
 const insertChunkStmt = lazyStatement(
@@ -114,13 +122,6 @@ export function readDocumentChunks(id: string): string[] {
   return rows.map((r) => r.content);
 }
 
-/** Turn free text into an FTS5 MATCH expression; null when it has no searchable terms. */
-function buildMatch(query: string, operator: "AND" | "OR"): string | null {
-  const terms = query.match(/[\p{L}\p{N}]+/gu)?.slice(0, 12);
-  if (!terms || terms.length === 0) return null;
-  return terms.map((t) => `"${t}"`).join(operator === "AND" ? " " : " OR ");
-}
-
 const searchStmt = lazyStatement(`
   SELECT c.doc_id AS documentId, c.seq AS seq, d.path AS path, d.title AS title, d.ext AS ext,
          snippet(library_chunks, 0, '', '', ' … ', 24) AS snippet
@@ -135,7 +136,7 @@ const searchStmt = lazyStatement(`
 export function searchChunks(query: string, limit: number): SearchHit[] {
   const run = (match: string | null) =>
     match ? (searchStmt().all(match, limit) as SearchHit[]) : [];
-  const strict = run(buildMatch(query, "AND"));
+  const strict = run(buildFtsMatch(query, "AND"));
   if (strict.length > 0) return strict;
-  return run(buildMatch(query, "OR"));
+  return run(buildFtsMatch(query, "OR"));
 }

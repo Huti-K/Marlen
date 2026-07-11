@@ -167,14 +167,24 @@ export async function listDraftsCached(
 }
 
 /**
- * Drop one account's cached drafts list and bump its generation. Call this
- * before emitting "drafts" from any mutation path (create/update/delete
- * draft, any app) so the SSE-driven refetch it triggers doesn't race the
- * cache write and see the old list — the generation bump is what stops a
- * fetch already in flight when this runs from re-caching its (now stale)
- * result afterwards; see inFlightGeneration above.
+ * Drop one account's cached drafts list and bump its generation — the bump
+ * is what stops a fetch already in flight when this runs from re-caching its
+ * (now stale) result afterwards; see inFlightGeneration above. Mutation
+ * paths go through draftsMutated below; call this directly only when no UI
+ * refetch should be triggered (e.g. the account itself was removed).
  */
 export function invalidateDraftsCache(accountId: string): void {
   cache.delete(accountId);
   generation.set(accountId, currentGeneration(accountId) + 1);
+}
+
+/**
+ * The epilogue every draft mutation (create/update/delete, any app) ends
+ * with: invalidate first, then emit "drafts", in that order — so the
+ * SSE-driven refetch the event triggers can't race the cache and be served
+ * the old list.
+ */
+export function draftsMutated(accountId: string): void {
+  invalidateDraftsCache(accountId);
+  emitServerEvent("drafts");
 }

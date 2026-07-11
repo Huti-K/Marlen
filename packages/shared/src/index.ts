@@ -56,6 +56,14 @@ export function isLanguage(value: unknown): value is Language {
   return typeof value === "string" && (SUPPORTED_LANGUAGES as readonly string[]).includes(value);
 }
 
+/**
+ * Machine-readable hint on the API `{ error }` envelope for failures the user
+ * can fix themselves in the app. The web client maps a code to a click-through
+ * action on the error toast (e.g. "Open settings"); errors without a code stay
+ * plain messages.
+ */
+export type ApiErrorCode = "pipedream_not_configured";
+
 /** Pipedream Connect credential state, as shown in Settings. */
 export interface PipedreamStatus {
   configured: boolean;
@@ -138,16 +146,18 @@ export interface AccountVoice {
 /** One hit from the global search (GET /api/search). */
 export interface SearchResult {
   /** What the hit is; decides the icon and where clicking navigates. */
-  type: "chat" | "run" | "draft" | "document" | "memory";
-  /** conversationId | automation run id | draft id | document id | memory id. */
+  type: "chat" | "run" | "draft" | "mail" | "document" | "memory";
+  /** conversationId | automation run id | draft id | provider message id (mail) | document id | memory id. */
   id: string;
   title: string;
   /** Short plain-text context around the match. */
   snippet: string;
   /** ISO timestamp for ordering, when the source has one. */
   date?: string;
-  /** Owning email account (draft hits), for inbox chips and navigation. */
+  /** Owning email account (draft and mail hits), for inbox chips and navigation. */
   accountId?: string;
+  /** Deep link to the provider's webmail UI (mail hits only); absent when the account's app has no known web UI. */
+  webUrl?: string;
 }
 
 export interface ConnectTokenResponse {
@@ -190,8 +200,43 @@ export interface ChatMessage {
   cards?: MessageCard[];
   /** Tool activity for assistant turns, persisted alongside cards and text. */
   toolCalls?: ChatToolCall[];
+  /** Emails the user pinned to this message (composer @-mentions); user messages only. */
+  refs?: EmailRef[];
   /** Turn-level failure shown inline when a response could not complete. */
   error?: string;
+}
+
+/**
+ * One specific email pinned to a chat message — the composer's @-mention, a
+ * card's "add to chat" action, or a choices-card pick. threadId/accountId are
+ * the authoritative handles (provider-native thread id + connected-account
+ * id); the display fields ride along so chips and prompt notes render without
+ * re-querying the mirror.
+ */
+export interface EmailRef {
+  /** Provider-native thread id — what read_thread and create-draft understand. */
+  threadId: string;
+  accountId: string;
+  /** Display name of the account, usually its address. */
+  accountName?: string;
+  /** Provider-native message id, when the mention targets one message rather than the whole thread. */
+  messageId?: string;
+  subject?: string;
+  /** "Name <address>" or a bare address. */
+  from?: string;
+  date?: string;
+}
+
+/** One row of GET /api/mail/suggest — an email the composer's @-mention can attach. */
+export interface MailSuggestion {
+  threadId: string;
+  accountId: string;
+  /** Present for message-level matches (keyword search); absent for recent-thread rows. */
+  messageId?: string;
+  subject: string;
+  from: string;
+  date: string;
+  snippet?: string;
 }
 
 /** One persisted card of an assistant turn, keyed by the tool call that produced it. */
@@ -293,6 +338,8 @@ export interface CardAccount {
 export interface EmailHit {
   messageId: string;
   threadId: string;
+  /** Connected account the hit lives in — set on cross-account searches so row actions can build an EmailRef. */
+  accountId?: string;
   subject: string;
   /** "Name <address>" or a bare address. */
   from: string;
@@ -373,6 +420,22 @@ export interface BriefingRollup {
 }
 
 /**
+ * One clickable answer in a choices card. Picking it sends `reply` (falling
+ * back to `label`) as the user's next message in the same conversation, with
+ * `ref` attached when the option names a specific email.
+ */
+export interface ChoiceOption {
+  /** Short button text, e.g. an account address or "Ayşe — Friday deadline". */
+  label: string;
+  /** One-line supporting detail (subject, date, account). */
+  detail?: string;
+  /** Full-sentence reply sent when picked; defaults to `label`. */
+  reply?: string;
+  /** The email this option refers to, when it names one. */
+  ref?: EmailRef;
+}
+
+/**
  * A structured tool result the chat renders as a component instead of prose.
  *
  * Tools return one on their result's `details` slot; run.ts forwards it and
@@ -398,6 +461,12 @@ export type AgentCard =
       messages: EmailThreadMessage[];
     }
   | { kind: "email_draft"; account?: CardAccount; draft: DraftPreview }
+  | {
+      kind: "choices";
+      /** The question the agent needs answered before it can act, e.g. "Which email do you mean?". */
+      question: string;
+      options: ChoiceOption[];
+    }
   | {
       kind: "briefing";
       /** One line on where the user stands, e.g. "Two things need you today". */

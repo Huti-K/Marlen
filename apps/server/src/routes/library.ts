@@ -8,6 +8,7 @@ import { badRequest, notFound } from "../errors.js";
 import { deleteDocument, getLibraryDir, saveUpload, setLibraryFolder } from "../library/ingest.js";
 import { pickFolder } from "../library/pickFolder.js";
 import { getDocument, listDocuments, type SearchHit, searchChunks } from "../library/store.js";
+import { trimSnippet } from "../search/snippets.js";
 import { errorMessage } from "../util.js";
 
 const UPLOAD_LIMIT = 64 * 1024 * 1024;
@@ -24,13 +25,6 @@ export interface LibrarySearchHit {
 // still leaves close to SEARCH_DOC_LIMIT distinct documents.
 const SEARCH_DOC_LIMIT = 20;
 const SEARCH_CHUNK_LIMIT = 80;
-
-/** Collapse whitespace and cap length, breaking on a word boundary. */
-function trimSnippet(value: string, max = 200): string {
-  const collapsed = value.replace(/\s+/g, " ").trim();
-  if (collapsed.length <= max) return collapsed;
-  return `${collapsed.slice(0, max - 1).trimEnd()}…`;
-}
 
 /** BM25 chunk search collapsed to one best-ranked hit per document. */
 function searchDocuments(q: string): LibrarySearchHit[] {

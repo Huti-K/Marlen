@@ -437,6 +437,33 @@ export async function setLibraryFolder(input: string): Promise<void> {
   await scanLibrary();
 }
 
+/**
+ * Write `data` into the library, or a subfolder of it (`relDir`, `""` for the
+ * root), under a hidden temp name, then rename it to `name`: the scanner
+ * skips dotfiles, so a partially written file is never visible to it. Cleans
+ * up the temp file on failure, and always rescans on success so the new file
+ * is indexed. Returns the path relative to the library root.
+ */
+async function writeIntoLibrary(
+  relDir: string,
+  name: string,
+  tempPrefix: string,
+  data: string | Buffer,
+): Promise<string> {
+  const dir = relDir ? join(libraryDir, relDir) : libraryDir;
+  await mkdir(dir, { recursive: true });
+  const tempPath = join(dir, `.${tempPrefix}-${randomUUID()}`);
+  try {
+    await writeFile(tempPath, data);
+    await rename(tempPath, join(dir, name));
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
+  await scanLibrary();
+  return relDir ? `${relDir}/${name}` : name;
+}
+
 /** File name is taken as-is (basename only); returns the stored relative path. */
 export async function saveUpload(fileName: string, data: Buffer): Promise<string> {
   const name = basename(fileName.trim());
@@ -444,19 +471,7 @@ export async function saveUpload(fileName: string, data: Buffer): Promise<string
   if (!LIBRARY_EXTENSIONS.has(extname(name).toLowerCase())) {
     throw new Error(`unsupported file type — use ${[...LIBRARY_EXTENSIONS].join(", ")}`);
   }
-  await mkdir(libraryDir, { recursive: true });
-  // Write to a hidden temp name, then rename: the scanner skips dotfiles, so
-  // a partially written upload is never visible to it.
-  const tempPath = join(libraryDir, `.upload-${randomUUID()}`);
-  try {
-    await writeFile(tempPath, data);
-    await rename(tempPath, join(libraryDir, name));
-  } catch (error) {
-    await rm(tempPath, { force: true });
-    throw error;
-  }
-  await scanLibrary();
-  return name;
+  return writeIntoLibrary("", name, "upload", data);
 }
 
 /**
@@ -472,20 +487,7 @@ export async function saveNote(title: string, content: string): Promise<string> 
   const trimmedContent = content.trim();
   if (!trimmedContent) throw new Error("note content must not be empty");
 
-  const notesDir = join(libraryDir, "notes");
-  await mkdir(notesDir, { recursive: true });
-  // Write to a hidden temp name, then rename: the scanner skips dotfiles, so
-  // a partially written note is never visible to it.
-  const tempPath = join(notesDir, `.note-${randomUUID()}`);
-  try {
-    await writeFile(tempPath, trimmedContent);
-    await rename(tempPath, join(notesDir, name));
-  } catch (error) {
-    await rm(tempPath, { force: true });
-    throw error;
-  }
-  await scanLibrary();
-  return `notes/${name}`;
+  return writeIntoLibrary("notes", name, "note", trimmedContent);
 }
 
 /** Delete a document: its file in the folder and its index entry. */

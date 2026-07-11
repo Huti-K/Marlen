@@ -1,10 +1,11 @@
-import type { ConnectedAccount, EmailDraft, EmailThreadMessage } from "@trailin/shared";
+import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import { createProviderRegistry } from "./registry.js";
 
 /**
  * Draft-provider abstraction: every mail app Trailin can list/create drafts
  * for implements this interface against its own REST API — Gmail via the
- * plain Gmail REST API (./gmailDrafts.ts), Outlook via Microsoft
- * Graph (./outlookDrafts.ts) — all through Pipedream's Connect proxy so no
+ * plain Gmail REST API (./gmail/drafts.ts), Outlook via Microsoft
+ * Graph (./outlook/drafts.ts) — all through Pipedream's Connect proxy so no
  * OAuth tokens ever touch this codebase directly.
  *
  * Keyed by Pipedream app slug in the registry below. `getDraftProvider`
@@ -53,26 +54,19 @@ export interface DraftProvider {
   createDraft(account: ConnectedAccount, input: CreateDraftInput): Promise<CreateDraftResult>;
   deleteDraft(account: ConnectedAccount, draftId: string): Promise<void>;
   /**
-   * Optional capabilities: not every provider can do these (yet), so routes
+   * Optional capability: not every provider can do this (yet), so routes
    * check for the method rather than assuming any one app. Absent means "not
    * supported for this account" — the route replies 400, provider-neutral.
+   * (Thread reading is not a provider concern at all — the thread viewer is
+   * served from the local mailbox mirror, email/sync/mailQuery.ts.)
    */
   updateDraft?(account: ConnectedAccount, draftId: string, patch: UpdateDraftPatch): Promise<void>;
-  getThread?(
-    account: ConnectedAccount,
-    threadId: string,
-    opts?: { excludeMessageId?: string },
-  ): Promise<EmailThreadMessage[]>;
 }
 
-const registry = new Map<string, DraftProvider>();
+const registry = createProviderRegistry<DraftProvider>();
 
 /** Called once per provider module, at import time (see registerProviders.ts). */
-export function registerDraftProvider(app: string, provider: DraftProvider): void {
-  registry.set(app, provider);
-}
+export const registerDraftProvider = registry.register;
 
 /** null when `app` has no draft driver yet — callers must handle that, not assume Gmail. */
-export function getDraftProvider(app: string): DraftProvider | null {
-  return registry.get(app) ?? null;
-}
+export const getDraftProvider = registry.get;

@@ -1,6 +1,6 @@
 /**
  * Microsoft Graph message helpers shared by the Outlook drivers
- * (outlookDrafts.ts, outlookSync.ts). Before this module each file carried
+ * (drafts.ts, sync.ts). Before this module each file carried
  * its own GraphRecipient type and "Name <addr>" formatter, character for
  * character.
  */
@@ -12,13 +12,13 @@ export interface GraphRecipient {
 }
 
 /** Bare address of one recipient; undefined when Graph gave none. */
-export function recipientAddress(recipient: GraphRecipient | undefined): string | undefined {
+function recipientAddress(recipient: GraphRecipient | undefined): string | undefined {
   const address = recipient?.emailAddress?.address;
   return address?.trim() || undefined;
 }
 
-/** Bare addresses only, as an array — what EmailThreadMessage's to/cc want. */
-export function recipientAddresses(recipients: GraphRecipient[] | undefined): string[] {
+/** Bare addresses only, as an array. */
+function recipientAddresses(recipients: GraphRecipient[] | undefined): string[] {
   return (recipients ?? []).map(recipientAddress).filter((a): a is string => !!a);
 }
 

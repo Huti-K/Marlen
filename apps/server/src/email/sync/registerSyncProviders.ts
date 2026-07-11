@@ -1,5 +1,5 @@
-import { gmailSyncProvider } from "../gmailSync.js";
-import { outlookSyncProvider } from "../outlookSync.js";
+import { gmailSyncProvider } from "../gmail/sync.js";
+import { outlookSyncProvider } from "../outlook/sync.js";
 import { registerSyncProvider } from "./syncProviders.js";
 
 /**

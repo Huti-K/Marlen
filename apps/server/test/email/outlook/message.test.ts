@@ -5,8 +5,7 @@ import {
   formatRecipients,
   type GraphRecipient,
   newestByReceivedDate,
-  recipientAddresses,
-} from "../../src/email/graphMessage.js";
+} from "../../../src/email/outlook/message.js";
 
 describe("formatRecipient", () => {
   it("formats name and address as 'Name <addr>'", () => {
@@ -65,35 +64,21 @@ describe("formatRecipients", () => {
   });
 });
 
-describe("recipientAddresses", () => {
-  it("returns bare addresses even when names exist", () => {
-    const recipients: GraphRecipient[] = [
-      { emailAddress: { name: "Alice", address: "alice@x.com" } },
-      { emailAddress: { name: "Bob", address: "bob@y.com" } },
-    ];
-    expect(recipientAddresses(recipients)).toEqual(["alice@x.com", "bob@y.com"]);
-  });
-
-  it("drops entries that resolve to undefined", () => {
-    const recipients: GraphRecipient[] = [
-      { emailAddress: { name: "Alice", address: "alice@x.com" } },
-      { emailAddress: {} },
-    ];
-    expect(recipientAddresses(recipients)).toEqual(["alice@x.com"]);
-  });
-
-  it("returns an empty array for undefined recipients", () => {
-    expect(recipientAddresses(undefined)).toEqual([]);
-  });
-});
-
 describe("addressListOf", () => {
-  it("joins bare addresses with ', '", () => {
+  it("joins bare addresses with ', ' even when names exist", () => {
     const recipients: GraphRecipient[] = [
       { emailAddress: { name: "Alice", address: "alice@x.com" } },
       { emailAddress: { name: "Bob", address: "bob@y.com" } },
     ];
     expect(addressListOf(recipients)).toBe("alice@x.com, bob@y.com");
+  });
+
+  it("drops entries with no usable address", () => {
+    const recipients: GraphRecipient[] = [
+      { emailAddress: { name: "Alice", address: "alice@x.com" } },
+      { emailAddress: {} },
+    ];
+    expect(addressListOf(recipients)).toBe("alice@x.com");
   });
 
   it("returns an empty string for undefined recipients", () => {

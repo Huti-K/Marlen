@@ -45,7 +45,7 @@ import { api } from "@/lib/api";
 import { openRunInChat } from "@/lib/runNavigation";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
@@ -84,7 +84,7 @@ export function AutomationsPanel() {
     try {
       setAutomations(await api.automations());
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setLoading(false);
     }
@@ -150,7 +150,7 @@ export function AutomationsPanel() {
       handleOpenChange(false);
       await refresh();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setSaving(false);
     }
@@ -165,7 +165,7 @@ export function AutomationsPanel() {
       setConfirmDelete(false);
       await refresh();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setSaving(false);
     }
@@ -534,7 +534,7 @@ function AutomationCard({
       await api.updateAutomation(automation.id, { enabled });
       await onChanged();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setBusy(false);
     }
@@ -548,7 +548,7 @@ function AutomationCard({
       await api.setAutomationPinned(automation.id, !automation.pinned);
       await onChanged();
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setBusy(false);
     }
@@ -562,7 +562,7 @@ function AutomationCard({
       // Give the run a moment to be recorded before the first poll.
       setTimeout(() => void loadRuns(), 800);
     } catch (err) {
-      toast.error(errorMessage(err));
+      toast.error(err);
     } finally {
       setBusy(false);
     }

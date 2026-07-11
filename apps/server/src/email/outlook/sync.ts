@@ -1,12 +1,6 @@
 import { PipedreamError } from "@pipedream/sdk";
 import type { ConnectedAccount } from "@trailin/shared";
-import { proxyRequest } from "../pipedream/connect.js";
-import {
-  formatRecipient,
-  formatRecipients,
-  GRAPH_API,
-  type GraphRecipient,
-} from "./graphMessage.js";
+import { proxyRequest } from "../../pipedream/connect.js";
 import {
   parseOpaqueCursor,
   SyncCursorExpiredError,
@@ -14,13 +8,14 @@ import {
   type SyncOptions,
   type SyncPage,
   type SyncProvider,
-} from "./sync/syncProviders.js";
-import { stripHtml } from "./textUtils.js";
+} from "../sync/syncProviders.js";
+import { stripHtml } from "../textUtils.js";
+import { formatRecipient, formatRecipients, GRAPH_API, type GraphRecipient } from "./message.js";
 
 /**
  * Outlook / Microsoft 365 mailbox-mirror sync driver, via the Connect proxy
  * against Microsoft Graph's delta query API — the same proxy mechanism
- * outlookDrafts.ts uses, pointed at /me/mailFolders('…')/messages/delta
+ * ./drafts.ts uses, pointed at /me/mailFolders('…')/messages/delta
  * instead of the drafts endpoints. Registered under app slug
  * "microsoft_outlook" at the bottom of this file.
  *

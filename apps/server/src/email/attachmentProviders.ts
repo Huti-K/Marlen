@@ -1,4 +1,5 @@
 import type { ConnectedAccount } from "@trailin/shared";
+import { createProviderRegistry } from "./registry.js";
 
 /**
  * Attachment-provider abstraction — mirrors ./providers.ts's DraftProvider
@@ -33,14 +34,10 @@ export interface AttachmentProvider {
   downloadAttachment(account: ConnectedAccount, messageId: string, ref: string): Promise<Buffer>;
 }
 
-const registry = new Map<string, AttachmentProvider>();
+const registry = createProviderRegistry<AttachmentProvider>();
 
 /** Called once per app by registerAttachmentProviders.ts. */
-export function registerAttachmentProvider(app: string, provider: AttachmentProvider): void {
-  registry.set(app, provider);
-}
+export const registerAttachmentProvider = registry.register;
 
 /** null when `app` has no attachment driver yet — callers must handle that, not assume Gmail. */
-export function getAttachmentProvider(app: string): AttachmentProvider | null {
-  return registry.get(app) ?? null;
-}
+export const getAttachmentProvider = registry.get;

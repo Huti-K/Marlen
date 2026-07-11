@@ -3,15 +3,15 @@ import {
   type AgentCard,
   BRIEFING_PRIORITIES,
   type BriefingItem,
-  type BriefingPriority,
   type BriefingRollup,
   type CardAccount,
   type ConnectedAccount,
 } from "@trailin/shared";
 import { listAccounts } from "../pipedream/connect.js";
-import { errorMessage } from "../util.js";
-import { toCardAccount } from "./cards.js";
-import { findAccount } from "./knowledgeTools.js";
+import { errorMessage, isNonEmptyString, isRecord } from "../util.js";
+import { findAccount } from "./accounts.js";
+import { coerceBriefingItem, coerceBriefingRollup, toCardAccount } from "./cards.js";
+import { defineTool, textResult } from "./toolResult.js";
 
 /**
  * Agent tool that publishes the structured "briefing" AgentCard — a triaged,
@@ -24,30 +24,13 @@ import { findAccount } from "./knowledgeTools.js";
  * text error result instead of an unhandled rejection.
  */
 
-const text = (value: string) => ({
-  content: [{ type: "text" as const, text: value }],
-  details: undefined,
-});
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function isBriefingPriority(value: unknown): value is BriefingPriority {
-  return typeof value === "string" && (BRIEFING_PRIORITIES as readonly string[]).includes(value);
-}
-
 const PRIORITY_DESCRIPTION =
   '"urgent" when it is time-sensitive, a deadline could pass, or the user is blocked on it. ' +
   '"reply" when a real person is waiting on a reply but nothing is on fire. "action" when it ' +
   'needs a decision or task from the user and nobody is waiting. "fyi" when it is worth ' +
   "knowing and needs nothing.";
 
-const composeBriefingTool: AgentTool = {
+export const composeBriefingTool: AgentTool = defineTool({
   name: "compose_briefing",
   label: "Compose the briefing",
   description:
@@ -140,7 +123,7 @@ const composeBriefingTool: AgentTool = {
       },
     },
     required: ["items"],
-  } as AgentTool["parameters"],
+  },
   execute: async (_id, params) => {
     try {
       const input = isRecord(params) ? params : {};
@@ -151,66 +134,23 @@ const composeBriefingTool: AgentTool = {
         return findAccount(accounts, value)?.id;
       };
 
+      // Drop anything coerceBriefingItem/coerceBriefingRollup reject (missing
+      // required fields) rather than failing the whole call over one bad
+      // entry — the counts below tell the model what it lost.
       const rawItems = Array.isArray(input.items) ? input.items : [];
       const items: BriefingItem[] = [];
       for (const raw of rawItems) {
         if (!isRecord(raw)) continue;
-        const {
-          threadId,
-          messageId,
-          account,
-          sender,
-          senderEmail,
-          subject,
-          gist,
-          priority,
-          deadline,
-          receivedAt,
-          draftId,
-        } = raw;
-        // Drop anything missing the fields the card and its row actions
-        // depend on, rather than failing the whole call over one bad item.
-        if (
-          !isNonEmptyString(threadId) ||
-          !isNonEmptyString(sender) ||
-          !isNonEmptyString(subject) ||
-          !isNonEmptyString(gist)
-        ) {
-          continue;
-        }
-        const accountId = resolveAccountId(account);
-        items.push({
-          threadId,
-          ...(isNonEmptyString(messageId) ? { messageId } : {}),
-          ...(accountId ? { accountId } : {}),
-          sender,
-          ...(isNonEmptyString(senderEmail) ? { senderEmail } : {}),
-          subject,
-          gist,
-          // Never fail the call over a bad enum value — worst case an item
-          // lands in the least-pressing tier instead of being dropped.
-          priority: isBriefingPriority(priority) ? priority : "fyi",
-          ...(isNonEmptyString(deadline) ? { deadline } : {}),
-          ...(isNonEmptyString(receivedAt) ? { receivedAt } : {}),
-          ...(isNonEmptyString(draftId) ? { draftId } : {}),
-        });
+        const item = coerceBriefingItem(raw, resolveAccountId(raw.account));
+        if (item) items.push(item);
       }
 
       const rawRollups = Array.isArray(input.rollups) ? input.rollups : [];
       const rollups: BriefingRollup[] = [];
       for (const raw of rawRollups) {
         if (!isRecord(raw)) continue;
-        const { account, label, count, examples } = raw;
-        if (!isNonEmptyString(label) || typeof count !== "number" || !Number.isFinite(count))
-          continue;
-        const accountId = resolveAccountId(account);
-        const exampleList = Array.isArray(examples) ? examples.filter(isNonEmptyString) : [];
-        rollups.push({
-          ...(accountId ? { accountId } : {}),
-          label,
-          count: Math.max(0, Math.round(count)),
-          ...(exampleList.length > 0 ? { examples: exampleList } : {}),
-        });
+        const rollup = coerceBriefingRollup(raw, resolveAccountId(raw.account));
+        if (rollup) rollups.push(rollup);
       }
 
       // The card's `accounts` list credits every connected account that
@@ -277,13 +217,9 @@ const composeBriefingTool: AgentTool = {
         `items in prose — close with two or three sentences naming what needs them first and ` +
         `which drafts are waiting.`;
 
-      return { content: [{ type: "text" as const, text: confirmation }], details: card };
+      return textResult(confirmation, card);
     } catch (error) {
-      return text(`Could not compose the briefing: ${errorMessage(error)}`);
+      return textResult(`Could not compose the briefing: ${errorMessage(error)}`);
     }
   },
-};
-
-export function buildBriefingTool(): AgentTool {
-  return composeBriefingTool;
-}
+});

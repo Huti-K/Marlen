@@ -1,11 +1,18 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
-import type { AccountDrafts, ConnectedAccount, EmailDraft, EmailThread } from "@trailin/shared";
+import type {
+  AccountDrafts,
+  ConnectedAccount,
+  EmailDraft,
+  EmailThread,
+  EmailThreadMessage,
+} from "@trailin/shared";
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import "../email/registerProviders.js";
 import { listDraftsCached } from "../email/draftsService.js";
 import { type DraftProvider, getDraftProvider } from "../email/providers.js";
+import { getThreadDetail } from "../email/sync/mailQuery.js";
 import { AppError, badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
@@ -22,7 +29,7 @@ async function findDraftAccount(
 }
 
 /**
- * A provider (Gmail/Outlook, via the Pipedream proxy) throwing 404 means the
+ * A draft provider (reached via the Pipedream proxy) throwing 404 means the
  * id doesn't exist there anymore — that's a client-facing 404, not an
  * outage. Anything else genuinely failed upstream and stays a 502. An
  * AppError already thrown deliberately below (e.g. notFound("account not
@@ -143,7 +150,7 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
    * humanizer, no signature (those only run in the agent's create-draft
    * tool). `updateDraft` is an optional DraftProvider capability — a provider
    * without one (no driver written yet) reports 400 rather than assuming
-   * every connected account works like Gmail.
+   * every provider supports it.
    */
   app.patch(
     "/api/drafts/:accountId/:draftId",
@@ -165,29 +172,32 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
   );
 
   /**
-   * The full email thread a draft belongs to, for the in-app viewer.
-   * `getThread` is an optional DraftProvider capability, same reasoning as
-   * updateDraft above. `excludeMessageId` omits the draft's own message,
-   * which some providers (Gmail) count as part of the thread it replies to.
+   * The full email thread a draft belongs to, for the in-app viewer — served
+   * from the local mailbox mirror, so it works for every synced account
+   * without a provider round-trip. 404 covers both a bad id and a thread
+   * older than the mirror's backfill window. `excludeMessageId` omits one
+   * message by provider id (drafts themselves are never mirrored, so the
+   * draft's own message can't appear, but the parameter is honored).
    */
   app.get(
     "/api/threads/:accountId/:threadId",
     { schema: { params: threadParams, querystring: threadQuery } },
     async (req): Promise<EmailThread> => {
-      try {
-        const found = await findDraftAccount(req.params.accountId);
-        if (!found) throw notFound("account not found");
-        if (!found.provider.getThread) {
-          throw badRequest("reading the thread is not supported for this account");
-        }
-        const exclude = req.query.excludeMessageId?.trim();
-        const messages = await found.provider.getThread(found.account, req.params.threadId, {
-          ...(exclude ? { excludeMessageId: exclude } : {}),
-        });
-        return { messages };
-      } catch (error) {
-        throw toProviderError(error, "thread not found");
-      }
+      const exclude = req.query.excludeMessageId?.trim();
+      const detail = getThreadDetail(req.params.threadId, req.params.accountId);
+      if (!detail) throw notFound("thread not found");
+      const messages = detail.messages
+        .filter((m) => !exclude || m.providerMessageId !== exclude)
+        .map(
+          (m): EmailThreadMessage => ({
+            from: m.from,
+            to: m.to,
+            ...(m.cc.length > 0 ? { cc: m.cc } : {}),
+            date: m.date,
+            body: m.bodyText,
+          }),
+        );
+      return { messages };
     },
   );
 };

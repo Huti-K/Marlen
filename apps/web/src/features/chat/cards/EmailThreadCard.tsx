@@ -1,7 +1,8 @@
 import type { AgentCard, EmailThreadMessage } from "@trailin/shared";
-import { ChevronDown, ChevronRight, MessagesSquare } from "lucide-react";
+import { AtSign, ChevronDown, ChevronRight, MessagesSquare } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { relativeTime } from "@/lib/dates";
 import { CardBodyText, CardShell } from "./CardShell";
 
@@ -13,7 +14,7 @@ type EmailThreadData = Extract<AgentCard, { kind: "email_thread" }>;
  */
 export function EmailThreadCard({ card, color }: { card: EmailThreadData; color?: string }) {
   const { t, i18n } = useTranslation();
-  const { account, subject, messages } = card;
+  const { account, threadId, subject, messages } = card;
   const lastIndex = messages.length - 1;
   const [openIndexes, setOpenIndexes] = React.useState<Set<number>>(
     () => new Set(lastIndex >= 0 ? [lastIndex] : []),
@@ -37,6 +38,17 @@ export function EmailThreadCard({ card, color }: { card: EmailThreadData; color?
     });
   };
 
+  const addToChat = () => {
+    if (!account) return;
+    window.dispatchEvent(
+      new CustomEvent("trailin:add-chat-ref", {
+        detail: {
+          ref: { threadId, accountId: account.accountId, accountName: account.name, subject },
+        },
+      }),
+    );
+  };
+
   return (
     <CardShell
       icon={MessagesSquare}
@@ -45,6 +57,19 @@ export function EmailThreadCard({ card, color }: { card: EmailThreadData; color?
       title={subject || t("chat.cards.noSubject")}
       account={account}
       color={color}
+      action={
+        account ? (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={addToChat}
+            aria-label={t("chat.cards.addToChat")}
+            title={t("chat.cards.addToChat")}
+          >
+            <AtSign />
+          </Button>
+        ) : undefined
+      }
     >
       <div className="flex flex-col px-2 pb-2">
         {messages.map((message, index) => (

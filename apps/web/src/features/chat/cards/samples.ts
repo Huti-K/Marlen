@@ -208,6 +208,45 @@ const BRIEFING_CARD: AgentCard = {
   ],
 };
 
+/** A clarifying question the agent asks when a request is ambiguous — one
+ *  option per candidate email plus a third that opts out of both, reusing
+ *  the Acme invoice thread ids from HITS_CARD so its ref points at real
+ *  demo data. */
+const CHOICES_CARD: AgentCard = {
+  kind: "choices",
+  question: "Welche Rechnung von Acme meinst du?",
+  options: [
+    {
+      label: "Rechnung #A-2291 – Zahlungserinnerung",
+      detail: "Thomas Brandt · 8. Juli",
+      ref: {
+        threadId: "thread-acme-2291",
+        accountId: "demo-work",
+        accountName: "selin@nordwind-studio.de",
+        subject: "Re: Rechnung #A-2291 – Zahlungserinnerung",
+        from: "Thomas Brandt <t.brandt@acme-gmbh.de>",
+        date: "2026-07-08T09:14:00.000Z",
+      },
+    },
+    {
+      label: "Rechnung #A-2204",
+      detail: "Buchhaltung Acme · 14. Juni",
+      ref: {
+        threadId: "thread-acme-2204",
+        accountId: "demo-work",
+        accountName: "selin@nordwind-studio.de",
+        subject: "Acme GmbH – Rechnung #A-2204",
+        from: "Buchhaltung Acme <buchhaltung@acme-gmbh.de>",
+        date: "2026-06-14T11:02:00.000Z",
+      },
+    },
+    {
+      label: "Weder noch — zeig mir alle Rechnungen von Acme",
+      reply: "Zeig mir alle Rechnungs-E-Mails von Acme GmbH über alle meine Konten hinweg.",
+    },
+  ],
+};
+
 /** A digest-style reply exercising the markdown vocabulary: heading, bold, mailto, list, table, link. */
 const MARKDOWN_SAMPLE = `### Was heute wichtig ist
 
@@ -236,6 +275,7 @@ export const SHOWCASE_TURNS: ShowcaseTurn[] = [
   },
   { cards: [HITS_CARD, THREAD_CARD, DRAFT_CARD, EMPTY_HITS_CARD] },
   { cards: [BRIEFING_CARD] },
+  { cards: [CHOICES_CARD] },
   { content: MARKDOWN_SAMPLE },
   { thinking: true },
 ];

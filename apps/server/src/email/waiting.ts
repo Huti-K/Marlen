@@ -1,5 +1,6 @@
 import type { ConnectedAccount, WaitingThread } from "@trailin/shared";
 import { lazyStatement } from "../db/index.js";
+import { decodeStringArray } from "./sync/rows.js";
 import { syncAccount } from "./sync/syncEngine.js";
 import { getSyncProvider } from "./sync/syncProviders.js";
 // Side-effect import: populates the SyncProvider registry for accountSupportsWaiting.
@@ -89,7 +90,7 @@ export async function listWaiting(
 
   return rows
     .map((row): WaitingThread => {
-      const to = row.toAddrs ? (JSON.parse(row.toAddrs) as string[]) : [];
+      const to = row.toAddrs ? decodeStringArray(row.toAddrs) : [];
       return {
         threadId: row.providerThreadId,
         subject: row.subject,

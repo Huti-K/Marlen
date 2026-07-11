@@ -1,7 +1,7 @@
 import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import type { LoginFlowStatus } from "@trailin/shared";
-import { credentialStore } from "../auth/credentialStore.js";
 import { errorMessage } from "../util.js";
+import { credentialStore } from "./credentialStore.js";
 
 /**
  * Manages the single in-flight OAuth login. pi-ai's login flows are
