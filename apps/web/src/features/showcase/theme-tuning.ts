@@ -145,7 +145,7 @@ function rasteriseToHex(cssColor: string): string {
   canvasCtx.fillStyle = cssColor;
   canvasCtx.fillRect(0, 0, 1, 1);
   const px = canvasCtx.getImageData(0, 0, 1, 1).data;
-  return "#" + [px[0], px[1], px[2]].map((n) => (n ?? 0).toString(16).padStart(2, "0")).join("");
+  return `#${[px[0], px[1], px[2]].map((n) => (n ?? 0).toString(16).padStart(2, "0")).join("")}`;
 }
 
 /**
@@ -158,7 +158,7 @@ export function parseCssColor(text: string): Oklch {
   const value = text.trim();
   const fn = /^okl(ch|ab)\(([^)]*)\)$/i.exec(value);
   if (fn) {
-    const parts = (fn[2] ?? "").split("/")[0]!.trim().split(/[\s,]+/);
+    const parts = ((fn[2] ?? "").split("/")[0] ?? "").trim().split(/[\s,]+/);
     const num = (raw: string | undefined, pctScale: number): number => {
       if (!raw || raw === "none") return 0;
       const n = parseFloat(raw);
@@ -191,7 +191,7 @@ const WARM_STRENGTH = 0.03;
  * adding a flat offset, so nothing ever clips at the ends and near-white text
  * barely moves while a dark canvas opens right up.
  */
-export const lift = (l: number, brightness: number) =>
+const lift = (l: number, brightness: number) =>
   brightness >= 0 ? l + brightness * (1 - l) : l + brightness * l;
 
 /** The lightness everything else spreads away from when contrast rises. */

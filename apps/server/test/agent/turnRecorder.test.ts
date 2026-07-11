@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Agent } from "@earendil-works/pi-agent-core";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../../src/agent/emailAgent.js";
 import type { RunHandlers, TurnLogger } from "../../src/agent/run.js";
 import type { TurnSessions } from "../../src/agent/turnRecorder.js";
@@ -66,7 +66,7 @@ class FakeAgent {
   prompts: string[] = [];
 
   private listeners: Array<(event: unknown) => void> = [];
-  private settle: { resolve: (text: void) => void; reject: (error: unknown) => void } | null = null;
+  private settle: { resolve: () => void; reject: (error: unknown) => void } | null = null;
   private promptedResolve!: () => void;
 
   /**
@@ -114,7 +114,10 @@ class FakeAgent {
 }
 
 /** A fake AgentSession wired the same way emailAgent.ts's createAgentSession wires a real one. */
-function fakeSession(agent: FakeAgent, closeSpy = vi.fn().mockResolvedValue(undefined)): AgentSession {
+function fakeSession(
+  agent: FakeAgent,
+  closeSpy = vi.fn().mockResolvedValue(undefined),
+): AgentSession {
   const session: AgentSession = {
     agent: agent as unknown as Agent,
     toolset: { tools: [], readTools: [], close: closeSpy },
@@ -166,7 +169,10 @@ describe("turnRecorder", () => {
     const runPromise = turn.run({ prompt: "hello", session: "pooled", log: testLog });
 
     await agent.whenPrompted;
-    agent.emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hi there" } });
+    agent.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "hi there" },
+    });
     agent.emit(toolResultEvent("call-1", { kind: "email_hits", hits: [] }));
     agent.resolveTurn();
 
@@ -386,10 +392,12 @@ describe("turnRecorder", () => {
     expect(onCard).toHaveBeenCalledTimes(2);
     // ...but the persisted/returned set collapses a retried tool call to its latest card.
     expect(result.cards).toHaveLength(1);
-    expect((result.cards[0]?.card as { query?: string }).query).toBe("second");
+    expect((result.cards[0]?.card as { query?: string } | undefined)?.query).toBe("second");
 
     const rows = await messagesFor(conversationId);
-    const persistedCards = JSON.parse(rows[1]?.cards ?? "[]") as Array<{ card: { query?: string } }>;
+    const persistedCards = JSON.parse(rows[1]?.cards ?? "[]") as Array<{
+      card: { query?: string };
+    }>;
     expect(persistedCards).toHaveLength(1);
     expect(persistedCards[0]?.card.query).toBe("second");
   });

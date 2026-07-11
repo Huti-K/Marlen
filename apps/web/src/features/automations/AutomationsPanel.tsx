@@ -1,41 +1,51 @@
+import type { Automation, AutomationRun } from "@trailin/shared";
+import {
+  CalendarClock,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  MessageSquareShare,
+  Pin,
+  Play,
+  Plus,
+} from "lucide-react";
 import * as React from "react";
-import { CalendarClock, ChevronDown, ChevronUp, Loader2, MessageSquareShare, Pencil, Pin, Play, Plus, Trash2 } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import type { Automation, AutomationRun } from "@trailin/shared";
-import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { Badge } from "@/components/ui/badge";
-import { Chip } from "@/components/ui/chip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { Skeleton } from "@/components/ui/skeleton";
-import { DigestView } from "@/features/automations/DigestView";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
-import { FormField } from "@/components/ui/form-field";
-import { LinkButton } from "@/components/ui/link-button";
+import { Chip } from "@/components/ui/chip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
-import { RunStatusBadge } from "@/components/RunStatusBadge";
-import { openRunInChat } from "@/lib/runNavigation";
-import { toast } from "@/lib/toast";
-import { useServerEvents } from "@/lib/serverEvents";
-import { cn, errorMessage } from "@/lib/utils";
+import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FormField } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { LinkButton } from "@/components/ui/link-button";
+import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { DigestView } from "@/features/automations/DigestView";
 import {
-  DEFAULT_PRESET,
   buildCron,
+  DEFAULT_PRESET,
   daysInMonth,
   monthDayLabel,
   monthName,
   parseCron,
+  type SchedulePreset,
   weekdayName,
   weekdayShortName,
-  type SchedulePreset,
 } from "@/features/automations/schedule";
+import { api } from "@/lib/api";
+import { openRunInChat } from "@/lib/runNavigation";
+import { useServerEvents } from "@/lib/serverEvents";
+import { toast } from "@/lib/toast";
+import { cn, errorMessage } from "@/lib/utils";
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
@@ -87,7 +97,10 @@ export function AutomationsPanel() {
   // Server-side changes (agent tools, scheduled runs): refetch without the
   // loading gate — toggling it would unmount the cards and drop their state.
   useServerEvents(["automations"], () => {
-    void api.automations().then(setAutomations).catch(() => {});
+    void api
+      .automations()
+      .then(setAutomations)
+      .catch(() => {});
   });
 
   const resetForm = () => {
@@ -244,10 +257,7 @@ export function AutomationsPanel() {
                 onChange={(e) => setCron(e.target.value)}
                 placeholder="0 8 * * 1-5"
                 aria-invalid={!cronValid}
-                className={cn(
-                  "font-mono tabular",
-                  !cronValid && cron.trim() && "text-destructive",
-                )}
+                className={cn("font-mono tabular", !cronValid && cron.trim() && "text-destructive")}
               />
               {cron.trim() && !cronValid ? (
                 <p className="text-xs text-destructive">{t("automations.cronInvalid")}</p>
@@ -395,9 +405,13 @@ export function AutomationsPanel() {
             <div
               key={automation.id}
               className="animate-in-up"
-              style={{ animationDelay: `${i * 55}ms` }}
+              style={{ animationDelay: `${i * 45}ms` }}
             >
-              <AutomationCard automation={automation} onChanged={refresh} onEdit={() => openForEdit(automation)} />
+              <AutomationCard
+                automation={automation}
+                onChanged={refresh}
+                onEdit={() => openForEdit(automation)}
+              />
             </div>
           ))}
         </div>
@@ -455,9 +469,7 @@ function WeekdayToggle({
 }) {
   const toggle = (day: number) => {
     onChange(
-      value.includes(day)
-        ? value.filter((d) => d !== day)
-        : [...value, day].sort((a, b) => a - b),
+      value.includes(day) ? value.filter((d) => d !== day) : [...value, day].sort((a, b) => a - b),
     );
   };
   return (
@@ -559,85 +571,76 @@ function AutomationCard({
   return (
     <Card padding="lg">
       <div className="flex items-start justify-between gap-3">
-        <div 
-          className="min-w-0 flex-1 cursor-pointer rounded-md transition-opacity hover:opacity-80"
+        <button
+          type="button"
           onClick={onEdit}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && onEdit()}
+          className="block min-w-0 flex-1 rounded-md text-left transition-opacity hover:opacity-80"
         >
-            <div className="flex flex-wrap items-center gap-2 text-base font-semibold tracking-tight">
-              {automation.name}
-              <Badge
-                variant="muted"
-                className={cn("text-[11px]", !label && "font-mono")}
-                title={automation.schedule}
-              >
-                {label ?? automation.schedule}
-              </Badge>
-              {!automation.enabled && <Badge variant="warning">{t("automations.paused")}</Badge>}
-              {!automation.showInActivity && (
-                <Badge variant="muted">{t("automations.hiddenFromActivity")}</Badge>
-              )}
-            </div>
-            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-              {automation.instruction}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1 pt-0.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => void togglePin()}
-              disabled={busy}
-              data-tooltip={automation.pinned ? t("automations.pinned") : t("automations.pin")}
-              aria-label={automation.pinned ? t("automations.pinned") : t("automations.pin")}
+          <div className="flex flex-wrap items-center gap-2 text-base font-semibold tracking-tight">
+            {automation.name}
+            <Badge
+              variant="muted"
+              className={cn("text-2xs", !label && "font-mono")}
+              title={automation.schedule}
             >
-              <Pin
-                className={cn(
-                  "h-4 w-4",
-                  automation.pinned ? "fill-accent/25 text-accent" : "text-muted-foreground",
-                )}
-              />
-            </Button>
-            <Switch
-              checked={automation.enabled}
-              onCheckedChange={(v) => void toggle(v)}
-              disabled={busy}
-              aria-label={t("automations.paused")}
-            />
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-4 pt-1">
-          <button
-            className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            onClick={() => setExpanded((v) => !v)}
-          >
-            {expanded ? <ChevronUp className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
-            {t("automations.recentRuns")}
-          </button>
-          
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => void runNow()} disabled={busy}>
-              <Play className="h-3.5 w-3.5 mr-1.5" /> {t("automations.runNow")}
-            </Button>
-          </div>
-        </div>
-        {expanded && (
-          <div className="mt-2 flex flex-col gap-2">
-            {!runs ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : runs.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("automations.noRuns")}</p>
-            ) : (
-              runs.map((run) => (
-                <RunItem key={run.id} run={run} automationName={automation.name} />
-              ))
+              {label ?? automation.schedule}
+            </Badge>
+            {!automation.enabled && <Badge variant="warning">{t("automations.paused")}</Badge>}
+            {!automation.showInActivity && (
+              <Badge variant="muted">{t("automations.hiddenFromActivity")}</Badge>
             )}
           </div>
-        )}
+          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+            {automation.instruction}
+          </p>
+        </button>
+        <div className="flex shrink-0 items-center gap-1 pt-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => void togglePin()}
+            disabled={busy}
+            data-tooltip={automation.pinned ? t("automations.pinned") : t("automations.pin")}
+            aria-label={automation.pinned ? t("automations.pinned") : t("automations.pin")}
+          >
+            <Pin
+              className={cn(
+                "h-4 w-4",
+                automation.pinned ? "fill-accent/25 text-accent" : "text-muted-foreground",
+              )}
+            />
+          </Button>
+          <Switch
+            checked={automation.enabled}
+            onCheckedChange={(v) => void toggle(v)}
+            disabled={busy}
+            aria-label={t("automations.paused")}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-4 pt-1">
+        <DisclosureToggle open={expanded} onToggle={() => setExpanded((v) => !v)}>
+          {t("automations.recentRuns")}
+        </DisclosureToggle>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => void runNow()} disabled={busy}>
+            <Play className="h-3.5 w-3.5 mr-1.5" /> {t("automations.runNow")}
+          </Button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="mt-2 flex flex-col gap-2">
+          {!runs ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : runs.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t("automations.noRuns")}</p>
+          ) : (
+            runs.map((run) => <RunItem key={run.id} run={run} automationName={automation.name} />)
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -648,15 +651,33 @@ function RunItem({ run, automationName }: { run: AutomationRun; automationName: 
   const [expanded, setExpanded] = React.useState(false);
   const hasResult = !!run.result;
 
+  const toggleExpanded = () => setExpanded(!expanded);
+
   return (
     <div className="rounded-lg bg-surface-2 p-3">
       <div
         className={cn("flex items-center gap-2", hasResult && "cursor-pointer")}
-        onClick={() => hasResult && setExpanded(!expanded)}
+        {...(hasResult
+          ? {
+              role: "button" as const,
+              tabIndex: 0,
+              "aria-expanded": expanded,
+              onClick: toggleExpanded,
+              onKeyDown: (e: React.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleExpanded();
+                }
+              },
+            }
+          : {})}
       >
-        {hasResult && (
-           expanded ? <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-        )}
+        {hasResult &&
+          (expanded ? (
+            <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+          ))}
         <RunStatusBadge status={run.status} />
         <div className="ml-auto flex items-center gap-2">
           <time dateTime={run.startedAt} className="text-xs text-muted-foreground">
@@ -665,7 +686,7 @@ function RunItem({ run, automationName }: { run: AutomationRun; automationName: 
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            className="h-6 w-6"
             title={t("home.openInChat")}
             aria-label={t("home.openInChat")}
             onClick={(e) => {

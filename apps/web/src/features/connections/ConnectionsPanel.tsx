@@ -1,21 +1,21 @@
-import * as React from "react";
-import { Check, ChevronRight, ExternalLink, Loader2, Pencil, X } from "lucide-react";
-import { Trans, useTranslation } from "react-i18next";
 import type { PipedreamStatus } from "@trailin/shared";
-import { api } from "@/lib/api";
+import { Check, ChevronRight, ExternalLink, Loader2, Pencil, X } from "lucide-react";
+import * as React from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
+import { FormField } from "@/components/ui/form-field";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
-import { Card } from "@/components/ui/card";
-import { FormField } from "@/components/ui/form-field";
 import { ListRow } from "@/components/ui/list-row";
-import { IconButton } from "@/components/ui/icon-button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Switch } from "@/components/ui/switch";
 import { Accounts } from "@/features/connections/Accounts";
+import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage } from "@/lib/utils";
+import { cn, errorMessage, openExternal } from "@/lib/utils";
 
 export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => void }) {
   const { t } = useTranslation();
@@ -198,7 +198,9 @@ function SetupWizard({
 
   // A saved-in-app secret can be kept by leaving the field empty.
   const canKeepSecret = status.source === "settings";
-  const canSave = Boolean(clientId.trim() && project.trim() && (clientSecret.trim() || canKeepSecret));
+  const canSave = Boolean(
+    clientId.trim() && project.trim() && (clientSecret.trim() || canKeepSecret),
+  );
 
   const save = async () => {
     setBusy("save");
@@ -239,12 +241,17 @@ function SetupWizard({
               i18nKey="connections.setupIntro"
               components={{
                 pd: (
+                  // Trans replaces this placeholder's children with the translated
+                  // text between the <pd> tags ("Pipedream" in every locale) — this
+                  // literal text just gives the anchor accessible content statically.
                   <a
                     href="https://pipedream.com"
                     target="_blank"
                     rel="noreferrer"
                     className="text-accent underline"
-                  />
+                  >
+                    Pipedream
+                  </a>
                 ),
               }}
             />
@@ -261,7 +268,7 @@ function SetupWizard({
         {GUIDE_STEPS.map((step, i) => (
           <li key={step.key} className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <span className="tint-accent flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold">
+              <span className="tint-accent flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-2xs font-semibold">
                 {i + 1}
               </span>
               <p className="text-xs text-muted-foreground">{t(`connections.${step.key}`)}</p>
@@ -270,7 +277,7 @@ function SetupWizard({
               variant="outline"
               size="sm"
               className="shrink-0"
-              onClick={() => window.open(step.url, "_blank", "noopener,noreferrer")}
+              onClick={() => openExternal(step.url)}
             >
               <ExternalLink /> {t(`connections.${step.labelKey}`)}
             </Button>
@@ -341,4 +348,3 @@ function SetupWizard({
     </Card>
   );
 }
-

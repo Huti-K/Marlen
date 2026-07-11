@@ -1,4 +1,11 @@
-import * as React from "react";
+import type {
+  AccountColor,
+  AgentCard,
+  ChatStreamEvent,
+  ChatToolCall,
+  Conversation,
+} from "@trailin/shared";
+import type { ParseKeys } from "i18next";
 import {
   Check,
   Copy,
@@ -11,26 +18,20 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import * as React from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  AccountColor,
-  AgentCard,
-  ChatStreamEvent,
-  ChatToolCall,
-  Conversation,
-} from "@trailin/shared";
-import { api, streamChat } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { LoadingRow } from "@/components/ui/feedback";
+import { IconButton } from "@/components/ui/icon-button";
+import { Markdown } from "@/components/ui/markdown";
 import { AgentCardView } from "@/features/chat/cards";
 import { SHOWCASE_TURNS } from "@/features/chat/cards/samples";
-import { Button } from "@/components/ui/button";
-import { LoadingRow } from "@/components/ui/feedback";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Markdown } from "@/components/ui/markdown";
-import { IconButton } from "@/components/ui/icon-button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { api, streamChat } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
-import { toast } from "@/lib/toast";
 import { useServerEvents } from "@/lib/serverEvents";
+import { toast } from "@/lib/toast";
 import { cn, errorMessage } from "@/lib/utils";
 
 /** Same-device continuity: the conversation to restore on the next load. */
@@ -173,6 +174,7 @@ export function ChatPanel({
     };
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages is the intentional re-run trigger (a new turn or streaming delta), not read in the body
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -237,7 +239,11 @@ export function ChatPanel({
         updateRunAssistant(run, (m) => ({ ...m, thinking: true }));
         break;
       case "text_delta":
-        updateRunAssistant(run, (m) => ({ ...m, content: m.content + event.delta, thinking: false }));
+        updateRunAssistant(run, (m) => ({
+          ...m,
+          content: m.content + event.delta,
+          thinking: false,
+        }));
         break;
       case "tool_start":
         updateRunAssistant(run, (m) => ({
@@ -308,30 +314,30 @@ export function ChatPanel({
   const showcase = (message: string) => {
     setMessages((prev) => {
       const next: DisplayMessage[] = [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: message,
-        toolCalls: [],
-        cards: [],
-        streaming: false,
-      },
-      ...SHOWCASE_TURNS.map((turn, turnIndex) => ({
-        id: crypto.randomUUID(),
-        role: "assistant" as const,
-        content: turn.contentKey ? String(t(turn.contentKey as any)) : (turn.content ?? ""),
-        toolCalls: (turn.toolCalls ?? []).map((call, i) => ({
-          ...call,
-          id: `showcase-tool-${turnIndex}-${i}`,
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content: message,
+          toolCalls: [],
+          cards: [],
+          streaming: false,
+        },
+        ...SHOWCASE_TURNS.map((turn, turnIndex) => ({
+          id: crypto.randomUUID(),
+          role: "assistant" as const,
+          content: turn.contentKey ? String(t(turn.contentKey as ParseKeys)) : (turn.content ?? ""),
+          toolCalls: (turn.toolCalls ?? []).map((call, i) => ({
+            ...call,
+            id: `showcase-tool-${turnIndex}-${i}`,
+          })),
+          cards: (turn.cards ?? []).map((card, i) => ({
+            toolCallId: `showcase-${turnIndex}-${i}`,
+            card,
+          })),
+          streaming: turn.thinking ?? false,
+          thinking: turn.thinking,
         })),
-        cards: (turn.cards ?? []).map((card, i) => ({
-          toolCallId: `showcase-${turnIndex}-${i}`,
-          card,
-        })),
-        streaming: turn.thinking ?? false,
-        thinking: turn.thinking,
-      })),
       ];
       messagesRef.current = next;
       return next;
@@ -429,9 +435,8 @@ export function ChatPanel({
     setMessages(next);
 
     try {
-      await streamChat(
-        { conversationId: activeConversationRef.current, message },
-        (event) => handleRunEvent(run, event),
+      await streamChat({ conversationId: activeConversationRef.current, message }, (event) =>
+        handleRunEvent(run, event),
       );
     } catch (err) {
       const messageText = errorMessage(err);
@@ -459,43 +464,48 @@ export function ChatPanel({
     await sendText(message);
   };
 
-  const openConversation = async (id: string) => {
-    activeConversationRef.current = id;
-    setConversationId(id);
-    localStorage.setItem(LAST_CONVERSATION_KEY, id);
-    setHistoryOpen(false);
-    const liveRun = runByConversationRef.current.get(id) ?? null;
-    activeRunRef.current = liveRun;
-    setBusy(Boolean(liveRun));
-    const cached = messageCacheRef.current.get(id);
-    if (cached) {
-      messagesRef.current = cached;
-      setMessages(cached);
-      textareaRef.current?.focus();
-      return;
-    }
-    try {
-      const msgs = await api.conversationMessages(id);
-      if (activeConversationRef.current !== id) return;
-      const restored: DisplayMessage[] = msgs.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        toolCalls: m.toolCalls ?? [],
-        cards: m.cards ?? [],
-        streaming: false,
-        error: m.error,
-      }));
-      messageCacheRef.current.set(id, restored);
-      messagesRef.current = restored;
-      setMessages(restored);
-      // Opening a conversation means continuing it — put the caret where the
-      // user's next message goes (e.g. the Drafts page's refine jump).
-      textareaRef.current?.focus();
-    } catch (err) {
-      toast.error(errorMessage(err));
-    }
-  };
+  // Stable identity (only refs and setState setters in its body) so effects
+  // that open a conversation in response to an event can depend on it directly.
+  const openConversation = React.useCallback(
+    async (id: string) => {
+      activeConversationRef.current = id;
+      setConversationId(id);
+      localStorage.setItem(LAST_CONVERSATION_KEY, id);
+      setHistoryOpen(false);
+      const liveRun = runByConversationRef.current.get(id) ?? null;
+      activeRunRef.current = liveRun;
+      setBusy(Boolean(liveRun));
+      const cached = messageCacheRef.current.get(id);
+      if (cached) {
+        messagesRef.current = cached;
+        setMessages(cached);
+        textareaRef.current?.focus();
+        return;
+      }
+      try {
+        const msgs = await api.conversationMessages(id);
+        if (activeConversationRef.current !== id) return;
+        const restored: DisplayMessage[] = msgs.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          toolCalls: m.toolCalls ?? [],
+          cards: m.cards ?? [],
+          streaming: false,
+          error: m.error,
+        }));
+        messageCacheRef.current.set(id, restored);
+        messagesRef.current = restored;
+        setMessages(restored);
+        // Opening a conversation means continuing it — put the caret where the
+        // user's next message goes (e.g. the Drafts page's refine jump).
+        textareaRef.current?.focus();
+      } catch (err) {
+        toast.error(errorMessage(err));
+      }
+    },
+    [setHistoryOpen],
+  );
 
   const newConversation = React.useCallback(() => {
     activeConversationRef.current = undefined;
@@ -550,13 +560,12 @@ export function ChatPanel({
       window.removeEventListener("trailin:prefill-chat", handlePrefill);
       window.removeEventListener("trailin:send-chat", handleSendEvent);
     };
-  }, [newConversation]);
+  }, [newConversation, openConversation]);
 
   const isPage = layout === "page";
 
   return (
     <div className="flex flex-1 min-h-0 flex-col gap-3 overflow-hidden">
-
       <div className="min-h-0 flex-1 overflow-y-auto scroll-stable">
         {/* In page mode the history rail is external, so the internal toggle is inert. */}
         {!isPage && historyOpen ? (
@@ -591,7 +600,11 @@ export function ChatPanel({
                     ))}
                   </div>
                 )}
-                {(m.content || m.streaming || m.toolCalls.length > 0 || m.error || m.systemPrompt) && (
+                {(m.content ||
+                  m.streaming ||
+                  m.toolCalls.length > 0 ||
+                  m.error ||
+                  m.systemPrompt) && (
                   <div
                     className={cn(
                       "text-sm",
@@ -608,7 +621,13 @@ export function ChatPanel({
                       <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
                     )}
                     {m.error && (
-                      <div role="alert" className={cn("text-destructive", (m.content || m.toolCalls.length > 0) && "mt-2")}>
+                      <div
+                        role="alert"
+                        className={cn(
+                          "text-destructive",
+                          (m.content || m.toolCalls.length > 0) && "mt-2",
+                        )}
+                      >
                         {m.error}
                       </div>
                     )}
@@ -639,7 +658,7 @@ export function ChatPanel({
           }}
           placeholder={t("chat.placeholder")}
           rows={1}
-          className="max-h-40 min-h-[36px] flex-1 resize-none overflow-y-auto bg-transparent py-2 text-base md:text-sm leading-relaxed [scrollbar-width:none] [-webkit-scrollbar]:hidden placeholder:text-muted-foreground focus:outline-none"
+          className="max-h-40 min-h-9 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-base md:text-sm leading-relaxed [scrollbar-width:none] [-webkit-scrollbar]:hidden placeholder:text-muted-foreground focus:outline-none"
           aria-busy={busy}
         />
         <Button
@@ -682,13 +701,13 @@ function ToolActivity({ call }: { call: ChatToolCall }) {
       <div className="mt-1 space-y-2 border-l border-border pl-3">
         <div>
           <div className="mb-0.5 font-medium">Parameters</div>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 font-mono text-[11px] text-foreground">
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 font-mono text-2xs text-foreground">
             {formatToolValue(call.parameters)}
           </pre>
         </div>
         <div>
           <div className="mb-0.5 font-medium">Result</div>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 font-mono text-[11px] text-foreground">
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 font-mono text-2xs text-foreground">
             {call.done ? formatToolValue(call.result) : "Running…"}
           </pre>
         </div>
@@ -698,14 +717,23 @@ function ToolActivity({ call }: { call: ChatToolCall }) {
 }
 
 /** Keeps visible assistant prose in its actual position around tool calls. */
-function AssistantSequence({ message, thinkingLabel }: { message: DisplayMessage; thinkingLabel: string }) {
+function AssistantSequence({
+  message,
+  thinkingLabel,
+}: {
+  message: DisplayMessage;
+  thinkingLabel: string;
+}) {
   const calls = [...message.toolCalls].sort(
     (a, b) => (a.contentOffset ?? 0) - (b.contentOffset ?? 0),
   );
   const parts: React.ReactNode[] = [];
   let offset = 0;
   for (let i = 0; i < calls.length; ) {
-    const callOffset = Math.max(offset, Math.min(message.content.length, calls[i]?.contentOffset ?? 0));
+    const callOffset = Math.max(
+      offset,
+      Math.min(message.content.length, calls[i]?.contentOffset ?? 0),
+    );
     const text = message.content.slice(offset, callOffset);
     if (text) parts.push(<Markdown key={`text-${i}`} content={text} />);
     let j = i;
@@ -756,9 +784,7 @@ function SystemPromptView({ prompt }: { prompt: string }) {
   const [query, setQuery] = React.useState("");
   const [copied, setCopied] = React.useState(false);
   const normalized = query.trim().toLocaleLowerCase();
-  const matchCount = normalized
-    ? prompt.toLocaleLowerCase().split(normalized).length - 1
-    : 0;
+  const matchCount = normalized ? prompt.toLocaleLowerCase().split(normalized).length - 1 : 0;
 
   const copy = async () => {
     try {
@@ -771,7 +797,10 @@ function SystemPromptView({ prompt }: { prompt: string }) {
   };
 
   return (
-    <section className="overflow-hidden rounded-xl bg-surface-2" aria-label={t("chat.systemPrompt.title")}>
+    <section
+      className="overflow-hidden rounded-xl bg-surface-2"
+      aria-label={t("chat.systemPrompt.title")}
+    >
       <div className="flex flex-wrap items-center gap-2 p-2.5">
         <span className="px-1 text-xs font-semibold">{t("chat.systemPrompt.title")}</span>
         <div className="relative ml-auto min-w-40 flex-1 sm:max-w-64">
@@ -804,7 +833,7 @@ function SystemPromptView({ prompt }: { prompt: string }) {
           {copied ? t("chat.systemPrompt.copied") : t("chat.systemPrompt.copy")}
         </Button>
       </div>
-      <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap break-words bg-background/55 p-4 font-mono text-xs leading-relaxed">
+      <pre className="max-h-112 overflow-auto whitespace-pre-wrap break-words bg-background/55 p-4 font-mono text-xs leading-relaxed">
         <HighlightedPrompt text={prompt} query={query.trim()} />
       </pre>
     </section>
@@ -943,6 +972,7 @@ export function HistoryList({
     >
       {renamingId === c.id ? (
         <input
+          // biome-ignore lint/a11y/noAutofocus: renaming replaces the row with this input in place — focusing it is the point, so typing can start immediately
           autoFocus
           value={renameDraft}
           onChange={(e) => setRenameDraft(e.target.value)}

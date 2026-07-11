@@ -1,6 +1,6 @@
+import type { AgentCard } from "@trailin/shared";
 import { Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AgentCard } from "@trailin/shared";
 import { relativeTime } from "@/lib/dates";
 import { CardShell } from "./CardShell";
 
@@ -30,7 +30,7 @@ export function EmailHitsCard({ card, color }: { card: EmailHitsData; color?: st
                 <p className="min-w-0 flex-1 truncate text-sm font-medium">
                   {hit.subject || t("chat.cards.noSubject")}
                 </p>
-                <time className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                <time className="shrink-0 font-mono text-2xs text-muted-foreground">
                   {relativeTime(hit.date, i18n.language)}
                 </time>
               </div>
@@ -41,7 +41,7 @@ export function EmailHitsCard({ card, color }: { card: EmailHitsData; color?: st
             </div>
           ))}
           {truncated && (
-            <p className="font-mono text-[11px] text-muted-foreground/70">
+            <p className="font-mono text-2xs text-muted-foreground/70">
               {t("chat.cards.hits.truncatedLabel")}
             </p>
           )}

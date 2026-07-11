@@ -64,6 +64,9 @@ a card in dark mode. Dialogs keep `.surface-soft` — the scrim already separate
   timestamps — anything data-shaped (also gets `tabular-nums`).
 - Hierarchy is built with **weight and color**, not size jumps. Section titles are
   `text-sm font-semibold`; their descriptions are `text-xs/text-sm text-muted-foreground`.
+- Below `text-xs` there are two micro steps: `text-2xs` (11px) for meta/overline text
+  and `text-3xs` (10px) for tiny marks (Kbd, count chips). Never write an arbitrary
+  `text-[11px]` — the tokens live in `index.css`.
 - Tighten tracking on headings (`tracking-tight`).
 
 ## Shape & elevation
@@ -113,8 +116,16 @@ panels still follows the rules above:
 - **Inputs / textareas / selects:** filled `surface-2`, no border, focus lightens the fill
   plus the a11y ring.
 - **Buttons:** `default` = ink fill; `secondary`/`ghost` = subtle tonal fills; there is
-  **no** outline variant (it maps to a tonal fill).
+  **no** outline variant (it maps to a tonal fill). Compact icon actions use the
+  `icon-sm`/`icon-xs` sizes — never hand-roll `h-8 w-8` or restate the ghost colors in
+  a className.
 - **Badges:** pill, pastel tonal fill, no border.
+- **Account dots:** the shared `AccountDot` (`ui/account-dot.tsx`) — every account
+  color marker; it owns the unassigned-grey fallback (`UNASSIGNED_ACCOUNT_COLOR`).
+- **Notices:** the shared `Notice` (`ui/feedback.tsx`) — pastel tone box for inline
+  status/setup messages, optionally dismissible. No hand-rolled tint containers.
+- **Show more/less:** the shared `DisclosureToggle` (`ui/disclosure-toggle.tsx`) —
+  chevron + quiet text label for every list disclosure.
 - **Filter chips:** the shared `Chip` (`ui/chip.tsx`) — pill, ink fill when active,
   recessed `surface-2` fill otherwise. Every "pick one/many" row uses it; never restyle
   a one-off.

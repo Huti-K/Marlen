@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseOpaqueCursor } from "../../../src/email/sync/syncProviders.js";
 
 interface PhaseCursor {
@@ -6,7 +6,7 @@ interface PhaseCursor {
 }
 
 const isPhaseCursor = (v: unknown): v is PhaseCursor =>
-  typeof v === "object" && v !== null && typeof (v as any).phase === "string";
+  typeof v === "object" && v !== null && typeof (v as { phase?: unknown }).phase === "string";
 
 describe("parseOpaqueCursor", () => {
   it("returns null for a null cursor", () => {

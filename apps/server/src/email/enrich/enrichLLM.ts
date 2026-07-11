@@ -1,6 +1,11 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { THREAD_TRIAGES, THREAD_URGENCIES, type ThreadTriage, type ThreadUrgency } from "@trailin/shared";
+import {
+  THREAD_TRIAGES,
+  THREAD_URGENCIES,
+  type ThreadTriage,
+  type ThreadUrgency,
+} from "@trailin/shared";
 import { runPrompt } from "../../agent/run.js";
 import { env } from "../../env.js";
 import { getActiveModelIds, modelRegistry, resolveActiveModel } from "../../llm/registry.js";
@@ -66,7 +71,10 @@ function sanitizeReport(params: Record<string, unknown>): EnrichmentResult {
     ? (params.urgency as ThreadUrgency)
     : "normal";
   const actionItems = isStringArray(params.action_items)
-    ? params.action_items.map((item) => item.trim().slice(0, 200)).filter(Boolean).slice(0, 5)
+    ? params.action_items
+        .map((item) => item.trim().slice(0, 200))
+        .filter(Boolean)
+        .slice(0, 5)
     : [];
   const deadline = typeof params.deadline === "string" ? params.deadline.trim() : "";
   return {
@@ -112,7 +120,7 @@ function buildReportTool(onReport: (result: EnrichmentResult) => void): AgentToo
           type: "string",
           description:
             "Only when the thread names one: when this must be answered by, in the sender's " +
-            "own terms (\"Friday 17:00\", \"bis Ende der Woche\"). Omit otherwise.",
+            'own terms ("Friday 17:00", "bis Ende der Woche"). Omit otherwise.',
         },
       },
       required: ["gist", "summary", "action_items", "triage", "urgency"],

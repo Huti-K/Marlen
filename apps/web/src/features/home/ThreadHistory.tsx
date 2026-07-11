@@ -1,7 +1,7 @@
-import * as React from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { EmailThreadMessage } from "@trailin/shared";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { relativeTime } from "@/lib/dates";
 
 /**
@@ -33,7 +33,7 @@ export function ThreadHistory({ messages }: { messages: EmailThreadMessage[] }) 
     <div className="flex flex-col gap-0.5 border-l-2 border-border pl-3">
       {messages.map((message, index) => (
         <ThreadMessageRow
-          key={index}
+          key={`${message.date}-${message.from}`}
           message={message}
           open={openIndexes.has(index)}
           onToggle={() => toggle(index)}
@@ -71,7 +71,7 @@ function ThreadMessageRow({
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
           {message.from}
         </span>
-        <time className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
+        <time className="shrink-0 font-mono text-2xs text-muted-foreground/70">
           {relativeTime(message.date, lang)}
         </time>
       </button>

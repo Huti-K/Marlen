@@ -93,7 +93,10 @@ export async function runPrompt(
 
         // A tool's arguments and its result are the user's mail. Only the
         // tool's name, outcome and timing are ever written to the log.
-        const fields = { tool: toolName, ms: startedAt === undefined ? undefined : Date.now() - startedAt };
+        const fields = {
+          tool: toolName,
+          ms: startedAt === undefined ? undefined : Date.now() - startedAt,
+        };
         if (isError) log.warn(fields, "tool call failed");
         else log.info(fields, "tool call");
 

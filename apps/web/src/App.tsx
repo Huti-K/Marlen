@@ -1,31 +1,51 @@
+import { type AppStatus, isLanguage, isSetupComplete } from "@trailin/shared";
+import {
+  ChevronLeft,
+  ChevronRight,
+  History,
+  Menu,
+  MessagesSquare,
+  Moon,
+  Plus,
+  Search,
+  Sun,
+  X,
+} from "lucide-react";
 import * as React from "react";
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { History, Menu, MessagesSquare, Moon, Sun, X, Plus, Search, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { isLanguage, isSetupComplete, type AppStatus } from "@trailin/shared";
-import { Sidebar } from "@/components/Sidebar";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Kbd, SearchPalette } from "@/components/SearchPalette";
-import { ChatPanel, HistoryList } from "@/features/chat/ChatPanel";
-import { SettingsPanel } from "@/features/settings/SettingsPanel";
-import { AutomationsPanel } from "@/features/automations/AutomationsPanel";
-import { KnowledgePanel } from "@/features/knowledge/KnowledgePanel";
-import { HomePanel } from "@/features/home/HomePanel";
-import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showcase — delete with its route
-import { SetupGate } from "@/features/setup/SetupGate";
-import { Toaster } from "@/components/ui/toaster";
-import { LoadingRow } from "@/components/ui/feedback";
-import { Button } from "@/components/ui/button";
-import { NAV_VIEWS } from "@/lib/nav";
-import { cn, MOD_LABEL } from "@/lib/utils";
-import { api } from "@/lib/api";
-import { rememberLanguage } from "@/lib/i18n";
-import { useResizableWidth } from "@/lib/useResizableWidth";
-import { useTheme } from "@/lib/useTheme";
+import { Sidebar } from "@/components/Sidebar";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { CursorTooltip } from "@/components/ui/cursor-tooltip";
 import { Dialog } from "@/components/ui/dialog";
+import { LoadingRow } from "@/components/ui/feedback";
+import { Toaster } from "@/components/ui/toaster";
+import { AutomationsPanel } from "@/features/automations/AutomationsPanel";
+import { ChatPanel, HistoryList } from "@/features/chat/ChatPanel";
+import { HomePanel } from "@/features/home/HomePanel";
+import { KnowledgePanel } from "@/features/knowledge/KnowledgePanel";
+import { SettingsPanel } from "@/features/settings/SettingsPanel";
+import { SetupGate } from "@/features/setup/SetupGate";
+import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showcase — delete with its route
+import { api } from "@/lib/api";
+import { rememberLanguage } from "@/lib/i18n";
+import { NAV_VIEWS, type View } from "@/lib/nav";
+import { useResizableWidth } from "@/lib/useResizableWidth";
+import { useTheme } from "@/lib/useTheme";
+import { cn, MOD_LABEL } from "@/lib/utils";
 
 /** Set once setup finished (or was skipped); an established app never re-gates. */
 const SETUP_DISMISSED_KEY = "trailin-setup-dismissed";
+
+/** Drag range for the chat panel width, shared by the resize hook and the drag handle's ARIA value. */
+const CHAT_WIDTH_MIN = 320;
+const CHAT_WIDTH_MAX = 640;
+
+/** Narrows a raw route segment to a known nav view, for typed `t()` lookups. */
+function isNavView(path: string): path is View {
+  return (NAV_VIEWS as readonly string[]).includes(path);
+}
 
 /** Adopt the server's language setting; on first run, seed it from the browser locale. */
 function useServerLanguage() {
@@ -63,14 +83,34 @@ function useServerTimezone() {
   }, []);
 }
 
+/** Ghost icon button whose aria-label and hover tooltip are always the same string. */
+function HeaderIconButton({
+  label,
+  ...props
+}: Omit<ButtonProps, "variant" | "size" | "aria-label"> & { label: string }) {
+  return <Button variant="ghost" size="icon" aria-label={label} data-tooltip={label} {...props} />;
+}
+
+/** Mobile-only scrim behind a slide-over panel. */
+function Backdrop({ onClick }: { onClick: () => void }) {
+  // Click-away convenience for mouse users only — every panel this backdrops
+  // already exposes a real, keyboard-reachable close button, so the scrim
+  // itself carries no independent keyboard interaction to mirror. role="presentation"
+  // both drops the implicit semantics and satisfies the click/key-event pairing rule.
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: presentational scrim, not a control
+    <div role="presentation" className="scrim fixed inset-0 z-40 md:hidden" onClick={onClick} />
+  );
+}
+
 export default function App() {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  
+
   const currentPath = location.pathname.split("/")[1] || "home";
   const onChatRoute = currentPath === "chat";
-  const view = (NAV_VIEWS.includes(currentPath as (typeof NAV_VIEWS)[number]) ? currentPath : "home");
+  const view: View = isNavView(currentPath) ? currentPath : "home";
   const [status, setStatus] = React.useState<AppStatus | null>(null);
   // "pending" until the first status answer decides between gate and app.
   const [gate, setGate] = React.useState<"pending" | "open" | "closed">(() =>
@@ -78,28 +118,38 @@ export default function App() {
   );
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(
-    () => typeof window !== "undefined" && localStorage.getItem("trailin-sidebar-collapsed") === "true",
+    () =>
+      typeof window !== "undefined" && localStorage.getItem("trailin-sidebar-collapsed") === "true",
   );
   const [chatOpen, setChatOpen] = React.useState(false);
   const [agentCollapsed, setAgentCollapsed] = React.useState(
-    () => typeof window !== "undefined" && localStorage.getItem("trailin-agent-sidebar-collapsed") === "true",
+    () =>
+      typeof window !== "undefined" &&
+      localStorage.getItem("trailin-agent-sidebar-collapsed") === "true",
   );
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
   // Mirrors the ChatPanel's open conversation so the Chat tab's history rail can highlight it.
   const [activeConversationId, setActiveConversationId] = React.useState<string | undefined>();
   const [historyCollapsed, setHistoryCollapsed] = React.useState(
-    () => typeof window !== "undefined" && localStorage.getItem("trailin-chat-history-collapsed") === "true",
+    () =>
+      typeof window !== "undefined" &&
+      localStorage.getItem("trailin-chat-history-collapsed") === "true",
   );
   const [historyQuery, setHistoryQuery] = React.useState("");
   const [, theme, setThemePref] = useTheme();
-  const toggleTheme = () => setThemePref(theme === "dark" ? "light" : "dark");
+  const toggleTheme = React.useCallback(() => {
+    setThemePref(theme === "dark" ? "light" : "dark");
+  }, [theme, setThemePref]);
   const { width: chatWidth, onPointerDown: onChatResizeStart } = useResizableWidth({
     storageKey: "trailin-chat-width",
     defaultWidth: 384,
-    min: 320,
-    max: 640,
+    min: CHAT_WIDTH_MIN,
+    max: CHAT_WIDTH_MAX,
     edge: "right",
+    // Dragging well past the minimum reads as "put it away" — same collapse
+    // the header chevron triggers.
+    onOverdrag: () => setAgentCollapsed(true),
   });
   useServerLanguage();
   useServerTimezone();
@@ -143,6 +193,7 @@ export default function App() {
 
   // Entering/leaving the Chat tab resets the history rail's drawer/toggle state,
   // so it never carries a stale "open" into the other layout.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: onChatRoute is the trigger, not a value read in the body — it must re-run on every route change
   React.useEffect(() => {
     setHistoryOpen(false);
     setHistoryQuery("");
@@ -164,8 +215,6 @@ export default function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       const mod = event.metaKey || event.ctrlKey;
-      const editable = event.target instanceof HTMLElement &&
-        (event.target.isContentEditable || /^(input|textarea|select)$/i.test(event.target.tagName));
 
       if (mod && key === "b") {
         event.preventDefault();
@@ -183,7 +232,6 @@ export default function App() {
         toggleTheme();
         return;
       }
-      if (editable || event.metaKey || event.ctrlKey || event.altKey) return;
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -225,8 +273,8 @@ export default function App() {
     import.meta.env.DEV && currentPath === "showcase" // DEV showcase — remove this branch with the route
       ? { title: "UI Showcase", description: "Component gallery & theme lab (dev only)" }
       : {
-          title: t(`views.${view}.title` as any),
-          description: t(`views.${view}.description` as any),
+          title: t(`views.${view}.title`),
+          description: t(`views.${view}.description`),
         };
 
   return (
@@ -241,12 +289,7 @@ export default function App() {
         {t("app.skipToContent")}
       </a>
 
-      {mobileOpen && (
-        <div
-          className="scrim fixed inset-0 z-40 md:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
+      {mobileOpen && <Backdrop onClick={() => setMobileOpen(false)} />}
 
       <div
         className={cn(
@@ -264,23 +307,23 @@ export default function App() {
 
       <main
         id="main-content"
-        className={cn("relative isolate flex min-w-0 flex-1 flex-col overflow-hidden", onChatRoute && "hidden")}
+        className={cn(
+          "relative isolate flex min-w-0 flex-1 flex-col overflow-hidden",
+          onChatRoute && "hidden",
+        )}
       >
         <div aria-hidden className="aurora" />
         <header className="flex shrink-0 items-center gap-4 px-5 py-5 sm:px-8">
-          <Button
-            variant="ghost"
-            size="icon"
+          <HeaderIconButton
+            label={t("app.openMenu")}
             onClick={() => {
               setChatOpen(false);
               setMobileOpen(true);
             }}
             className="shrink-0 md:hidden"
-            aria-label={t("app.openMenu")}
-            data-tooltip={t("app.openMenu")}
           >
             <Menu />
-          </Button>
+          </HeaderIconButton>
           <div className="min-w-0 flex-1">
             <h1 className="text-xl font-bold tracking-tight text-foreground">{meta.title}</h1>
             <p className="truncate text-sm text-muted-foreground">{meta.description}</p>
@@ -296,51 +339,39 @@ export default function App() {
               <span className="min-w-0 flex-1 truncate">{t("search.openButton")}</span>
               <Kbd className="bg-background/70 px-1.5">{MOD_LABEL}K</Kbd>
             </button>
-            <Button
-              variant="ghost"
-              size="icon"
+            <HeaderIconButton
+              label={t("search.openButton")}
               onClick={() => window.dispatchEvent(new CustomEvent("trailin:open-search"))}
               className="shrink-0 sm:hidden"
-              aria-label={t("search.openButton")}
-              data-tooltip={t("search.openButton")}
             >
               <Search />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
+            </HeaderIconButton>
+            <HeaderIconButton
+              label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
               onClick={toggleTheme}
               className="shrink-0"
-              aria-label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
-              data-tooltip={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
             >
               {theme === "dark" ? <Sun /> : <Moon />}
-            </Button>
+            </HeaderIconButton>
             {!onChatRoute && agentCollapsed && (
-              <Button
-                variant="ghost"
-                size="icon"
+              <HeaderIconButton
+                label={t("app.expandChat")}
                 onClick={() => setAgentCollapsed(false)}
                 className="hidden shrink-0 md:inline-flex"
-                aria-label="Expand agent chat sidebar"
-                data-tooltip="Expand agent chat sidebar"
               >
-                <PanelRightOpen />
-              </Button>
+                <ChevronLeft />
+              </HeaderIconButton>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
+            <HeaderIconButton
+              label={t("app.openChat")}
               onClick={() => {
                 setMobileOpen(false);
                 setChatOpen(true);
               }}
               className="shrink-0 md:hidden"
-              aria-label={t("app.openChat")}
-              data-tooltip={t("app.openChat")}
             >
               <MessagesSquare />
-            </Button>
+            </HeaderIconButton>
           </div>
         </header>
 
@@ -349,21 +380,21 @@ export default function App() {
             <Routes>
               {/* The full-page Chat tab is rendered by the persistent chat instance below,
                   not here — this route just keeps the URL valid so it isn't redirected home. */}
-              <Route path="/chat" element={<></>} />
+              <Route path="/chat" element={null} />
               <Route path="/settings" element={<SettingsPanel onStatusChanged={refreshStatus} />} />
               <Route path="/automations" element={<AutomationsPanel />} />
               <Route path="/knowledge" element={<KnowledgePanel />} />
               {/* DEV showcase / theme lab — delete this line and the ShowcasePanel file to remove. */}
               {import.meta.env.DEV && <Route path="/showcase" element={<ShowcasePanel />} />}
-              <Route 
-                path="/" 
+              <Route
+                path="/"
                 element={
                   <HomePanel
                     setupIncomplete={status !== null && !isSetupComplete(status)}
-                    offline={status !== null && status.pipedreamConfigured && !status.emailAccountsKnown}
+                    offline={Boolean(status?.pipedreamConfigured) && !status?.emailAccountsKnown}
                     onNavigate={select}
                   />
-                } 
+                }
               />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
@@ -372,27 +403,24 @@ export default function App() {
       </main>
 
       {/* Chat backdrop — mobile slide-over (panel mode only) */}
-      {!onChatRoute && chatOpen && (
-        <div
-          className="scrim fixed inset-0 z-40 md:hidden"
-          onClick={() => setChatOpen(false)}
-        />
-      )}
+      {!onChatRoute && chatOpen && <Backdrop onClick={() => setChatOpen(false)} />}
 
       {/* History-rail backdrop — full-page Chat tab on mobile, where the rail is a drawer */}
-      {onChatRoute && historyOpen && (
-        <div
-          className="scrim fixed inset-0 z-40 md:hidden"
-          onClick={() => setHistoryOpen(false)}
-        />
-      )}
+      {onChatRoute && historyOpen && <Backdrop onClick={() => setHistoryOpen(false)} />}
 
-      {/* Drag handle — desktop panel mode only. Hidden in the full-page Chat tab (the chat fills its column). */}
+      {/* Drag handle — desktop panel mode only. Hidden in the full-page Chat tab (the chat fills its column).
+          A focusable, value-bearing separator (not <hr>, which is a void element and can't host the
+          grip child or take the drag/focus interaction this splitter needs). */}
+      {/* biome-ignore lint/a11y/useSemanticElements: interactive draggable splitter, not a static divider — <hr> can't be focusable or hold the grip child */}
       <div
         onPointerDown={onChatResizeStart}
         role="separator"
         aria-orientation="vertical"
         aria-label={t("chat.resize")}
+        aria-valuenow={chatWidth}
+        aria-valuemin={CHAT_WIDTH_MIN}
+        aria-valuemax={CHAT_WIDTH_MAX}
+        tabIndex={0}
         className={cn(
           "group z-40 hidden w-2 shrink-0 cursor-col-resize touch-none items-center justify-center md:flex",
           (onChatRoute || agentCollapsed) && "md:hidden",
@@ -422,6 +450,10 @@ export default function App() {
           className={cn(
             "flex min-h-0 min-w-0 flex-1 overflow-hidden pointer-events-auto",
             onChatRoute ? "flex-row bg-surface" : "flex-col bg-sidebar",
+            // Panel mode: pin the content to the full panel width while the
+            // outer shell animates closed/open, so the text is clipped by the
+            // shrinking edge instead of re-wrapping on every frame.
+            !onChatRoute && "md:w-[var(--chat-width)]",
           )}
         >
           {/* History rail — Chat tab only. Static column on desktop, slide-over drawer on mobile. */}
@@ -435,39 +467,30 @@ export default function App() {
             >
               <div className="flex shrink-0 items-center gap-2.5 px-4 pb-3 pt-6">
                 <p className="text-sm font-semibold tracking-tight">{t("chat.history")}</p>
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <HeaderIconButton
+                  label={t("chat.newConversation")}
                   onClick={() => {
                     window.dispatchEvent(new CustomEvent("trailin:new-chat"));
                     setHistoryOpen(false);
                   }}
                   className="ml-auto"
-                  aria-label={t("chat.newConversation")}
-                  data-tooltip={t("chat.newConversation")}
                 >
                   <Plus />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
+                </HeaderIconButton>
+                <HeaderIconButton
+                  label={t("chat.collapseHistory")}
                   onClick={() => setHistoryCollapsed(true)}
                   className="hidden md:inline-flex"
-                  aria-label={t("chat.collapseHistory")}
-                  data-tooltip={t("chat.collapseHistory")}
                 >
-                  <PanelLeftClose />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
+                  <ChevronLeft />
+                </HeaderIconButton>
+                <HeaderIconButton
+                  label={t("common.close")}
                   onClick={() => setHistoryOpen(false)}
                   className="md:hidden"
-                  aria-label={t("common.close")}
-                  data-tooltip={t("common.close")}
                 >
                   <X />
-                </Button>
+                </HeaderIconButton>
               </div>
               <div className="px-4 pb-2">
                 <div className="relative">
@@ -510,86 +533,65 @@ export default function App() {
             <div className="flex shrink-0 items-center gap-2.5 px-5 pb-4 pt-6">
               {/* Full-page tab has no app header, so mobile users still need a way into the nav drawer. */}
               {onChatRoute && (
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <HeaderIconButton
+                  label={t("app.openMenu")}
                   onClick={() => setMobileOpen(true)}
                   className="shrink-0 md:hidden"
-                  aria-label={t("app.openMenu")}
-                  data-tooltip={t("app.openMenu")}
                 >
                   <Menu />
-                </Button>
+                </HeaderIconButton>
               )}
               {/* Reopen the collapsed history rail (desktop). */}
               {onChatRoute && historyCollapsed && (
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <HeaderIconButton
+                  label={t("chat.showHistory")}
                   onClick={() => setHistoryCollapsed(false)}
                   className="hidden shrink-0 md:inline-flex"
-                  aria-label={t("chat.showHistory")}
-                  data-tooltip={t("chat.showHistory")}
                 >
-                  <PanelLeftOpen />
-                </Button>
+                  <ChevronRight />
+                </HeaderIconButton>
               )}
               <p className="text-sm font-semibold tracking-tight">{t("views.chat.title")}</p>
               {onChatRoute && (
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <HeaderIconButton
+                  label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
                   onClick={toggleTheme}
                   className="ml-auto shrink-0"
-                  aria-label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
-                  data-tooltip={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
                 >
                   {theme === "dark" ? <Sun /> : <Moon />}
-                </Button>
+                </HeaderIconButton>
               )}
-              <Button
-                variant="ghost"
-                size="icon"
+              <HeaderIconButton
+                label={t("chat.newConversation")}
                 onClick={() => window.dispatchEvent(new CustomEvent("trailin:new-chat"))}
                 className={cn(!onChatRoute && "ml-auto", onChatRoute && "md:hidden")}
-                aria-label={t("chat.newConversation")}
-                data-tooltip={t("chat.newConversation")}
               >
                 <Plus />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
+              </HeaderIconButton>
+              <HeaderIconButton
+                label={t("chat.history")}
                 onClick={() => setHistoryOpen((open) => !open)}
                 className={cn(historyOpen && "text-foreground", onChatRoute && "md:hidden")}
-                aria-label={t("chat.history")}
-                data-tooltip={t("chat.history")}
               >
                 <History />
-              </Button>
+              </HeaderIconButton>
               {!onChatRoute && (
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <HeaderIconButton
+                  label={t("app.collapseChat")}
                   onClick={() => setAgentCollapsed(true)}
                   className="hidden md:inline-flex"
-                  aria-label="Collapse agent chat sidebar"
-                  data-tooltip="Collapse agent chat sidebar"
                 >
-                  <PanelRightClose />
-                </Button>
+                  <ChevronRight />
+                </HeaderIconButton>
               )}
               {!onChatRoute && (
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <HeaderIconButton
+                  label={t("app.closeChat")}
                   onClick={() => setChatOpen(false)}
                   className="md:hidden"
-                  aria-label={t("app.closeChat")}
-                  data-tooltip={t("app.closeChat")}
                 >
                   <X />
-                </Button>
+                </HeaderIconButton>
               )}
             </div>
             <div className="flex flex-col min-h-0 flex-1 px-5 pb-5 overflow-hidden">
@@ -615,7 +617,11 @@ export default function App() {
           ].map(([label, ...keys]) => (
             <div key={label} className="flex items-center justify-between gap-4 py-3 text-sm">
               <span>{label}</span>
-              <span className="flex gap-1">{keys.map((key) => <Kbd key={key}>{key}</Kbd>)}</span>
+              <span className="flex gap-1">
+                {keys.map((key) => (
+                  <Kbd key={key}>{key}</Kbd>
+                ))}
+              </span>
             </div>
           ))}
         </div>

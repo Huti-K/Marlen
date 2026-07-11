@@ -4,11 +4,7 @@
  * nature, but kept in this one spot so the renderer itself stays generic —
  * add a new provider's webmail host here, not as a special case in the UI.
  */
-const MAILBOX_HOSTS = new Set([
-  "mail.google.com",
-  "outlook.office.com",
-  "outlook.live.com",
-]);
+const MAILBOX_HOSTS = new Set(["mail.google.com", "outlook.office.com", "outlook.live.com"]);
 
 /** True when `href` is a link into a known provider's webmail UI (matched by hostname). */
 export function isMailboxUrl(href: string | undefined): boolean {

@@ -15,7 +15,8 @@
   the --border hairline, reserved for dividers inside dense content
   (thread rails, markdown tables, meta rows).
 */
-:root, .light {
+:root,
+.light {
   color-scheme: light;
   --background: oklch(0.9892 0.0033 296.35);
   --surface: oklch(1 0 0);
@@ -116,6 +117,12 @@
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     monospace;
 
+  /* Micro type steps below text-xs: 2xs = meta/overline text, 3xs = tiny marks
+     (Kbd, count dots). No --line-height companions on purpose — they inherit
+     the local leading like the arbitrary values they replaced. */
+  --text-2xs: 0.6875rem;
+  --text-3xs: 0.625rem;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
@@ -161,10 +168,12 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv11", "ss01";
   }
-  button, [role="button"] {
+  button,
+  [role="button"] {
     cursor: pointer;
   }
-  button:disabled, [role="button"]:disabled {
+  button:disabled,
+  [role="button"]:disabled {
     cursor: not-allowed;
   }
   time,
@@ -222,11 +231,14 @@
     inside any elevated panel the painted fills step one tone further. Derived
     from the raw tokens so Theme Lab palette overrides flow through.
   */
-  .surface, .surface-soft, .surface-pop {
+  .surface,
+  .surface-soft,
+  .surface-pop {
     --surface-2-fill: color-mix(in oklch, var(--surface-2) 96%, var(--foreground));
     --secondary-fill: color-mix(in oklch, var(--secondary) 96%, var(--foreground));
   }
-  .dark .surface, .dark .surface-soft {
+  .dark .surface,
+  .dark .surface-soft {
     --surface-2-fill: color-mix(in oklch, var(--surface-2) 92%, var(--foreground));
     --secondary-fill: color-mix(in oklch, var(--secondary) 92%, var(--foreground));
   }
@@ -241,7 +253,9 @@
     background: var(--surface-2-fill);
     border-radius: calc(var(--radius) - 2px);
     color: var(--foreground);
-    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      box-shadow 0.15s ease;
   }
   .field::placeholder {
     color: var(--muted-foreground);
@@ -249,7 +263,9 @@
   .field:focus-visible {
     outline: none;
     background: color-mix(in oklch, var(--surface-2-fill) 55%, var(--surface));
-    box-shadow: 0 0 0 2px var(--background), 0 0 0 4px color-mix(in oklch, var(--ring) 55%, transparent);
+    box-shadow:
+      0 0 0 2px var(--background),
+      0 0 0 4px color-mix(in oklch, var(--ring) 55%, transparent);
   }
   .field:disabled {
     opacity: 0.5;
@@ -409,7 +425,8 @@
 }
 .palette-panel {
   /* Deeper than --shadow-lg: this is the one panel that floats over a blur. */
-  box-shadow: 0 32px 64px -24px oklch(var(--shadow-ink) / 0.3),
+  box-shadow:
+    0 32px 64px -24px oklch(var(--shadow-ink) / 0.3),
     0 12px 24px -12px oklch(var(--shadow-ink) / 0.16);
   animation: palette-panel-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }

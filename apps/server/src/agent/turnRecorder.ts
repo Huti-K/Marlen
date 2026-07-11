@@ -4,7 +4,7 @@ import { db, schema, sqlite } from "../db/index.js";
 import { emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
 import { errorMessage } from "../util.js";
-import { createEphemeralSession, getOrCreateSession, type AgentSession } from "./emailAgent.js";
+import { type AgentSession, createEphemeralSession, getOrCreateSession } from "./emailAgent.js";
 import type { RunHandlers, TurnLogger } from "./run.js";
 import { collectTurnCards, serializeTurnCards } from "./turnCards.js";
 
@@ -111,7 +111,10 @@ export function beginTurn(conversationId: string): Turn {
 
       let session: AgentSession;
       try {
-        session = opts.session === "pooled" ? await sessions.pooled(conversationId) : await sessions.ephemeral();
+        session =
+          opts.session === "pooled"
+            ? await sessions.pooled(conversationId)
+            : await sessions.ephemeral();
       } catch (error) {
         // Never acquired a session, so there's nothing to close and no user
         // row was written — just give the guard back.
@@ -214,13 +217,13 @@ const RECOVERY_MARKER =
   "This turn was interrupted by a server restart before a reply was produced. Send your message again to continue.";
 
 /**
- * Every terminal outcome (completed, failed, cancelled) is now capped by
+ * Every terminal outcome (completed, failed, cancelled) is capped by
  * Turn.run() above before it returns or throws, so the only way a
- * conversation can still be left with a dangling user message and no reply
+ * conversation can be left with a dangling user message and no reply
  * is a true crash — the process dying between the user-message insert and
  * the outcome insert, taking the in-memory agent context with it. That is
  * the "stranded" turn (see CONTEXT.md): the restart marker this writes is
- * finally always truthful, since every other way a turn can end already
+ * always truthful, since every other way a turn can end already
  * writes its own row. On boot, cap those conversations with the marker so
  * the UI doesn't show a message that looks ignored. Mirrors the orphaned-run
  * recovery in automations/scheduler.ts.

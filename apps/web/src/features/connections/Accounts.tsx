@@ -1,28 +1,27 @@
-import * as React from "react";
-import { Inbox, Loader2, Mail, Pencil, Plus, Trash2 } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import {
-  EMAIL_APPS,
-  EMAIL_APP_LABELS,
   type AccountColor,
   type AccountDescription,
   type ConnectedAccount,
+  EMAIL_APP_LABELS,
+  EMAIL_APPS,
   type EmailApp,
   type PipedreamApp,
 } from "@trailin/shared";
-import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { Inbox, Loader2, Mail, Pencil, Plus, Trash2 } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
-import { ListRow } from "@/components/ui/list-row";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { ListRow } from "@/components/ui/list-row";
+import { Skeleton } from "@/components/ui/skeleton";
+import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn, errorMessage, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
-
 
 /** App logo from Pipedream, falling back to a generic mail glyph. */
 function AppIcon({ src, className }: { src?: string; className?: string }) {
@@ -83,7 +82,7 @@ function PickerSection({
   if (apps.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="px-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
         {heading}
       </p>
       {apps.map((app) => (
@@ -114,7 +113,9 @@ function generateTonalHex(index: number): string {
   const f = (n: number) => {
     const k = (n + hue / 30) % 12;
     const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-    return Math.round(255 * color).toString(16).padStart(2, "0");
+    return Math.round(255 * color)
+      .toString(16)
+      .padStart(2, "0");
   };
   return `#${f(0)}${f(8)}${f(4)}`;
 }
@@ -144,15 +145,18 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     if (!pickerOpen) return;
     const q = query.trim();
     setResults(null);
-    const timer = setTimeout(() => {
-      api
-        .pipedreamApps(q)
-        .then(setResults)
-        .catch((err) => {
-          toast.error(errorMessage(err));
-          setResults([]);
-        });
-    }, q ? 300 : 0);
+    const timer = setTimeout(
+      () => {
+        api
+          .pipedreamApps(q)
+          .then(setResults)
+          .catch((err) => {
+            toast.error(errorMessage(err));
+            setResults([]);
+          });
+      },
+      q ? 300 : 0,
+    );
     return () => clearTimeout(timer);
   }, [query, pickerOpen]);
 
@@ -355,14 +359,8 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-4 pb-2">
-          <h3 className="text-sm font-semibold tracking-tight">
-            {t("connections.emailAccounts")}
-          </h3>
-          <Button
-            size="sm"
-            onClick={() => setPickerOpen((open) => !open)}
-            disabled={busy !== null}
-          >
+          <h3 className="text-sm font-semibold tracking-tight">{t("connections.emailAccounts")}</h3>
+          <Button size="sm" onClick={() => setPickerOpen((open) => !open)} disabled={busy !== null}>
             {busy ? <Loader2 className="animate-spin" /> : <Plus />}
             {t("connections.addAccount")}
           </Button>
@@ -410,7 +408,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                 )}
               </div>
             )}
-            <p className="px-1 pt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="px-1 pt-0.5 text-2xs leading-relaxed text-muted-foreground">
               {t("connections.anyAppHint")}
             </p>
           </Card>

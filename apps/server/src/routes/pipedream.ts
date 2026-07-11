@@ -1,15 +1,18 @@
-import type { FastifyInstance } from "fastify";
-import type { PipedreamConfigInput } from "@trailin/shared";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { Type } from "@sinclair/typebox";
 import "../email/registerProviders.js";
+import { resetSessions } from "../agent/emailAgent.js";
 import { invalidateDraftsCache } from "../email/draftsService.js";
+import { env } from "../env.js";
+import { badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
 import {
   clearConnectSettings,
   createConnectToken,
   deleteAccount,
   extractProjectId,
+  getDefaultApps,
   getPipedreamStatus,
   getSavedClientSecret,
-  getDefaultApps,
   invalidateAccountsCache,
   listAccounts,
   saveConnectSettings,
@@ -17,22 +20,35 @@ import {
   setUseCustom,
   verifyConnectConfig,
 } from "../pipedream/connect.js";
-import { env } from "../env.js";
-import { resetSessions } from "../agent/emailAgent.js";
-import { badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
 import { errorMessage } from "../util.js";
 
-export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
+const pipedreamConfigBody = Type.Object({
+  clientId: Type.String(),
+  clientSecret: Type.Optional(Type.String()),
+  // A raw proj_… id or any URL containing one.
+  project: Type.String(),
+  environment: Type.Optional(Type.String()),
+});
+
+const pipedreamModeBody = Type.Object({ useCustom: Type.Boolean() });
+
+const appsQuerystring = Type.Object({ q: Type.Optional(Type.String()) });
+
+const connectTokenBody = Type.Object({ app: Type.String() });
+
+const accountIdParams = Type.Object({ id: Type.String() });
+
+export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/pipedream", async () => getPipedreamStatus());
 
-  app.put<{ Body: PipedreamConfigInput }>("/api/pipedream", async (req) => {
-    const body = req.body ?? ({} as PipedreamConfigInput);
-    const clientId = body.clientId?.trim();
+  app.put("/api/pipedream", { schema: { body: pipedreamConfigBody } }, async (req) => {
+    const body = req.body;
+    const clientId = body.clientId.trim();
     if (!clientId) {
       throw badRequest("clientId is required");
     }
     // The project field accepts a raw proj_… id or any URL containing one.
-    const projectId = extractProjectId(body.project ?? "");
+    const projectId = extractProjectId(body.project);
     if (!projectId) {
       throw badRequest("project must be a proj_… id or a Pipedream project URL");
     }
@@ -65,10 +81,7 @@ export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Switch between the built-in Pipedream credentials and the user's own. */
-  app.put<{ Body: { useCustom: boolean } }>("/api/pipedream/mode", async (req) => {
-    if (typeof req.body?.useCustom !== "boolean") {
-      throw badRequest("useCustom must be a boolean");
-    }
+  app.put("/api/pipedream/mode", { schema: { body: pipedreamModeBody } }, async (req) => {
     await setUseCustom(req.body.useCustom);
     await resetSessions();
     return getPipedreamStatus();
@@ -95,7 +108,7 @@ export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Search Pipedream's app catalog for the provider picker. */
-  app.get<{ Querystring: { q?: string } }>("/api/pipedream/apps", async (req) => {
+  app.get("/api/pipedream/apps", { schema: { querystring: appsQuerystring } }, async (req) => {
     const q = req.query.q?.trim() || "";
     try {
       return q ? await searchApps(q) : await getDefaultApps();
@@ -104,10 +117,11 @@ export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post<{ Body: { app: string } }>(
+  app.post(
     "/api/pipedream/accounts/connect-token",
+    { schema: { body: connectTokenBody } },
     async (req) => {
-      const appSlug = req.body?.app?.trim();
+      const appSlug = req.body.app.trim();
       if (!appSlug || !/^[a-z0-9_]+$/.test(appSlug)) {
         throw badRequest("app must be a Pipedream app slug");
       }
@@ -119,20 +133,24 @@ export async function pipedreamRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.delete<{ Params: { id: string } }>("/api/pipedream/accounts/:id", async (req) => {
-    try {
-      await deleteAccount(req.params.id);
-    } catch (error) {
-      // Pipedream 404s when the account is already gone — that's a client-
-      // facing 404, not an outage.
-      if (upstreamStatusCode(error) === 404) throw notFound("account not found");
-      throw upstreamError(errorMessage(error), error);
-    }
-    // Live agents may hold tools for the removed account.
-    await resetSessions();
-    invalidateDraftsCache(req.params.id);
-    // The account list itself just changed.
-    invalidateAccountsCache();
-    return { ok: true };
-  });
-}
+  app.delete(
+    "/api/pipedream/accounts/:id",
+    { schema: { params: accountIdParams } },
+    async (req) => {
+      try {
+        await deleteAccount(req.params.id);
+      } catch (error) {
+        // Pipedream 404s when the account is already gone — that's a client-
+        // facing 404, not an outage.
+        if (upstreamStatusCode(error) === 404) throw notFound("account not found");
+        throw upstreamError(errorMessage(error), error);
+      }
+      // Live agents may hold tools for the removed account.
+      await resetSessions();
+      invalidateDraftsCache(req.params.id);
+      // The account list itself just changed.
+      invalidateAccountsCache();
+      return { ok: true };
+    },
+  );
+};

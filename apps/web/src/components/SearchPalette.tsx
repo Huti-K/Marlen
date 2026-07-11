@@ -1,26 +1,27 @@
-import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
+import type { AccountColor, ConnectedAccount, SearchResult } from "@trailin/shared";
 import {
   Clock,
   CornerDownLeft,
   Database,
   FileText,
+  type LucideIcon,
   Mail,
   MessageSquare,
   Newspaper,
   Search,
   X,
-  type LucideIcon,
 } from "lucide-react";
-import type { AccountColor, ConnectedAccount, SearchResult } from "@trailin/shared";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
+import { AccountDot } from "@/components/ui/account-dot";
+import { Chip } from "@/components/ui/chip";
+import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { NAV_ITEMS, type NavItem } from "@/lib/nav";
 import { setPendingDraftFocus, setPendingKnowledgeFocus } from "@/lib/paletteFocus";
-import { Chip } from "@/components/ui/chip";
-import { IconButton } from "@/components/ui/icon-button";
 import { cn, MOD_LABEL } from "@/lib/utils";
 
 /**
@@ -53,7 +54,13 @@ const TOP_HIT_MIN_SCORE = 40;
 const NO_HITS: SearchResult[] = [];
 
 /** Nudges hits of equal textual relevance apart. Deliberately sub-1 so text always wins. */
-const TYPE_BIAS: Record<HitType, number> = { draft: 0.5, chat: 0.4, run: 0.3, document: 0.2, memory: 0.1 };
+const TYPE_BIAS: Record<HitType, number> = {
+  draft: 0.5,
+  chat: 0.4,
+  run: 0.3,
+  document: 0.2,
+  memory: 0.1,
+};
 
 /** 100 exact · 80 prefix · 60 word-start · 40 substring · 0 miss. `query` must already be lowercase. */
 function matchScore(text: string, query: string): number {
@@ -79,10 +86,14 @@ function Highlight({ text, query }: { text: string; query: string }) {
     <>
       {parts.map((part, i) =>
         i % 2 === 1 ? (
+          // Fragments hold no state and their order is fixed by position in the
+          // split string — a fresh `text`/`query` always replaces the whole list.
+          // biome-ignore lint/suspicious/noArrayIndexKey: stateless text fragments, order is inherent to the split
           <mark key={i} className="palette-mark">
             {part}
           </mark>
         ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: stateless text fragments, order is inherent to the split
           <React.Fragment key={i}>{part}</React.Fragment>
         ),
       )}
@@ -104,7 +115,10 @@ function loadRecents(): string[] {
 /** Records a query that actually led somewhere. Case-insensitively de-duped, newest first. */
 function rememberRecent(query: string): string[] {
   const lower = query.toLowerCase();
-  const next = [query, ...loadRecents().filter((entry) => entry.toLowerCase() !== lower)].slice(0, RECENTS_MAX);
+  const next = [query, ...loadRecents().filter((entry) => entry.toLowerCase() !== lower)].slice(
+    0,
+    RECENTS_MAX,
+  );
   try {
     localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
   } catch {
@@ -134,7 +148,7 @@ export function Kbd({ children, className }: { children: React.ReactNode; classN
   return (
     <kbd
       className={cn(
-        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded bg-surface-2 px-1 font-sans text-[10px] font-medium text-muted-foreground",
+        "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded bg-surface-2 px-1 font-sans text-3xs font-medium text-muted-foreground",
         className,
       )}
     >
@@ -150,7 +164,9 @@ export function SearchPalette() {
   const [query, setQuery] = React.useState("");
   /** Results plus the query they belong to, kept together so highlighting can
    *  never disagree with the snippets it is highlighting. */
-  const [searched, setSearched] = React.useState<{ query: string; results: SearchResult[] } | null>(null);
+  const [searched, setSearched] = React.useState<{ query: string; results: SearchResult[] } | null>(
+    null,
+  );
   const [scope, setScope] = React.useState<Scope>("all");
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [recents, setRecents] = React.useState<string[]>([]);
@@ -162,7 +178,10 @@ export function SearchPalette() {
   const requestSeq = React.useRef(0);
 
   const trimmed = query.trim();
-  const hits = React.useMemo(() => (trimmed && searched ? searched.results : NO_HITS), [trimmed, searched]);
+  const hits = React.useMemo(
+    () => (trimmed && searched ? searched.results : NO_HITS),
+    [trimmed, searched],
+  );
   const hitQuery = searched?.query ?? "";
   // Results stay on screen while the next query is in flight; only the sweep line animates.
   const loading = trimmed !== "" && searched?.query !== trimmed;
@@ -217,7 +236,10 @@ export function SearchPalette() {
       const seq = ++requestSeq.current;
       api
         .search(trimmed)
-        .then((res) => seq === requestSeq.current && setSearched({ query: trimmed, results: res.results }))
+        .then(
+          (res) =>
+            seq === requestSeq.current && setSearched({ query: trimmed, results: res.results }),
+        )
         .catch(() => seq === requestSeq.current && setSearched({ query: trimmed, results: [] }));
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
@@ -234,10 +256,12 @@ export function SearchPalette() {
   // A new result set re-preselects the top hit, and drops a scope that no longer has any hits.
   React.useEffect(() => {
     setActiveIndex(0);
-    setScope((current) => (current === "all" || hits.some((hit) => hit.type === current) ? current : "all"));
+    setScope((current) =>
+      current === "all" || hits.some((hit) => hit.type === current) ? current : "all",
+    );
   }, [hits]);
 
-  const navTitle = React.useCallback((nav: NavItem) => t(`views.${nav.id}.title` as any) as string, [t]);
+  const navTitle = React.useCallback((nav: NavItem) => t(`views.${nav.id}.title`), [t]);
 
   /**
    * Everything the list renders, in one pass, with a stable flat index per row.
@@ -254,7 +278,9 @@ export function SearchPalette() {
         built.push({
           key: "recent",
           label: t("search.recent"),
-          rows: recents.map((value) => row({ kind: "recent", key: `recent:${value}`, query: value })),
+          rows: recents.map((value) =>
+            row({ kind: "recent", key: `recent:${value}`, query: value }),
+          ),
         });
       }
       built.push({
@@ -284,8 +310,10 @@ export function SearchPalette() {
         ...hits.map((hit) => ({
           entry: { kind: "hit", key: `hit:${hit.type}:${hit.id}`, hit } as Entry,
           score:
-            Math.max(matchScore(hit.title, lower), hit.snippet.toLowerCase().includes(lower) ? 20 : 0) +
-            TYPE_BIAS[hit.type],
+            Math.max(
+              matchScore(hit.title, lower),
+              hit.snippet.toLowerCase().includes(lower) ? 20 : 0,
+            ) + TYPE_BIAS[hit.type],
         })),
       ].sort((a, b) => b.score - a.score);
 
@@ -311,7 +339,7 @@ export function SearchPalette() {
       const rows = scopedHits
         .filter((hit) => hit.type === type && `hit:${hit.type}:${hit.id}` !== topHitKey)
         .map((hit) => row({ kind: "hit", key: `hit:${hit.type}:${hit.id}`, hit }));
-      if (rows.length > 0) built.push({ key: type, label: t(`search.groups.${type}` as any) as string, rows });
+      if (rows.length > 0) built.push({ key: type, label: t(`search.groups.${type}`), rows });
     }
     return built;
   }, [trimmed, hits, scope, recents, navTitle, t]);
@@ -325,7 +353,9 @@ export function SearchPalette() {
   }, [rows.length, activeIndex]);
 
   React.useEffect(() => {
-    listRef.current?.querySelector(`[data-index="${activeIndex}"]`)?.scrollIntoView({ block: "nearest" });
+    listRef.current
+      ?.querySelector(`[data-index="${activeIndex}"]`)
+      ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
   const openHit = (hit: SearchResult) => {
@@ -338,12 +368,16 @@ export function SearchPalette() {
       if (hit.accountId) setPendingDraftFocus({ accountId: hit.accountId, draftId: hit.id });
       navigate("/");
       window.dispatchEvent(
-        new CustomEvent("trailin:open-draft", { detail: { accountId: hit.accountId, draftId: hit.id } }),
+        new CustomEvent("trailin:open-draft", {
+          detail: { accountId: hit.accountId, draftId: hit.id },
+        }),
       );
     } else {
       setPendingKnowledgeFocus({ type: hit.type, id: hit.id });
       navigate("/knowledge");
-      window.dispatchEvent(new CustomEvent("trailin:open-knowledge", { detail: { type: hit.type, id: hit.id } }));
+      window.dispatchEvent(
+        new CustomEvent("trailin:open-knowledge", { detail: { type: hit.type, id: hit.id } }),
+      );
     }
     setOpen(false);
   };
@@ -397,7 +431,8 @@ export function SearchPalette() {
   };
 
   const colorFor = (accountId?: string) => colors.find((c) => c.accountId === accountId)?.hex;
-  const accountName = (accountId?: string) => accounts.find((a) => a.id === accountId)?.name ?? accountId ?? "";
+  const accountName = (accountId?: string) =>
+    accounts.find((a) => a.id === accountId)?.name ?? accountId ?? "";
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
@@ -425,10 +460,12 @@ export function SearchPalette() {
           className="palette-panel fixed left-1/2 top-1/2 z-[120] flex w-[calc(100%-1.75rem)] max-w-xl flex-col overflow-hidden rounded-2xl bg-surface md:max-w-3xl"
         >
           <DialogPrimitive.Title className="sr-only">{t("search.title")}</DialogPrimitive.Title>
-          <DialogPrimitive.Description className="sr-only">{t("search.hint")}</DialogPrimitive.Description>
+          <DialogPrimitive.Description className="sr-only">
+            {t("search.hint")}
+          </DialogPrimitive.Description>
 
           <div className="flex shrink-0 items-center gap-3 px-4">
-            <Search className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
+            <Search className="size-4.5 shrink-0 text-muted-foreground" />
             <input
               ref={inputRef}
               value={query}
@@ -465,8 +502,13 @@ export function SearchPalette() {
             <div className="flex h-10 shrink-0 items-center gap-1.5 overflow-x-auto px-4">
               {availableScopes.length > 1 &&
                 (["all", ...availableScopes] as Scope[]).map((value) => (
-                  <Chip key={value} tabIndex={-1} active={scope === value} onClick={() => setScope(value)}>
-                    {value === "all" ? t("search.scopeAll") : (t(`search.groups.${value}` as any) as string)}
+                  <Chip
+                    key={value}
+                    tabIndex={-1}
+                    active={scope === value}
+                    onClick={() => setScope(value)}
+                  >
+                    {value === "all" ? t("search.scopeAll") : t(`search.groups.${value}`)}
                     {value !== "all" && <span className="tabular opacity-60">{counts[value]}</span>}
                   </Chip>
                 ))}
@@ -496,9 +538,13 @@ export function SearchPalette() {
                 </div>
               ) : (
                 sections.map((section) => (
+                  // Groups a run of role="option" rows inside the role="listbox" above
+                  // (the ARIA listbox grouping pattern) — <fieldset> is a form control
+                  // grouping and has no place inside a listbox.
+                  // biome-ignore lint/a11y/useSemanticElements: ARIA listbox option group, not a form fieldset
                   <div key={section.key} role="group" aria-label={section.label}>
                     <div className="sticky top-0 z-10 flex items-center justify-between bg-surface px-2.5 pb-1 pt-2.5">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                      <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground/70">
                         {section.label}
                       </p>
                       {section.key === "recent" && (
@@ -506,7 +552,7 @@ export function SearchPalette() {
                           type="button"
                           tabIndex={-1}
                           onClick={clearRecents}
-                          className="text-[11px] font-medium text-muted-foreground/70 transition-colors hover:text-foreground"
+                          className="text-2xs font-medium text-muted-foreground/70 transition-colors hover:text-foreground"
                         >
                           {t("search.clearRecents")}
                         </button>
@@ -544,7 +590,7 @@ export function SearchPalette() {
             </aside>
           </div>
 
-          <div className="flex h-9 shrink-0 items-center gap-4 bg-surface-2/50 px-4 text-[11px] text-muted-foreground/70">
+          <div className="flex h-9 shrink-0 items-center gap-4 bg-surface-2/50 px-4 text-2xs text-muted-foreground/70">
             <span className="flex items-center gap-1.5">
               <span className="flex gap-0.5">
                 <Kbd>↑</Kbd>
@@ -587,9 +633,29 @@ interface RowProps {
   onSelect: () => void;
 }
 
-function PaletteRow({ entry, index, active, query, language, navTitle, colorFor, onPointerMove, onSelect }: RowProps) {
-  const Icon = entry.kind === "nav" ? entry.nav.icon : entry.kind === "recent" ? Clock : GROUP_ICON[entry.hit.type];
-  const title = entry.kind === "nav" ? navTitle(entry.nav) : entry.kind === "recent" ? entry.query : entry.hit.title;
+function PaletteRow({
+  entry,
+  index,
+  active,
+  query,
+  language,
+  navTitle,
+  colorFor,
+  onPointerMove,
+  onSelect,
+}: RowProps) {
+  const Icon =
+    entry.kind === "nav"
+      ? entry.nav.icon
+      : entry.kind === "recent"
+        ? Clock
+        : GROUP_ICON[entry.hit.type];
+  const title =
+    entry.kind === "nav"
+      ? navTitle(entry.nav)
+      : entry.kind === "recent"
+        ? entry.query
+        : entry.hit.title;
   const hit = entry.kind === "hit" ? entry.hit : null;
   const dot = hit?.type === "draft" ? colorFor(hit.accountId) : undefined;
 
@@ -617,7 +683,7 @@ function PaletteRow({ entry, index, active, query, language, navTitle, colorFor,
           active ? "tint-accent" : "tint-neutral",
         )}
       >
-        <Icon className="h-[15px] w-[15px]" />
+        <Icon className="size-[15px]" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">
@@ -629,9 +695,9 @@ function PaletteRow({ entry, index, active, query, language, navTitle, colorFor,
           </span>
         )}
       </span>
-      {dot && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: dot }} />}
+      {dot && <AccountDot color={dot} />}
       {hit?.date && (
-        <span className="tabular shrink-0 text-[11px] text-muted-foreground/70">
+        <span className="tabular shrink-0 text-2xs text-muted-foreground/70">
           {dateTimeLabel(hit.date, language)}
         </span>
       )}
@@ -668,16 +734,20 @@ function PreviewShell({
     <div className="flex h-full flex-col p-4">
       <div className="flex items-center gap-2 text-muted-foreground/70">
         <Icon className="h-4 w-4 shrink-0" />
-        <span className="text-[11px] font-medium uppercase tracking-wide">{label}</span>
+        <span className="text-2xs font-medium uppercase tracking-wide">{label}</span>
       </div>
-      <h3 className="mt-3 line-clamp-2 text-sm font-semibold leading-snug text-foreground">{title}</h3>
+      <h3 className="mt-3 line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+        {title}
+      </h3>
       {meta && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground">
           {meta}
         </div>
       )}
-      {body && <p className="mt-3 line-clamp-3 text-xs leading-relaxed text-muted-foreground">{body}</p>}
-      <div className="mt-auto flex items-center gap-1.5 pt-4 text-[11px] font-medium text-muted-foreground">
+      {body && (
+        <p className="mt-3 line-clamp-3 text-xs leading-relaxed text-muted-foreground">{body}</p>
+      )}
+      <div className="mt-auto flex items-center gap-1.5 pt-4 text-2xs font-medium text-muted-foreground">
         <Kbd>
           <CornerDownLeft className="h-2.5 w-2.5" />
         </Kbd>
@@ -718,7 +788,7 @@ function PalettePreview({ entry, query, language, navTitle, accountName, colorFo
         icon={entry.nav.icon}
         label={t("search.shortcuts")}
         title={navTitle(entry.nav)}
-        body={t(`views.${entry.nav.id}.description` as any) as string}
+        body={t(`views.${entry.nav.id}.description`)}
         action={t("search.actionPage")}
       />
     );
@@ -729,7 +799,7 @@ function PalettePreview({ entry, query, language, navTitle, accountName, colorFo
   return (
     <PreviewShell
       icon={GROUP_ICON[hit.type]}
-      label={t(`search.groups.${hit.type}` as any) as string}
+      label={t(`search.groups.${hit.type}`)}
       title={<Highlight text={hit.title} query={query} />}
       meta={
         (hit.date || hit.accountId) && (
@@ -737,7 +807,7 @@ function PalettePreview({ entry, query, language, navTitle, accountName, colorFo
             {hit.date && <time className="tabular">{dateTimeLabel(hit.date, language)}</time>}
             {hit.type === "draft" && hit.accountId && (
               <span className="flex min-w-0 items-center gap-1.5">
-                {color && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />}
+                {color && <AccountDot color={color} />}
                 <span className="truncate">{accountName(hit.accountId)}</span>
               </span>
             )}
@@ -745,7 +815,7 @@ function PalettePreview({ entry, query, language, navTitle, accountName, colorFo
         )
       }
       body={hit.snippet ? <Highlight text={hit.snippet} query={query} /> : undefined}
-      action={t(`search.actions.${hit.type}` as any) as string}
+      action={t(`search.actions.${hit.type}`)}
     />
   );
 }

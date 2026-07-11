@@ -1,15 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { watch, type FSWatcher } from "node:fs";
+import { type Dirent, type FSWatcher, watch } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
+import { type HtmlToTextOptions, htmlToText } from "html-to-text";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
-import {
-  getLibraryFolderSetting,
-  LIBRARY_FOLDER_SETTING_KEY,
-  setSetting,
-} from "../db/settings.js";
+import { getLibraryFolderSetting, LIBRARY_FOLDER_SETTING_KEY, setSetting } from "../db/settings.js";
 import { env } from "../env.js";
 import { emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
@@ -69,20 +66,15 @@ const QUIESCENCE_RESCAN_MS = 2000;
 
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
-/** Strip tags from an HTML document, keeping rough paragraph structure. */
-function htmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&amp;/gi, "&")
-    .trim();
-}
+/** html-to-text options for .html/.htm files: headings stay as written
+ * (uppercased by default), links keep their URLs so they stay searchable. */
+const HTML_EXTRACT_OPTIONS: HtmlToTextOptions = {
+  wordwrap: false,
+  selectors: ["h1", "h2", "h3", "h4", "h5", "h6"].map((selector) => ({
+    selector,
+    options: { uppercase: false },
+  })),
+};
 
 async function extractText(absPath: string, ext: string): Promise<string> {
   if (ext === ".pdf") {
@@ -98,19 +90,22 @@ async function extractText(absPath: string, ext: string): Promise<string> {
     return value;
   }
   if (ext === ".html" || ext === ".htm") {
-    return htmlToText(await readFile(absPath, "utf8"));
+    return htmlToText(await readFile(absPath, "utf8"), HTML_EXTRACT_OPTIONS).trim();
   }
   return readFile(absPath, "utf8");
 }
 
 function normalize(text: string): string {
-  return text
-    .replace(/\r\n/g, "\n")
-    .replace(/\u0000/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, MAX_TEXT_LENGTH);
+  return (
+    text
+      .replace(/\r\n/g, "\n")
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: strips NUL bytes from extracted document text before storage/indexing
+      .replace(/\u0000/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, MAX_TEXT_LENGTH)
+  );
 }
 
 /**
@@ -144,7 +139,7 @@ export function chunkText(text: string, target = CHUNK_TARGET): string[] {
 async function listFiles(): Promise<Map<string, { size: number; mtimeMs: number }>> {
   const found = new Map<string, { size: number; mtimeMs: number }>();
   const visit = async (rel: string): Promise<void> => {
-    let entries;
+    let entries: Dirent[];
     try {
       entries = await readdir(join(libraryDir, rel), { withFileTypes: true });
     } catch (error) {
@@ -403,6 +398,11 @@ export async function startLibrary(log: (message: string) => void): Promise<void
     })
     .catch((error: unknown) => ingestLog.error({ err: error }, "initial library scan failed"));
   startWatcher();
+}
+
+/** Close the folder watcher and cancel pending scans; startLibrary() re-arms. */
+export function stopLibrary(): void {
+  stopWatcher();
 }
 
 /**

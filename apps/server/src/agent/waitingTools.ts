@@ -1,5 +1,5 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { EMAIL_APPS, type ConnectedAccount } from "@trailin/shared";
+import { type ConnectedAccount, EMAIL_APPS } from "@trailin/shared";
 import { accountSupportsWaiting, listWaiting } from "../email/waiting.js";
 import { listAccounts } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
@@ -52,7 +52,9 @@ const listWaitingThreadsTool: AgentTool = {
       const resolved = findAccount(accounts, filtered);
       if (!resolved) return text(accountNotFoundText(filtered, accounts));
       if (!accountSupportsWaiting(resolved.app)) {
-        return text(`${resolved.name} (${resolved.app}) isn't covered by waiting-thread tracking yet (no mailbox sync for this app).`);
+        return text(
+          `${resolved.name} (${resolved.app}) isn't covered by waiting-thread tracking yet (no mailbox sync for this app).`,
+        );
       }
       targets = [resolved];
     } else {
@@ -95,7 +97,9 @@ const listWaitingThreadsTool: AgentTool = {
         (a) => !accountSupportsWaiting(a.app) && (EMAIL_APPS as readonly string[]).includes(a.app),
       );
       if (uncovered.length > 0) {
-        sections.push(`Not covered by waiting-thread tracking yet: ${uncovered.map((a) => a.name).join(", ")}.`);
+        sections.push(
+          `Not covered by waiting-thread tracking yet: ${uncovered.map((a) => a.name).join(", ")}.`,
+        );
       }
     }
 

@@ -1,9 +1,10 @@
-import * as React from "react";
-import { ExternalLink, PenLine } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { AgentCard } from "@trailin/shared";
+import { ExternalLink, PenLine } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { CardShell } from "./CardShell";
+import { openExternal } from "@/lib/utils";
+import { CardBodyText, CardShell } from "./CardShell";
 
 type EmailDraftData = Extract<AgentCard, { kind: "email_draft" }>;
 
@@ -11,6 +12,7 @@ type EmailDraftData = Extract<AgentCard, { kind: "email_draft" }>;
 export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: string }) {
   const { t } = useTranslation();
   const { account, draft } = card;
+  const webUrl = draft.webUrl;
 
   const recipients: Array<[string, string[] | undefined]> = [
     [t("chat.cards.draft.to"), draft.to],
@@ -26,12 +28,12 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
       account={account}
       color={color}
       action={
-        draft.webUrl ? (
+        webUrl ? (
           <Button
             variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-secondary hover:text-foreground"
-            onClick={() => window.open(draft.webUrl, "_blank", "noopener,noreferrer")}
+            size="icon-xs"
+            className="shrink-0"
+            onClick={() => openExternal(webUrl)}
             title={t("chat.cards.draft.open")}
             aria-label={t("chat.cards.draft.open")}
           >
@@ -48,17 +50,14 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
               list &&
               list.length > 0 && (
                 <React.Fragment key={label}>
-                  <span className="font-mono text-[11px] text-muted-foreground">{label}</span>
+                  <span className="font-mono text-2xs text-muted-foreground">{label}</span>
                   <span className="truncate text-xs text-foreground/90">{list.join(", ")}</span>
                 </React.Fragment>
               ),
           )}
         </div>
 
-        {/* Literal draft body (what will actually be sent) — never markdown, see DraftRow.tsx:133-134. */}
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">
-          {draft.body || t("chat.cards.emptyBody")}
-        </p>
+        <CardBodyText text={draft.body} />
 
         {draft.signatureAppended && (
           <p className="text-xs text-muted-foreground/70">{t("chat.cards.draft.signatureNote")}</p>

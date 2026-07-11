@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { describe, expect, it } from "vitest";
 import { findCutIndex, KEEP_RECENT_TOKENS } from "../../src/agent/compaction.js";
 
 // estimateTokens (pi-agent-core) is a plain chars/4 heuristic per role, so

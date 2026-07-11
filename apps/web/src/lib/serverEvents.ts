@@ -1,5 +1,5 @@
-import * as React from "react";
 import type { ServerEvent, ServerEventTopic } from "@trailin/shared";
+import * as React from "react";
 
 /**
  * One shared EventSource on GET /api/events. Created when the first panel
@@ -65,10 +65,7 @@ function disconnect(): void {
   timers.clear();
 }
 
-export function subscribeServerEvents(
-  topics: ServerEventTopic[],
-  handler: () => void,
-): () => void {
+function subscribeServerEvents(topics: ServerEventTopic[], handler: () => void): () => void {
   const sub: Subscription = { topics, handler };
   subscriptions.add(sub);
   if (!source) connect();

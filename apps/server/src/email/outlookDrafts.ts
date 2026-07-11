@@ -1,15 +1,15 @@
 import type { ConnectedAccount, EmailDraft, EmailThreadMessage } from "@trailin/shared";
-import { proxyRequest } from "../pipedream/connect.js";
 import { emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
+import { proxyRequest } from "../pipedream/connect.js";
 import { invalidateDraftsCache } from "./draftsService.js";
 import {
   addressListOf,
   formatRecipient,
   GRAPH_API,
+  type GraphRecipient,
   newestByReceivedDate,
   recipientAddresses,
-  type GraphRecipient,
 } from "./graphMessage.js";
 import type {
   CreateDraftInput,
@@ -220,7 +220,10 @@ async function createOutlookReplyDraft(
     await fetchConversationMessages(account, threadId, REPLY_TARGET_SELECT),
   );
   if (!target) {
-    log.warn({ accountId: account.id, threadId }, "no messages found in conversation; creating a standalone draft instead");
+    log.warn(
+      { accountId: account.id, threadId },
+      "no messages found in conversation; creating a standalone draft instead",
+    );
     return createStandaloneOutlookDraft(account, input);
   }
 

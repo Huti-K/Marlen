@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
-  BRIEFING_PRIORITIES,
   type AgentCard,
+  BRIEFING_PRIORITIES,
   type BriefingItem,
   type BriefingPriority,
   type BriefingRollup,
@@ -86,9 +86,13 @@ const composeBriefingTool: AgentTool = {
             messageId: { type: "string", description: "The specific message's id, if known." },
             account: {
               type: "string",
-              description: "The connected account this arrived in — its email address or account id.",
+              description:
+                "The connected account this arrived in — its email address or account id.",
             },
-            sender: { type: "string", description: 'Display name of the sender, e.g. "Ayşe Kaya".' },
+            sender: {
+              type: "string",
+              description: 'Display name of the sender, e.g. "Ayşe Kaya".',
+            },
             senderEmail: { type: "string", description: "The sender's email address, if known." },
             subject: { type: "string", description: "The message subject." },
             gist: { type: "string", description: "One sentence: what it says and what it wants." },
@@ -99,7 +103,8 @@ const composeBriefingTool: AgentTool = {
             },
             deadline: {
               type: "string",
-              description: 'When it must be answered by, in the sender\'s own terms, e.g. "Friday 17:00".',
+              description:
+                'When it must be answered by, in the sender\'s own terms, e.g. "Friday 17:00".',
             },
             receivedAt: { type: "string", description: "When the message was received." },
             draftId: {
@@ -119,7 +124,8 @@ const composeBriefingTool: AgentTool = {
           properties: {
             account: {
               type: "string",
-              description: "The connected account this rollup covers — email address or account id.",
+              description:
+                "The connected account this rollup covers — email address or account id.",
             },
             label: { type: "string", description: 'e.g. "Newsletters", "Receipts", "Promotions".' },
             count: { type: "number", description: "How many messages this rollup covers." },
@@ -195,7 +201,8 @@ const composeBriefingTool: AgentTool = {
       for (const raw of rawRollups) {
         if (!isRecord(raw)) continue;
         const { account, label, count, examples } = raw;
-        if (!isNonEmptyString(label) || typeof count !== "number" || !Number.isFinite(count)) continue;
+        if (!isNonEmptyString(label) || typeof count !== "number" || !Number.isFinite(count))
+          continue;
         const accountId = resolveAccountId(account);
         const exampleList = Array.isArray(examples) ? examples.filter(isNonEmptyString) : [];
         rollups.push({
@@ -218,7 +225,9 @@ const composeBriefingTool: AgentTool = {
       const headline = isNonEmptyString(input.headline) ? input.headline : undefined;
       const periodLabel = isNonEmptyString(input.periodLabel) ? input.periodLabel : undefined;
       const scanned =
-        typeof input.scanned === "number" && Number.isFinite(input.scanned) ? input.scanned : undefined;
+        typeof input.scanned === "number" && Number.isFinite(input.scanned)
+          ? input.scanned
+          : undefined;
 
       const card: AgentCard = {
         kind: "briefing",
@@ -249,7 +258,8 @@ const composeBriefingTool: AgentTool = {
         );
       }
       if (rolledUpCount > 0) summaryParts.push(`${rolledUpCount} messages rolled up`);
-      if (draftedCount > 0) summaryParts.push(`${draftedCount} draft${draftedCount === 1 ? "" : "s"} linked`);
+      if (draftedCount > 0)
+        summaryParts.push(`${draftedCount} draft${draftedCount === 1 ? "" : "s"} linked`);
 
       // Items are dropped silently above so one bad entry can't sink the call,
       // but the model still needs to know it sent something unusable — most

@@ -1,5 +1,5 @@
-import { emitServerEvent, onServerEvent } from "../../events.js";
 import { env } from "../../env.js";
+import { emitServerEvent, onServerEvent } from "../../events.js";
 import { activeModelConfigured } from "../../llm/registry.js";
 import { moduleLogger } from "../../logger.js";
 import { listAccounts } from "../../pipedream/connect.js";
@@ -118,12 +118,31 @@ function scheduleCycle(): void {
   debounce.unref();
 }
 
+let unsubscribe: (() => void) | null = null;
+let safetyTimer: NodeJS.Timeout | null = null;
+
 export function startEnrichment(): void {
-  onServerEvent((event) => {
+  if (safetyTimer) return;
+  unsubscribe = onServerEvent((event) => {
     if (event.topic === "mail") scheduleCycle();
   });
   // Boot catch-up (the debounce delay also lets the first sync pages land),
   // then the slow safety net — cycles with nothing stale are one cheap query.
   scheduleCycle();
-  setInterval(scheduleCycle, SAFETY_INTERVAL_MS).unref();
+  safetyTimer = setInterval(scheduleCycle, SAFETY_INTERVAL_MS);
+  safetyTimer.unref();
+}
+
+/** Detach from "mail" events and cancel pending cycles; one already running finishes on its own. */
+export function stopEnrichment(): void {
+  unsubscribe?.();
+  unsubscribe = null;
+  if (safetyTimer) {
+    clearInterval(safetyTimer);
+    safetyTimer = null;
+  }
+  if (debounce) {
+    clearTimeout(debounce);
+    debounce = null;
+  }
 }

@@ -80,7 +80,8 @@ single quick lookup, call the email tools directly instead.`,
       let finished = 0;
       const runNext = async (): Promise<void> => {
         for (let i = nextIndex++; i < tasks.length; i = nextIndex++) {
-          const task = tasks[i]!;
+          const task = tasks[i];
+          if (task === undefined) continue;
           // The main turn was aborted (e.g. client disconnect): don't start
           // more workers; in-flight ones stop via the signal passed below.
           if (signal?.aborted) {

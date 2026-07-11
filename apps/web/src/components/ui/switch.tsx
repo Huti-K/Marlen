@@ -1,5 +1,5 @@
-import * as React from "react";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
+import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 // On-state colour by tone. `accent` is the default (the one spot of colour);
@@ -11,8 +11,7 @@ const CHECKED_TONE = {
   danger: "data-[state=checked]:bg-destructive",
 } as const;
 
-export interface SwitchProps
-  extends React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root> {
+export interface SwitchProps extends React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root> {
   tone?: keyof typeof CHECKED_TONE;
 }
 

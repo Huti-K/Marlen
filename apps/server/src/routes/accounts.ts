@@ -1,9 +1,8 @@
-import type { FastifyInstance } from "fastify";
 import type { AppStatus } from "@trailin/shared";
 import { EMAIL_APPS } from "@trailin/shared";
-import { env } from "../env.js";
-import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
+import type { FastifyInstance } from "fastify";
 import { activeModelConfigured, getActiveModelIds } from "../llm/registry.js";
+import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 
 export async function accountRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/status", async (): Promise<AppStatus> => {
@@ -27,13 +26,11 @@ export async function accountRoutes(app: FastifyInstance): Promise<void> {
     }
     return {
       pipedreamConfigured: configured,
-      // Demo mode never gates on real LLM credentials — the seeded UI is the point.
-      modelConfigured: env.demoMode ? true : await activeModelConfigured(),
+      modelConfigured: await activeModelConfigured(),
       emailAccounts,
       emailAccountsKnown,
       provider,
       model,
-      ...(env.demoMode && { demo: true }),
     };
   });
 }

@@ -3,7 +3,9 @@
     "skipToContent": "Zum Inhalt springen",
     "openMenu": "Menü öffnen",
     "openChat": "Chat öffnen",
-    "closeChat": "Chat schließen"
+    "closeChat": "Chat schließen",
+    "expandChat": "Chat ausklappen",
+    "collapseChat": "Chat einklappen"
   },
   "views": {
     "chat": {
@@ -29,21 +31,22 @@
   },
   "sidebar": {
     "closeMenu": "Menü schließen",
+    "expand": "Seitenleiste ausklappen",
+    "collapse": "Seitenleiste einklappen",
     "finishSetup": "Einrichtung abschließen",
     "lightMode": "Heller Modus",
-    "darkMode": "Dunkler Modus",
-    "demoBadge": "Demo"
+    "darkMode": "Dunkler Modus"
   },
   "common": {
     "cancel": "Abbrechen",
     "close": "Schließen",
+    "expand": "Ausklappen",
+    "collapse": "Einklappen",
     "dismiss": "Schließen",
     "loading": "Wird geladen…",
     "saving": "Wird gespeichert…",
     "saved": "Gespeichert",
     "retry": "Erneut versuchen",
-    "refresh": "Aktualisieren",
-    "clear": "Leeren",
     "signIn": "Anmelden",
     "signOut": "Abmelden",
     "submit": "Absenden",
@@ -212,7 +215,6 @@
     "removeSavedConfirm": "Die in der App gespeicherten Pipedream-Zugangsdaten entfernen?",
     "emailAccounts": "Verbundene Konten",
     "noAccounts": "Noch keine E-Mail-Konten verbunden. Nutzen Sie die Schaltflächen oben, Sie können mehrere Konten pro Anbieter verbinden.",
-    "connectApp": "{{app}} verbinden",
     "finishConnecting": "Schließen Sie die Verbindung in dem gerade geöffneten Fenster ab, es schließt sich von selbst, sobald Sie fertig sind.",
     "healthy": "OK",
     "unhealthy": "Gestört",
@@ -223,8 +225,6 @@
     "sourceEnv": "aus .env",
     "edit": "Bearbeiten",
     "accountColor": "Kontofarbe",
-    "customColor": "Eigene Farbe",
-    "colorPresets": "Farbvorlagen",
     "advanced": "Erweitert",
     "advancedBuiltin": "Eingebautes Pipedream",
     "advancedCustom": "Eigenes Pipedream-Projekt",
@@ -290,7 +290,6 @@
   },
   "automations": {
     "new": "Neue Automatisierung",
-    "edit": "Bearbeiten",
     "save": "Speichern",
     "create": "Erstellen",
     "formTitle": "Neue Automatisierung",

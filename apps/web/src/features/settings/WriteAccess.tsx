@@ -1,11 +1,11 @@
-import * as React from "react";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
+import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { api } from "@/lib/api";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { ListRow } from "@/components/ui/list-row";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Label } from "@/components/ui/label";
+import { ListRow } from "@/components/ui/list-row";
+import { Switch } from "@/components/ui/switch";
+import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -18,6 +18,8 @@ export function WriteAccess({ onState }: { onState?: (allow: boolean) => void })
   const { t } = useTranslation();
   const [allowWrite, setAllowWrite] = React.useState<boolean | null>(null);
 
+  // Only the initial load — onState is stable enough not to need re-running this.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run-once mount fetch; re-running on every onState identity change would refire the request
   React.useEffect(() => {
     api
       .emailWrite()
@@ -26,8 +28,6 @@ export function WriteAccess({ onState }: { onState?: (allow: boolean) => void })
         onState?.(r.allowWrite);
       })
       .catch((err) => toast.error(errorMessage(err)));
-    // Only the initial load — onState is stable enough not to need re-running this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleWrite = async (next: boolean) => {

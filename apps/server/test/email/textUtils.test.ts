@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { stripHtml, snippetFrom, splitAddressList } from "../../src/email/textUtils.js";
+import { describe, expect, it } from "vitest";
+import { snippetFrom, splitAddressList, stripHtml } from "../../src/email/textUtils.js";
 
 describe("stripHtml", () => {
   it("converts <br> and <br/> into newlines", () => {
@@ -24,6 +24,18 @@ describe("stripHtml", () => {
 
   it("passes plain text through unchanged", () => {
     expect(stripHtml("just plain text")).toBe("just plain text");
+  });
+
+  it("drops style and script contents, not just their tags", () => {
+    expect(stripHtml("<style>.a{color:red}</style><script>x()</script><p>hi</p>")).toBe("hi");
+  });
+
+  it("decodes HTML entities", () => {
+    expect(stripHtml("Tom &amp; Jerry&#39;s")).toBe("Tom & Jerry's");
+  });
+
+  it("keeps link text but drops the href", () => {
+    expect(stripHtml('<a href="https://example.com">click me</a>')).toBe("click me");
   });
 });
 
@@ -59,11 +71,26 @@ describe("snippetFrom", () => {
 });
 
 describe("splitAddressList", () => {
-  it("splits on commas, trims entries, and drops empties", () => {
+  it("splits a simple list, trims entries, and drops empties", () => {
     expect(splitAddressList("a@x.com, B <b@y.com>,, ")).toEqual(["a@x.com", "B <b@y.com>"]);
   });
 
   it("returns an empty array for an empty string", () => {
     expect(splitAddressList("")).toEqual([]);
+  });
+
+  it("keeps a comma inside a quoted display name as one entry", () => {
+    expect(splitAddressList('"Kaya, Ayşe" <ayse@x.com>, bob@y.com')).toEqual([
+      "Kaya, Ayşe <ayse@x.com>",
+      "bob@y.com",
+    ]);
+  });
+
+  it("flattens an address group to its members", () => {
+    expect(splitAddressList("team: a@x.com, B <b@y.com>;")).toEqual(["a@x.com", "B <b@y.com>"]);
+  });
+
+  it("falls back to a comma split when the value is not a parseable address list", () => {
+    expect(splitAddressList("Ayşe Kaya, not-an-address")).toEqual(["Ayşe Kaya", "not-an-address"]);
   });
 });

@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { Type } from "@sinclair/typebox";
 import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
-import { db, schema, sqlite } from "../db/index.js";
 import { parseStoredCards } from "../agent/cards.js";
-import { emitServerEvent } from "../events.js";
 import {
   getNextRunAt,
   isValidCron,
@@ -11,16 +10,35 @@ import {
   runAutomation,
   unschedule,
 } from "../automations/scheduler.js";
+import { db, schema, sqlite } from "../db/index.js";
+import { emitServerEvent } from "../events.js";
 import { escapeLikeInput, likePattern } from "../util.js";
 
-interface AutomationBody {
-  name: string;
-  instruction: string;
-  schedule: string;
-  enabled?: boolean;
-  showInActivity?: boolean;
-  pinned?: boolean;
-}
+const runsQuery = Type.Object({
+  q: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer({ minimum: 1 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0 })),
+});
+
+const idParams = Type.Object({ id: Type.String() });
+
+const automationBody = Type.Object({
+  name: Type.String(),
+  instruction: Type.String(),
+  schedule: Type.String(),
+  enabled: Type.Optional(Type.Boolean()),
+  showInActivity: Type.Optional(Type.Boolean()),
+  pinned: Type.Optional(Type.Boolean()),
+});
+
+const automationPatchBody = Type.Object({
+  name: Type.Optional(Type.String()),
+  instruction: Type.Optional(Type.String()),
+  schedule: Type.Optional(Type.String()),
+  enabled: Type.Optional(Type.Boolean()),
+  showInActivity: Type.Optional(Type.Boolean()),
+  pinned: Type.Optional(Type.Boolean()),
+});
 
 /**
  * Exactly one automation may be pinned. Clearing every other row and setting
@@ -33,7 +51,7 @@ const pinExclusively = sqlite.transaction((id: string) => {
   sqlite.prepare("UPDATE automations SET pinned = 1 WHERE id = ?").run(id);
 });
 
-export async function automationRoutes(app: FastifyInstance): Promise<void> {
+export const automationRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/automations", async () => {
     const rows = await db
       .select()
@@ -43,61 +61,58 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Cross-automation run feed for the Home activity section. */
-  app.get<{ Querystring: { q?: string; limit?: string; offset?: string } }>(
-    "/api/runs",
-    async (req) => {
-      const q = req.query.q?.trim();
-      const limit = Math.min(Math.max(parseInt(req.query.limit ?? "", 10) || 30, 1), 100);
-      const offset = Math.max(parseInt(req.query.offset ?? "", 10) || 0, 0);
+  app.get("/api/runs", { schema: { querystring: runsQuery } }, async (req) => {
+    const q = req.query.q?.trim();
+    const limit = Math.min(req.query.limit ?? 30, 100);
+    const offset = req.query.offset ?? 0;
 
-      // Hide runs from automations the user has excluded from the activity feed.
-      // leftJoin → a run whose automation was deleted has NULL columns; keep those.
-      const visible = or(
-        isNull(schema.automations.showInActivity),
-        eq(schema.automations.showInActivity, true),
-      );
-      // SQLite's LIKE is case-insensitive for ASCII by default, which covers the
-      // digest text this searches over.
-      const pattern = q ? `%${escapeLikeInput(q)}%` : undefined;
-      const where = pattern
-        ? and(
-            visible,
-            or(
-              likePattern(schema.automationRuns.result, pattern),
-              likePattern(schema.automations.name, pattern),
-            ),
-          )
-        : visible;
+    // Hide runs from automations the user has excluded from the activity feed.
+    // leftJoin → a run whose automation was deleted has NULL columns; keep those.
+    const visible = or(
+      isNull(schema.automations.showInActivity),
+      eq(schema.automations.showInActivity, true),
+    );
+    // SQLite's LIKE is case-insensitive for ASCII by default, which covers the
+    // digest text this searches over.
+    const pattern = q ? `%${escapeLikeInput(q)}%` : undefined;
+    const where = pattern
+      ? and(
+          visible,
+          or(
+            likePattern(schema.automationRuns.result, pattern),
+            likePattern(schema.automations.name, pattern),
+          ),
+        )
+      : visible;
 
-      const itemsQuery = db
-        .select({
-          id: schema.automationRuns.id,
-          automationId: schema.automationRuns.automationId,
-          status: schema.automationRuns.status,
-          result: schema.automationRuns.result,
-          cards: schema.automationRuns.cards,
-          startedAt: schema.automationRuns.startedAt,
-          finishedAt: schema.automationRuns.finishedAt,
-          automationName: schema.automations.name,
-        })
-        .from(schema.automationRuns)
-        .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId));
-      const rows = await itemsQuery
-        .where(where)
-        .orderBy(desc(schema.automationRuns.startedAt))
-        .limit(limit)
-        .offset(offset);
-      const items = rows.map(({ cards, ...row }) => ({ ...row, cards: parseStoredCards(cards) }));
+    const itemsQuery = db
+      .select({
+        id: schema.automationRuns.id,
+        automationId: schema.automationRuns.automationId,
+        status: schema.automationRuns.status,
+        result: schema.automationRuns.result,
+        cards: schema.automationRuns.cards,
+        startedAt: schema.automationRuns.startedAt,
+        finishedAt: schema.automationRuns.finishedAt,
+        automationName: schema.automations.name,
+      })
+      .from(schema.automationRuns)
+      .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId));
+    const rows = await itemsQuery
+      .where(where)
+      .orderBy(desc(schema.automationRuns.startedAt))
+      .limit(limit)
+      .offset(offset);
+    const items = rows.map(({ cards, ...row }) => ({ ...row, cards: parseStoredCards(cards) }));
 
-      const totalQuery = db
-        .select({ count: sql<number>`count(*)` })
-        .from(schema.automationRuns)
-        .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId));
-      const [totalRow] = await totalQuery.where(where);
+    const totalQuery = db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.automationRuns)
+      .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId));
+    const [totalRow] = await totalQuery.where(where);
 
-      return { items, total: Number(totalRow?.count ?? 0) };
-    },
-  );
+    return { items, total: Number(totalRow?.count ?? 0) };
+  });
 
   /**
    * The pinned automation's latest successful run, for the Home page lead
@@ -142,9 +157,9 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.post<{ Body: AutomationBody }>("/api/automations", async (req, reply) => {
-    const { name, instruction, schedule } = req.body ?? {};
-    if (!name?.trim() || !instruction?.trim() || !schedule?.trim()) {
+  app.post("/api/automations", { schema: { body: automationBody } }, async (req, reply) => {
+    const { name, instruction, schedule } = req.body;
+    if (!name.trim() || !instruction.trim() || !schedule.trim()) {
       return reply.code(400).send({ error: "name, instruction and schedule are required" });
     }
     if (!isValidCron(schedule.trim())) {
@@ -167,8 +182,9 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     return automation;
   });
 
-  app.patch<{ Params: { id: string }; Body: Partial<AutomationBody> }>(
+  app.patch(
     "/api/automations/:id",
+    { schema: { params: idParams, body: automationPatchBody } },
     async (req, reply) => {
       const updates: Record<string, unknown> = {};
       if (req.body.name !== undefined) {
@@ -226,7 +242,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.delete<{ Params: { id: string } }>("/api/automations/:id", async (req) => {
+  app.delete("/api/automations/:id", { schema: { params: idParams } }, async (req) => {
     unschedule(req.params.id);
 
     // Each run also created a conversation (id = run id) plus its user/
@@ -252,7 +268,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string } }>("/api/automations/:id/run", async (req, reply) => {
+  app.post("/api/automations/:id/run", { schema: { params: idParams } }, async (req, reply) => {
     const [automation] = await db
       .select({ id: schema.automations.id })
       .from(schema.automations)
@@ -267,7 +283,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(202).send({ ok: true });
   });
 
-  app.get<{ Params: { id: string } }>("/api/automations/:id/runs", async (req) => {
+  app.get("/api/automations/:id/runs", { schema: { params: idParams } }, async (req) => {
     const rows = await db
       .select()
       .from(schema.automationRuns)
@@ -276,4 +292,4 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
       .limit(20);
     return rows.map(({ cards, ...row }) => ({ ...row, cards: parseStoredCards(cards) }));
   });
-}
+};

@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { headerLookup, plainTextBody, decodeHtmlEntities, type MessagePart } from "../../src/email/gmailMessage.js";
+import { describe, expect, it } from "vitest";
+import {
+  decodeHtmlEntities,
+  headerLookup,
+  type MessagePart,
+  plainTextBody,
+} from "../../src/email/gmailMessage.js";
 
 function b64(s: string): string {
   return Buffer.from(s, "utf8").toString("base64url");
@@ -97,8 +102,12 @@ describe("decodeHtmlEntities", () => {
     expect(decodeHtmlEntities("Tom &amp; Jerry &quot;fun&quot;")).toBe('Tom & Jerry "fun"');
   });
 
-  it("leaves other text and unknown entities untouched", () => {
+  it("decodes named and numeric entities beyond the common ones", () => {
+    expect(decodeHtmlEntities("&copy; 2024")).toBe("© 2024");
+    expect(decodeHtmlEntities("K&#252;ndigung")).toBe("Kündigung");
+  });
+
+  it("leaves plain text untouched", () => {
     expect(decodeHtmlEntities("plain text")).toBe("plain text");
-    expect(decodeHtmlEntities("&copy; 2024")).toBe("&copy; 2024");
   });
 });

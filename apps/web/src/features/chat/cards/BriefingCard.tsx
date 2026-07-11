@@ -1,4 +1,11 @@
-import * as React from "react";
+import type {
+  AccountColor,
+  AgentCard,
+  BriefingItem,
+  BriefingPriority,
+  CardAccount,
+} from "@trailin/shared";
+import { BRIEFING_PRIORITIES } from "@trailin/shared";
 import {
   AlertTriangle,
   ChevronDown,
@@ -8,10 +15,11 @@ import {
   PenLine,
   Sunrise,
 } from "lucide-react";
+import * as React from "react";
 import { useTranslation } from "react-i18next";
-import type { AccountColor, AgentCard, BriefingItem, BriefingPriority, CardAccount } from "@trailin/shared";
-import { BRIEFING_PRIORITIES } from "@trailin/shared";
+import { AccountDot } from "@/components/ui/account-dot";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { dispatchQuickAction } from "@/lib/quickActions";
 import { cn } from "@/lib/utils";
 import { CardShell } from "./CardShell";
@@ -22,9 +30,8 @@ type BriefingData = Extract<AgentCard, { kind: "briefing" }>;
  * The structured Morning-briefing card — flat and cross-account by design
  * (see apps/web/DESIGN.md and the `kind: "briefing"` doc comment on
  * AgentCard). Priority is the grouping axis, not the inbox: an account only
- * ever shows up as a colour dot on a row. This supersedes the markdown blob
- * DigestView used to reverse-parse; that component still renders older runs
- * that predate this card (see BriefingHero's three-tier degrade).
+ * ever shows up as a colour dot on a row. A run whose turn produced no card
+ * renders as markdown via DigestView instead (see BriefingHero's degrade).
  */
 export function BriefingCard({ card, colors }: { card: BriefingData; colors?: AccountColor[] }) {
   const { t } = useTranslation();
@@ -34,7 +41,10 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
   const grouped = React.useMemo(() => {
     const map = new Map<BriefingPriority, BriefingItem[]>(BRIEFING_PRIORITIES.map((p) => [p, []]));
     for (const item of items) {
-      (map.get(item.priority) ?? map.get("fyi"))!.push(item);
+      // Every BriefingPriority (including "fyi") seeds a bucket above, so this
+      // always resolves — the optional chain only guards the Map API's typing.
+      const bucket = map.get(item.priority) ?? map.get("fyi");
+      bucket?.push(item);
     }
     return map;
   }, [items]);
@@ -49,7 +59,8 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
   if (draftsReadyCount > 0) {
     otherStats.push(t("chat.cards.briefing.stats.draftsReady", { count: draftsReadyCount }));
   }
-  if (rolledUpCount > 0) otherStats.push(t("chat.cards.briefing.stats.rolledUp", { count: rolledUpCount }));
+  if (rolledUpCount > 0)
+    otherStats.push(t("chat.cards.briefing.stats.rolledUp", { count: rolledUpCount }));
   if (typeof scanned === "number") {
     otherStats.push(t("chat.cards.briefing.stats.scanned", { count: scanned }));
   }
@@ -60,7 +71,9 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
     <CardShell
       icon={Sunrise}
       label={t("chat.cards.briefing.label")}
-      meta={items.length > 0 ? t("chat.cards.briefing.itemCount", { count: items.length }) : undefined}
+      meta={
+        items.length > 0 ? t("chat.cards.briefing.itemCount", { count: items.length }) : undefined
+      }
     >
       <div className="flex flex-col gap-4 px-4 pb-4 pt-0.5">
         {(headline || periodLabel) && (
@@ -73,10 +86,14 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
         {hasStats && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             {urgentCount > 0 && (
-              <Badge variant="destructive">{t("home.briefingUrgent", { count: urgentCount })}</Badge>
+              <Badge variant="destructive">
+                {t("home.briefingUrgent", { count: urgentCount })}
+              </Badge>
             )}
             {otherStats.length > 0 && (
-              <span className="text-xs tabular-nums text-muted-foreground">{otherStats.join(" · ")}</span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {otherStats.join(" · ")}
+              </span>
             )}
           </div>
         )}
@@ -100,7 +117,10 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
                     className="flex w-fit items-center gap-1.5 rounded-md px-0.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <ChevronDown
-                      className={cn("h-3 w-3 shrink-0 transition-transform", !fyiOpen && "-rotate-90")}
+                      className={cn(
+                        "h-3 w-3 shrink-0 transition-transform",
+                        !fyiOpen && "-rotate-90",
+                      )}
                       aria-hidden
                     />
                     {fyiOpen
@@ -112,7 +132,7 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
                     <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       {t(`chat.cards.briefing.groups.${priority}`)}
                     </h4>
-                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground/70">
+                    <span className="font-mono text-2xs tabular-nums text-muted-foreground/70">
                       {groupItems.length}
                     </span>
                   </div>
@@ -137,24 +157,21 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
 
         {rollups && rollups.length > 0 && (
           <div className="flex flex-col gap-0.5">
-            {rollups.map((rollup, index) => {
+            {rollups.map((rollup) => {
               const hex = colors?.find((c) => c.accountId === rollup.accountId)?.hex;
               return (
                 <p
-                  key={index}
+                  key={`${rollup.accountId ?? "none"}-${rollup.label}`}
                   className="flex items-start gap-1.5 text-xs text-muted-foreground"
                 >
-                  {rollup.accountId && (
-                    <span
-                      className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: hex || "var(--muted-foreground)" }}
-                      aria-hidden
-                    />
-                  )}
+                  {rollup.accountId && <AccountDot color={hex} className="mt-1.5" />}
                   <span>
                     {t("chat.cards.briefing.rollup", { count: rollup.count, label: rollup.label })}
                     {rollup.examples && rollup.examples.length > 0 && (
-                      <span className="text-muted-foreground/70"> ({rollup.examples.join(", ")})</span>
+                      <span className="text-muted-foreground/70">
+                        {" "}
+                        ({rollup.examples.join(", ")})
+                      </span>
                     )}
                   </span>
                 </p>
@@ -230,22 +247,23 @@ function BriefingRow({
 
   return (
     <div
-      className={cn("group -mx-2 flex items-start gap-2 rounded-lg px-2 py-1.5", urgent && "tint-warning")}
+      className={cn(
+        "group -mx-2 flex items-start gap-2 rounded-lg px-2 py-1.5",
+        urgent && "tint-warning",
+      )}
     >
       {/* Colour alone can't carry which inbox a row came from — the one thing
           this cross-account layout trades away for density. The dot stays
           decorative; the account name rides along for assistive tech. */}
       <span className="mt-[7px] shrink-0" data-tooltip={account?.name}>
-        <span
-          className="block h-1.5 w-1.5 rounded-full"
-          style={{ backgroundColor: hex || "var(--muted-foreground)" }}
-          aria-hidden
-        />
+        <AccountDot color={hex} className="block" />
         {account && <span className="sr-only">{account.name}</span>}
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-relaxed">
-          {urgent && <AlertTriangle className="mr-1 -mt-0.5 inline-block h-3.5 w-3.5 shrink-0" aria-hidden />}
+          {urgent && (
+            <AlertTriangle className="mr-1 -mt-0.5 inline-block h-3.5 w-3.5 shrink-0" aria-hidden />
+          )}
           <span className="font-medium">{item.sender}</span> {subject}
           <span className="mx-1.5 text-muted-foreground/50">·</span>
           <span className="text-muted-foreground">{item.gist}</span>
@@ -264,35 +282,35 @@ function BriefingRow({
       </div>
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         {item.draftId ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={reviewDraft}
-            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             data-tooltip={t("chat.cards.briefing.reviewDraft")}
             aria-label={t("chat.cards.briefing.reviewDraft")}
           >
-            <Eye className="h-3.5 w-3.5" />
-          </button>
+            <Eye />
+          </Button>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={draftReply}
-            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             data-tooltip={t("chat.cards.briefing.draftReply")}
             aria-label={t("chat.cards.briefing.draftReply")}
           >
-            <PenLine className="h-3.5 w-3.5" />
-          </button>
+            <PenLine />
+          </Button>
         )}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={askAbout}
-          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           data-tooltip={t("chat.cards.briefing.askAbout")}
           aria-label={t("chat.cards.briefing.askAbout")}
         >
-          <MessageCircleQuestion className="h-3.5 w-3.5" />
-        </button>
+          <MessageCircleQuestion />
+        </Button>
       </div>
     </div>
   );

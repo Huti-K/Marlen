@@ -1,22 +1,22 @@
-import * as React from "react";
-import { ChevronDown, ChevronUp, MessageSquareShare, RefreshCw, Sunrise } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { AccountColor, AgentCard, RunFeedItem } from "@trailin/shared";
-import type { View } from "@/lib/nav";
-import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp, MessageSquareShare, RefreshCw, Sunrise } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/feedback";
-import { BriefingCard } from "@/features/chat/cards/BriefingCard";
 import { DigestView, parseDigest } from "@/features/automations/DigestView";
+import { BriefingCard } from "@/features/chat/cards/BriefingCard";
+import { api } from "@/lib/api";
+import type { View } from "@/lib/nav";
 import { openRunInChat } from "@/lib/runNavigation";
 import { cn, errorMessage } from "@/lib/utils";
 
 type BriefingCardData = Extract<AgentCard, { kind: "briefing" }>;
 
-/** The run's structured briefing card, if its turn produced one — a run from
- *  before `compose_briefing` shipped has no `cards` and falls through. */
+/** The run's structured briefing card, if its turn produced one — a run
+ *  whose turn never called `compose_briefing` has no card and falls through. */
 export function findBriefingCard(run: RunFeedItem): BriefingCardData | undefined {
   const match = run.cards?.find((c) => c.card.kind === "briefing");
   return match ? (match.card as BriefingCardData) : undefined;
@@ -24,9 +24,8 @@ export function findBriefingCard(run: RunFeedItem): BriefingCardData | undefined
 
 /** Count of urgent items in a briefing run — exported so GlanceStrip's urgent
  *  figure never drifts from this card's own badge. Prefers the structured
- *  card's own `items`; a run that predates the card (or never got matched to
- *  one) falls back to reverse-parsing the ⚠️-flagged bullets out of the
- *  legacy markdown digest. */
+ *  card's own `items`; a run without a card falls back to reverse-parsing
+ *  the ⚠️-flagged bullets out of the markdown digest. */
 export function countUrgentItems(run: RunFeedItem): number {
   const briefing = findBriefingCard(run);
   if (briefing) return briefing.items.filter((item) => item.priority === "urgent").length;
@@ -41,8 +40,8 @@ export function countUrgentItems(run: RunFeedItem): number {
  * digest-shaped automation run (see HomePanel's heroRun selection), shown
  * expanded above the rest of the activity feed. Three-tier degrade for the
  * body: a structured `BriefingCard` when the run's turn produced one, else
- * the legacy `DigestView` markdown reverse-parse, else (inside DigestView)
- * plain markdown — so runs from every era keep rendering.
+ * the `DigestView` markdown reverse-parse, else (inside DigestView) plain
+ * markdown — so a run whose turn skipped compose_briefing still renders.
  */
 export function BriefingHero({
   run,
@@ -122,9 +121,19 @@ export function BriefingHero({
 
   return (
     <Card as="section" padding="lg" className="animate-in-up flex flex-col gap-3">
+      {/* biome-ignore lint/a11y/useSemanticElements: toggles the card but wraps the real refresh/open-in-chat buttons below — a native <button> can't contain them */}
       <div
         className="flex items-center justify-between gap-3 cursor-pointer"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
         onClick={() => setExpanded(!expanded)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded(!expanded);
+          }
+        }}
       >
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="tint-accent flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
@@ -151,8 +160,7 @@ export function BriefingHero({
           )}
           <Button
             variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            size="icon-sm"
             aria-label={t("home.briefingRefresh")}
             disabled={isRefreshing}
             onClick={(e) => void refresh(e)}
@@ -161,8 +169,7 @@ export function BriefingHero({
           </Button>
           <Button
             variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            size="icon-sm"
             title={t("home.openInChat")}
             aria-label={t("home.openInChat")}
             onClick={openInChat}
@@ -179,7 +186,11 @@ export function BriefingHero({
           {briefingCard ? (
             <BriefingCard card={briefingCard} colors={colors} />
           ) : (
-            <DigestView content={run.result} automationName={run.automationName} runDate={run.startedAt} />
+            <DigestView
+              content={run.result}
+              automationName={run.automationName}
+              runDate={run.startedAt}
+            />
           )}
         </div>
       )}

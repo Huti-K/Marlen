@@ -1,4 +1,4 @@
-import { clsx, type ClassValue } from "clsx";
+import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
@@ -17,6 +17,13 @@ export function errorMessage(error: unknown): string {
  */
 export const UNASSIGNED_ACCOUNT_COLOR = "#616161";
 
+/** Open a URL in a new tab without handing the opener window to the target. */
+export function openExternal(url: string): void {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 /** The modifier the Cmd/Ctrl shortcuts listen for, spelled the way this keyboard prints it. */
 export const MOD_LABEL =
-  typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? "⌘" : "Ctrl";
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+    ? "⌘"
+    : "Ctrl";

@@ -10,6 +10,13 @@ description: Build, run, and drive Trailin (server + web UI) to verify changes e
 `pnpm --filter @trailin/server test` (vitest; tests in `apps/server/test/`,
 mirroring `src/`). Run these before spinning up a server.
 
+Route handlers are testable without a socket: `buildApp()` from `src/app.ts`
+returns the configured Fastify instance, drive it with `app.inject()` (see
+`test/app.test.ts`, `test/routes/memories.test.ts`). `test/setup.ts` gives
+every worker its own scratch DATABASE_PATH and neutralizes credentials, so
+these tests never touch real data or the network. Always `await app.close()`
+in afterAll — it releases the DB handle via an onClose hook.
+
 ## Launch an isolated server instance
 
 The Fastify server serves the built web UI itself when `apps/web/dist` exists,
@@ -26,8 +33,6 @@ DATABASE_PATH=/tmp/<scratch>/verify.db PORT=3111 pnpm exec tsx src/index.ts
 - Config env vars (`PIPEDREAM_*`, `ANTHROPIC_API_KEY`, …) can be set per
   instance to simulate .env fallback states. App-saved settings live in the
   `settings` table of the SQLite DB and win over env.
-- `TRAILIN_DEMO=1` gives a fully seeded fake mailbox — the way to exercise
-  email flows (drafts, sync, waiting, briefing) without real credentials.
 - Don't reuse :3001/:5173 — those may be the user's own `pnpm dev`.
 
 ## Drive the API

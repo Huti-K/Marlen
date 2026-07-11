@@ -1,9 +1,9 @@
-import * as React from "react";
-import { ChevronDown, ChevronRight, MessagesSquare } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { AgentCard, EmailThreadMessage } from "@trailin/shared";
+import { ChevronDown, ChevronRight, MessagesSquare } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { relativeTime } from "@/lib/dates";
-import { CardShell } from "./CardShell";
+import { CardBodyText, CardShell } from "./CardShell";
 
 type EmailThreadData = Extract<AgentCard, { kind: "email_thread" }>;
 
@@ -49,7 +49,7 @@ export function EmailThreadCard({ card, color }: { card: EmailThreadData; color?
       <div className="flex flex-col px-2 pb-2">
         {messages.map((message, index) => (
           <ThreadMessageRow
-            key={index}
+            key={`${message.date}-${message.from}`}
             message={message}
             open={openIndexes.has(index)}
             onToggle={() => toggle(index)}
@@ -88,30 +88,27 @@ function ThreadMessageRow({
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{message.from}</span>
-        <time className="shrink-0 font-mono text-[11px] text-muted-foreground">
+        <time className="shrink-0 font-mono text-2xs text-muted-foreground">
           {relativeTime(message.date, lang)}
         </time>
       </button>
 
       {open && (
         /* Body indents to the sender's text edge, keeping the chevron column clear. */
-        <div className="flex flex-col gap-2 pb-3 pl-[30px] pr-3 pt-0.5">
+        <div className="flex flex-col gap-2 pb-3 pl-7.5 pr-3 pt-0.5">
           {message.to.length > 0 && (
             <p className="truncate text-xs text-muted-foreground">
-              <span className="font-mono text-[11px]">{t("chat.cards.thread.to")}</span>{" "}
+              <span className="font-mono text-2xs">{t("chat.cards.thread.to")}</span>{" "}
               {message.to.join(", ")}
             </p>
           )}
           {message.cc && message.cc.length > 0 && (
             <p className="truncate text-xs text-muted-foreground">
-              <span className="font-mono text-[11px]">{t("chat.cards.thread.cc")}</span>{" "}
+              <span className="font-mono text-2xs">{t("chat.cards.thread.cc")}</span>{" "}
               {message.cc.join(", ")}
             </p>
           )}
-          {/* Literal email body — never markdown, see DraftRow.tsx:133-134. */}
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">
-            {message.body || t("chat.cards.emptyBody")}
-          </p>
+          <CardBodyText text={message.body} />
         </div>
       )}
     </div>

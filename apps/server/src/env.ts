@@ -5,16 +5,12 @@ function optional(name: string): string | undefined {
   return value && value.trim() !== "" ? value.trim() : undefined;
 }
 
-/** Dev-only sandbox: seeded fake accounts/drafts/digests, real Pipedream never called. */
-const demoMode = optional("TRAILIN_DEMO") === "1";
-
 export const env = {
   port: Number(optional("PORT") ?? 3001),
   // Loopback by default: the API has no authentication, so it must not be
   // reachable from the LAN out of the box. Set HOST=0.0.0.0 to expose it
   // deliberately (e.g. a container or a trusted host).
   host: optional("HOST") ?? "127.0.0.1",
-  demoMode,
   isProduction: process.env.NODE_ENV === "production",
   /** pino level: fatal | error | warn | info | debug | trace | silent. */
   logLevel: optional("LOG_LEVEL") ?? "info",
@@ -24,10 +20,7 @@ export const env = {
   // Hard deadline for a single automation run before its agent turn is
   // aborted, so a stuck model/MCP call can't wedge a schedule forever.
   automationRunTimeoutMs: Number(optional("AUTOMATION_RUN_TIMEOUT_MS") ?? 300_000),
-  // Demo mode defaults to a sibling database file so it can never touch the
-  // user's real data — an explicit DATABASE_PATH still always wins.
-  databasePath:
-    optional("DATABASE_PATH") ?? (demoMode ? "./data/demo.db" : "./data/trailin.db"),
+  databasePath: optional("DATABASE_PATH") ?? "./data/trailin.db",
   /** Default drop folder for the document library; a folder saved in the app wins. */
   libraryPath: optional("LIBRARY_PATH") ?? "./data/library",
 

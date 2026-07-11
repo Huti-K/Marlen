@@ -1,5 +1,8 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { Type } from "@sinclair/typebox";
 import { isLanguage, SUPPORTED_LANGUAGES } from "@trailin/shared";
+import { resetSessions } from "../agent/emailAgent.js";
+import { rescheduleAll } from "../automations/scheduler.js";
 import {
   EMAIL_WRITE_SETTING_KEY,
   getAccountColors,
@@ -14,14 +17,26 @@ import {
   setSetting,
   TIMEZONE_SETTING_KEY,
 } from "../db/settings.js";
-import { resetSessions } from "../agent/emailAgent.js";
-import { rescheduleAll } from "../automations/scheduler.js";
 
-export async function settingsRoutes(app: FastifyInstance): Promise<void> {
+const languageBody = Type.Object({ language: Type.String() });
+
+const timezoneBody = Type.Object({ timezone: Type.String() });
+
+const emailWriteBody = Type.Object({ allowWrite: Type.Boolean() });
+
+const accountColorsBody = Type.Object({
+  colors: Type.Array(Type.Object({ accountId: Type.String(), hex: Type.String() })),
+});
+
+const accountDescriptionsBody = Type.Object({
+  descriptions: Type.Array(Type.Object({ accountId: Type.String(), text: Type.String() })),
+});
+
+export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/settings/language", async () => ({ language: await getLanguageSetting() }));
 
-  app.put<{ Body: { language: string } }>("/api/settings/language", async (req, reply) => {
-    const language = req.body?.language;
+  app.put("/api/settings/language", { schema: { body: languageBody } }, async (req, reply) => {
+    const language = req.body.language;
     if (!isLanguage(language)) {
       return reply
         .code(400)
@@ -36,8 +51,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/settings/timezone", async () => ({ timezone: await getTimezoneSetting() }));
 
-  app.put<{ Body: { timezone: string } }>("/api/settings/timezone", async (req, reply) => {
-    const timezone = req.body?.timezone;
+  app.put("/api/settings/timezone", { schema: { body: timezoneBody } }, async (req, reply) => {
+    const timezone = req.body.timezone;
     if (!isValidTimezone(timezone)) {
       return reply.code(400).send({ error: "timezone must be a valid IANA timezone" });
     }
@@ -55,10 +70,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     allowWrite: await getEmailWriteSetting(),
   }));
 
-  app.put<{ Body: { allowWrite: boolean } }>("/api/settings/email-write", async (req, reply) => {
-    if (typeof req.body?.allowWrite !== "boolean") {
-      return reply.code(400).send({ error: "allowWrite must be a boolean" });
-    }
+  app.put("/api/settings/email-write", { schema: { body: emailWriteBody } }, async (req) => {
     await setSetting(EMAIL_WRITE_SETTING_KEY, String(req.body.allowWrite));
     // The guard decides which tools get registered — rebuild agent toolsets.
     await resetSessions();
@@ -71,23 +83,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     colors: await getAccountColors(),
   }));
 
-  app.put<{ Body: { colors: import("@trailin/shared").AccountColor[] } }>(
-    "/api/settings/account-colors",
-    async (req, reply) => {
-      const colors = req.body?.colors;
-      if (!Array.isArray(colors)) {
-        return reply.code(400).send({ error: "colors must be an array" });
-      }
-      // Basic validation: each entry needs accountId and hex
-      for (const c of colors) {
-        if (!c.accountId || !c.hex) {
-          return reply.code(400).send({ error: "each color must have accountId and hex" });
-        }
-      }
-      await setAccountColors(colors);
-      return { colors };
-    },
-  );
+  app.put("/api/settings/account-colors", { schema: { body: accountColorsBody } }, async (req) => {
+    await setAccountColors(req.body.colors);
+    return { colors: req.body.colors };
+  });
 
   // ---- Account descriptions (the "what is this connection for" note) ----
 
@@ -95,23 +94,15 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     descriptions: await getAccountDescriptions(),
   }));
 
-  app.put<{ Body: { descriptions: import("@trailin/shared").AccountDescription[] } }>(
+  app.put(
     "/api/settings/account-descriptions",
-    async (req, reply) => {
-      const descriptions = req.body?.descriptions;
-      if (!Array.isArray(descriptions)) {
-        return reply.code(400).send({ error: "descriptions must be an array" });
-      }
-      for (const d of descriptions) {
-        if (!d.accountId || typeof d.text !== "string") {
-          return reply.code(400).send({ error: "each description must have accountId and text" });
-        }
-      }
-      await setAccountDescriptions(descriptions);
+    { schema: { body: accountDescriptionsBody } },
+    async (req) => {
+      await setAccountDescriptions(req.body.descriptions);
       // Descriptions are baked into each tool's description string, so rebuild
       // in-memory agents to surface the new purpose to the model right away.
       await resetSessions();
-      return { descriptions };
+      return { descriptions: req.body.descriptions };
     },
   );
-}
+};

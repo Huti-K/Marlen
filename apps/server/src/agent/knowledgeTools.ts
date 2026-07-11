@@ -1,17 +1,12 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { formatFileSize, type ConnectedAccount, type MemoryEntry } from "@trailin/shared";
+import { type ConnectedAccount, formatFileSize, type MemoryEntry } from "@trailin/shared";
 import { and, desc, eq, gte, like } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { createMemory, deleteMemory, listMemories, updateMemory } from "../db/memories.js";
-import { getLibraryDir, saveNote, SUPPORTED_FORMATS } from "../library/ingest.js";
+import { getLibraryDir, SUPPORTED_FORMATS, saveNote } from "../library/ingest.js";
+import { getDocument, listDocuments, readDocumentChunks, searchChunks } from "../library/store.js";
 import { listAccounts } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
-import {
-  getDocument,
-  listDocuments,
-  readDocumentChunks,
-  searchChunks,
-} from "../library/store.js";
 
 /**
  * The agent's local knowledge tools: long-term memory plus the document
@@ -28,7 +23,10 @@ const text = (value: string) => ({
 });
 
 /** Case-insensitive match on a connected account's name, or an exact account id. */
-export function findAccount(accounts: ConnectedAccount[], raw: string): ConnectedAccount | undefined {
+export function findAccount(
+  accounts: ConnectedAccount[],
+  raw: string,
+): ConnectedAccount | undefined {
   const trimmed = raw.trim();
   return (
     accounts.find((a) => a.id === trimmed) ??
@@ -321,7 +319,7 @@ const automationHistory: AgentTool = {
       automationName: {
         type: "string",
         description:
-          "Only runs of the automation whose name contains this (partial match), e.g. \"Morning briefing\".",
+          'Only runs of the automation whose name contains this (partial match), e.g. "Morning briefing".',
       },
       days: {
         type: "number",
@@ -340,7 +338,10 @@ const automationHistory: AgentTool = {
       limit?: number;
     };
     const windowDays = Math.max(1, Math.round(days ?? HISTORY_DEFAULT_DAYS));
-    const capped = Math.max(1, Math.min(HISTORY_MAX_LIMIT, Math.round(limit ?? HISTORY_DEFAULT_LIMIT)));
+    const capped = Math.max(
+      1,
+      Math.min(HISTORY_MAX_LIMIT, Math.round(limit ?? HISTORY_DEFAULT_LIMIT)),
+    );
     const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
     const conditions = [gte(schema.automationRuns.startedAt, since)];
@@ -410,7 +411,9 @@ const automationRunRead: AgentTool = {
       .where(eq(schema.automationRuns.id, runId));
 
     if (!row) {
-      return text(`No automation run found for id ${runId} — use automation_history to look up run ids.`);
+      return text(
+        `No automation run found for id ${runId} — use automation_history to look up run ids.`,
+      );
     }
 
     const header =
@@ -492,9 +495,7 @@ export async function buildKnowledgeContext(): Promise<string> {
     context += `\n\nLong-term memory (saved earlier; the user manages these on the Knowledge page):\n${sections.join("\n\n")}`;
   }
 
-  const indexed = (await listDocuments()).filter(
-    (d) => d.status === "indexed" && d.chunkCount > 0,
-  );
+  const indexed = (await listDocuments()).filter((d) => d.status === "indexed" && d.chunkCount > 0);
   if (indexed.length > 0) {
     const shown = indexed.slice(0, LIBRARY_TOC_LIMIT);
     const lines = shown.map((d) => `- ${d.title} (${d.ext})`);

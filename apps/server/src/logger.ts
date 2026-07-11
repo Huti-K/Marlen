@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { pino, type Logger, type TransportSingleOptions, type TransportMultiOptions } from "pino";
+import { type Logger, pino, type TransportMultiOptions, type TransportSingleOptions } from "pino";
 import { env } from "./env.js";
 
 /**
@@ -37,12 +37,7 @@ const SECRET_KEYS = [
   "Cookie",
 ];
 
-const REDACT_PATHS = SECRET_KEYS.flatMap((key) => [
-  key,
-  `*.${key}`,
-  `*.*.${key}`,
-  `*.*.*.${key}`,
-]);
+const REDACT_PATHS = SECRET_KEYS.flatMap((key) => [key, `*.${key}`, `*.*.${key}`, `*.*.*.${key}`]);
 
 const LEVELS = new Set(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
 const level = LEVELS.has(env.logLevel) ? env.logLevel : "info";

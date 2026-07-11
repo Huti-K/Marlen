@@ -1,25 +1,23 @@
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { AccountDescription, AgentCard, ConnectedAccount } from "@trailin/shared";
 import { cardFromMcpResult, toCardAccount } from "../agent/cards.js";
 import { humanizeDraftBody } from "../agent/humanizer.js";
 import { getVoiceFor } from "../agent/voice.js";
-import { buildDemoEmailToolset } from "../demo/emailTools.js";
 import { getAccountDescriptions, getEmailWriteSetting } from "../db/settings.js";
 import "../email/registerProviders.js";
 import "../email/registerAttachmentProviders.js";
-import { getDraftProvider, type CreateDraftInput, type DraftProvider } from "../email/providers.js";
 import { getAttachmentProvider } from "../email/attachmentProviders.js";
-import { env } from "../env.js";
-import { moduleLogger } from "../logger.js";
 import { buildSaveAttachmentTool } from "../email/attachmentTool.js";
+import { type CreateDraftInput, type DraftProvider, getDraftProvider } from "../email/providers.js";
+import { moduleLogger } from "../logger.js";
 import {
+  type ConnectConfig,
   getConnectConfig,
   getPipedreamAccessToken,
   listAccounts,
-  type ConnectConfig,
 } from "./connect.js";
 
 const log = moduleLogger("mcp");
@@ -121,7 +119,10 @@ function allowedInReadOnly(mcpToolName: string): boolean {
 /** Short per-account tool-name suffix, e.g. "kadim" from kadim@gmail.com. */
 export function accountSlug(account: ConnectedAccount): string {
   const local = account.name.split("@")[0] ?? account.name;
-  const slug = local.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24).toLowerCase();
+  const slug = local
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 24)
+    .toLowerCase();
   return slug || account.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6);
 }
 
@@ -146,7 +147,7 @@ type McpToolInfo = Awaited<ReturnType<McpClient["listTools"]>>["tools"][number];
  * loadEmailTools. `session: null` means connectForAccount itself failed
  * (skip the account entirely); `session` set but `mcpTools: null` means the
  * session opened but listTools failed (still build the account's non-MCP
- * tools — draft/attachment — same as before parallelizing this).
+ * tools — draft/attachment).
  */
 interface AccountConnectResult {
   account: ConnectedAccount;
@@ -159,11 +160,11 @@ interface AccountConnectResult {
  * returns the strict read-only subset (see isReadAction) so callers can
  * build the separate toolset background delegate workers get.
  *
- * Takes `mcpTools` rather than fetching it itself — that fetch now runs in
- * parallel across accounts (see loadEmailTools) — so this naming/dedup pass
- * stays synchronous and can still run strictly in account order: which
- * account "wins" a bare tool name on a seenNames collision depends on
- * processing order, and parallelizing the network fetch must not change that.
+ * Takes `mcpTools` rather than fetching it itself: the network fetch runs in
+ * parallel across accounts (see loadEmailTools), while this naming/dedup pass
+ * stays synchronous and runs strictly in account order — which account "wins"
+ * a bare tool name on a seenNames collision depends on processing order, so
+ * that order must stay deterministic.
  */
 function buildAccountTools(
   mcpTools: McpToolInfo[],
@@ -231,20 +232,25 @@ function buildAccountTools(
     if (isReadAction(mcpTool.name)) readTools.push(tool);
   }
   if (skipped.length > 0) {
-    log.debug({ app: account.app, account: account.name, skipped }, "read-only mode dropped write tools");
+    log.debug(
+      { app: account.app, account: account.name, skipped },
+      "read-only mode dropped write tools",
+    );
   }
   return { tools, readTools };
 }
 
 /**
  * Trailin's own create-draft tool for one connected account, generalized
- * over any app with a DraftProvider. The single create-draft tool builder
- * for both the live path here and demo mode (demo/emailTools.ts, always with
- * gmailDrafts.ts's gmailDraftProvider). Replaces Pipedream's own component
+ * over any app with a DraftProvider. Replaces Pipedream's own component
  * with the same kind of tool, so prompts stay natural. Drafts never send
  * anything — allowed even in read-only mode.
  */
-export function buildDraftTool(account: ConnectedAccount, name: string, provider: DraftProvider): AgentTool {
+export function buildDraftTool(
+  account: ConnectedAccount,
+  name: string,
+  provider: DraftProvider,
+): AgentTool {
   return {
     name,
     label: "Create email draft",
@@ -348,11 +354,6 @@ const EMPTY_TOOLSET: EmailToolset = { tools: [], readTools: [], close: async () 
  * to connect are skipped — the agent works with what's left.
  */
 export async function loadEmailTools(): Promise<EmailToolset> {
-  // Demo mode never opens an MCP session or otherwise calls Pipedream — its
-  // tools search/read the seeded MAILBOX instead of what the agent would
-  // normally fetch live.
-  if (env.demoMode) return buildDemoEmailToolset();
-
   const config = await getConnectConfig();
   if (!config) return EMPTY_TOOLSET;
 
@@ -389,22 +390,27 @@ export async function loadEmailTools(): Promise<EmailToolset> {
   // failure can't drop or reorder the others, and every log line below still
   // carries its own account/app fields. The naming/dedup pass that consumes
   // these results stays a separate, synchronous, account-ordered loop (see
-  // buildAccountTools) so tool naming is exactly as deterministic as it was
-  // running fully sequentially.
+  // buildAccountTools) so tool naming stays deterministic.
   const connectResults = await Promise.all(
     accounts.map(async (account): Promise<AccountConnectResult> => {
       let session: McpSession;
       try {
         session = await connectForAccount(account, config);
       } catch (error) {
-        log.warn({ err: error, app: account.app, account: account.name }, "MCP session failed for account");
+        log.warn(
+          { err: error, app: account.app, account: account.name },
+          "MCP session failed for account",
+        );
         return { account, session: null, mcpTools: null };
       }
       try {
         const { tools: mcpTools } = await session.client.listTools();
         return { account, session, mcpTools };
       } catch (error) {
-        log.warn({ err: error, app: account.app, account: account.name }, "listing tools failed for account");
+        log.warn(
+          { err: error, app: account.app, account: account.name },
+          "listing tools failed for account",
+        );
         return { account, session, mcpTools: null };
       }
     }),
@@ -420,10 +426,8 @@ export async function loadEmailTools(): Promise<EmailToolset> {
     sessions.push(session);
     const needsSuffix = (perApp.get(account.app) ?? 0) > 1;
     if (mcpTools) {
-      // buildAccountTools is now pure sync (its own listTools call already
-      // succeeded above), but keep it guarded the way the combined
-      // fetch+build step was before splitting them: one account's tool
-      // assembly failing must not abort the accounts after it in this loop.
+      // One account's tool assembly failing must not abort the accounts
+      // after it in this loop.
       try {
         const bridged = buildAccountTools(
           mcpTools,
@@ -437,7 +441,10 @@ export async function loadEmailTools(): Promise<EmailToolset> {
         tools.push(...bridged.tools);
         readTools.push(...bridged.readTools);
       } catch (error) {
-        log.warn({ err: error, app: account.app, account: account.name }, "building tools failed for account");
+        log.warn(
+          { err: error, app: account.app, account: account.name },
+          "building tools failed for account",
+        );
       }
     }
     const suffix = needsSuffix ? `__${accountSlug(account)}` : "";

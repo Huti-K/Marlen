@@ -5,7 +5,7 @@
  * express stays raw cron behind the "Advanced" toggle.
  */
 
-export type ScheduleFrequency = "daily" | "weekdays" | "custom" | "date";
+type ScheduleFrequency = "daily" | "weekdays" | "custom" | "date";
 
 export interface SchedulePreset {
   frequency: ScheduleFrequency;

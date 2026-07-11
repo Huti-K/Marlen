@@ -1,4 +1,4 @@
-import { sqlite } from "../../db/index.js";
+import { lazyStatement, sqlite } from "../../db/index.js";
 import type { SyncPage } from "./syncProviders.js";
 
 /**
@@ -18,11 +18,11 @@ export interface SyncStateRow {
   lastSyncedAt: string | null;
 }
 
-const selectState = sqlite.prepare(
+const selectState = lazyStatement(
   "SELECT account_id, cursor, status, error, last_synced_at FROM mail_sync_state WHERE account_id = ?",
 );
 
-const upsertState = sqlite.prepare(`
+const upsertState = lazyStatement(`
   INSERT INTO mail_sync_state (account_id, cursor, status, error, last_synced_at)
   VALUES (@account_id, @cursor, @status, @error, @last_synced_at)
   ON CONFLICT(account_id) DO UPDATE SET
@@ -33,7 +33,7 @@ const upsertState = sqlite.prepare(`
 `);
 
 export function getSyncState(accountId: string): SyncStateRow | null {
-  const row = selectState.get(accountId) as
+  const row = selectState().get(accountId) as
     | {
         account_id: string;
         cursor: string | null;
@@ -54,7 +54,7 @@ export function getSyncState(accountId: string): SyncStateRow | null {
 
 function writeState(accountId: string, patch: Partial<Omit<SyncStateRow, "accountId">>): void {
   const current = getSyncState(accountId);
-  upsertState.run({
+  upsertState().run({
     account_id: accountId,
     cursor: patch.cursor !== undefined ? patch.cursor : (current?.cursor ?? null),
     status: patch.status ?? current?.status ?? "idle",
@@ -81,7 +81,7 @@ export function markSyncStatus(
   });
 }
 
-const upsertMessage = sqlite.prepare(`
+const upsertMessage = lazyStatement(`
   INSERT INTO mail_messages (
     id, account_id, thread_id, provider_message_id, provider_thread_id,
     subject, from_addr, to_addrs, cc_addrs, date, snippet, body_text,
@@ -105,22 +105,20 @@ const upsertMessage = sqlite.prepare(`
     synced_at = excluded.synced_at
 `);
 
-const selectMessageThread = sqlite.prepare(
-  "SELECT thread_id FROM mail_messages WHERE id = ?",
-);
-const deleteMessage = sqlite.prepare("DELETE FROM mail_messages WHERE id = ?");
+const selectMessageThread = lazyStatement("SELECT thread_id FROM mail_messages WHERE id = ?");
+const deleteMessage = lazyStatement("DELETE FROM mail_messages WHERE id = ?");
 
-const ftsDelete = sqlite.prepare("DELETE FROM mail_fts WHERE message_id = ?");
-const ftsInsert = sqlite.prepare(
+const ftsDelete = lazyStatement("DELETE FROM mail_fts WHERE message_id = ?");
+const ftsInsert = lazyStatement(
   "INSERT INTO mail_fts (subject, body_text, from_addr, message_id) VALUES (?, ?, ?, ?)",
 );
 
-const selectThreadMessages = sqlite.prepare(`
+const selectThreadMessages = lazyStatement(`
   SELECT provider_thread_id, subject, from_addr, to_addrs, date, is_from_me, is_unread
   FROM mail_messages WHERE thread_id = ? ORDER BY date ASC
 `);
 
-const upsertThread = sqlite.prepare(`
+const upsertThread = lazyStatement(`
   INSERT INTO mail_threads (
     id, account_id, provider_thread_id, subject, participants,
     message_count, last_message_at, has_unread, last_from_me, updated_at
@@ -138,13 +136,13 @@ const upsertThread = sqlite.prepare(`
     updated_at = excluded.updated_at
 `);
 
-const deleteThread = sqlite.prepare("DELETE FROM mail_threads WHERE id = ?");
+const deleteThread = lazyStatement("DELETE FROM mail_threads WHERE id = ?");
 
 /** Cap stored participants — a 200-person CC storm shouldn't bloat the rollup. */
 const MAX_PARTICIPANTS = 25;
 
 function recomputeThread(accountId: string, threadId: string, nowIso: string): void {
-  const rows = selectThreadMessages.all(threadId) as Array<{
+  const rows = selectThreadMessages().all(threadId) as Array<{
     provider_thread_id: string;
     subject: string;
     from_addr: string;
@@ -156,7 +154,7 @@ function recomputeThread(accountId: string, threadId: string, nowIso: string): v
   const first = rows[0];
   const last = rows[rows.length - 1];
   if (first === undefined || last === undefined) {
-    deleteThread.run(threadId);
+    deleteThread().run(threadId);
     return;
   }
   const participants: string[] = [];
@@ -168,7 +166,7 @@ function recomputeThread(accountId: string, threadId: string, nowIso: string): v
       if (participants.length < MAX_PARTICIPANTS) participants.push(addr);
     }
   }
-  upsertThread.run({
+  upsertThread().run({
     id: threadId,
     account_id: accountId,
     provider_thread_id: first.provider_thread_id,
@@ -188,7 +186,7 @@ const applyTxn = sqlite.transaction((accountId: string, page: SyncPage, nowIso: 
   for (const m of page.upserts) {
     const messageId = `${accountId}:${m.providerMessageId}`;
     const threadId = `${accountId}:${m.providerThreadId}`;
-    upsertMessage.run({
+    upsertMessage().run({
       id: messageId,
       account_id: accountId,
       thread_id: threadId,
@@ -206,17 +204,17 @@ const applyTxn = sqlite.transaction((accountId: string, page: SyncPage, nowIso: 
       labels: m.labels.length > 0 ? JSON.stringify(m.labels) : null,
       synced_at: nowIso,
     });
-    ftsDelete.run(messageId);
-    ftsInsert.run(m.subject, m.bodyText, m.from, messageId);
+    ftsDelete().run(messageId);
+    ftsInsert().run(m.subject, m.bodyText, m.from, messageId);
     touchedThreads.add(threadId);
   }
   let deleted = 0;
   for (const providerMessageId of page.deletes) {
     const messageId = `${accountId}:${providerMessageId}`;
-    const existing = selectMessageThread.get(messageId) as { thread_id: string } | undefined;
+    const existing = selectMessageThread().get(messageId) as { thread_id: string } | undefined;
     if (!existing) continue;
-    deleteMessage.run(messageId);
-    ftsDelete.run(messageId);
+    deleteMessage().run(messageId);
+    ftsDelete().run(messageId);
     touchedThreads.add(existing.thread_id);
     deleted++;
   }

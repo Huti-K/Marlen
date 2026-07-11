@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 
 /** Title + description pair shared by top-level section/step headers. */
 export function SectionHeader({

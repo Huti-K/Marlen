@@ -1,5 +1,5 @@
 import type { ConnectedAccount, WaitingThread } from "@trailin/shared";
-import { sqlite } from "../db/index.js";
+import { lazyStatement } from "../db/index.js";
 import { syncAccount } from "./sync/syncEngine.js";
 import { getSyncProvider } from "./sync/syncProviders.js";
 // Side-effect import: populates the SyncProvider registry for accountSupportsWaiting.
@@ -10,7 +10,7 @@ import { threadWebUrl } from "./webLinks.js";
  * "Waiting on others" threads — threads where the user sent the last message
  * and nobody has replied yet — computed from the local mailbox mirror
  * (./sync/) instead of live provider queries. Any app with a SyncProvider
- * gets this for free (Gmail, Outlook, demo alike); the one provider-specific
+ * gets this for free (Gmail and Outlook alike); the one provider-specific
  * ingredient left is the webmail deep link (./webLinks.ts).
  *
  * This replaced the per-provider WaitingProvider registry: the Gmail
@@ -25,7 +25,7 @@ const NO_REPLY_RE = /no-?reply|noreply|newsletter|notification|mailer-daemon/i;
 /** Below this age, whoever we're "waiting on" hasn't reasonably had time to reply yet. */
 const MIN_WAIT_MS = 24 * 60 * 60 * 1000;
 
-/** How far back a sent-and-unanswered thread still counts as "waiting" (the old Gmail path's newer_than:14d window). */
+/** How far back a sent-and-unanswered thread still counts as "waiting". */
 const WAITING_WINDOW_DAYS = 14;
 
 const MAX_ITEMS_PER_ACCOUNT = 10;
@@ -39,7 +39,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * 8601 strings by SyncMessage contract, so lexicographic comparison orders
  * them (the same assumption mailStore's thread recompute already makes).
  */
-const selectWaiting = sqlite.prepare(`
+const selectWaiting = lazyStatement(`
   SELECT
     t.provider_thread_id AS providerThreadId,
     t.subject AS subject,
@@ -76,7 +76,7 @@ export async function listWaiting(
   if (opts.refresh) await syncAccount(account);
 
   const now = Date.now();
-  const rows = selectWaiting.all(
+  const rows = selectWaiting().all(
     account.id,
     new Date(now - WAITING_WINDOW_DAYS * DAY_MS).toISOString(),
     new Date(now - MIN_WAIT_MS).toISOString(),

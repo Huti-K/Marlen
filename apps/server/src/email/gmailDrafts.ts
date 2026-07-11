@@ -7,8 +7,8 @@ import {
   decodeHtmlEntities,
   GMAIL_API,
   headerLookup,
-  plainTextBody,
   type MessagePart,
+  plainTextBody,
 } from "./gmailMessage.js";
 import type { CreateDraftInput, DraftProvider, UpdateDraftPatch } from "./providers.js";
 import { splitAddressList } from "./textUtils.js";
@@ -19,12 +19,8 @@ import { gmailDraftUrl } from "./webLinks.js";
  * prebuilt create-draft component requires a paid workspace (File Stash);
  * the proxy works on every plan and returns clean JSON.
  *
- * Registered as the "gmail" DraftProvider by ./registerProviders.ts (the one
- * registration point) so routes/tools reach it through ./providers.ts's
- * registry — gmailDraftProvider is this module's entire interface. No demo
- * branches in here: in demo mode, registerProviders.ts puts
- * demo/demoDrafts.ts's provider over this one, so this file is only ever
- * reached with a live connected account.
+ * Registered as the "gmail" DraftProvider by ./registerProviders.ts;
+ * gmailDraftProvider is this module's entire interface.
  *
  * `listDrafts` is a pure live fetch — no caching in here. Caching lives one
  * layer up in ./draftsService.ts, shared across every provider; every
@@ -53,9 +49,8 @@ async function listGmailDrafts(account: ConnectedAccount, limit = 15): Promise<E
     params: { maxResults: String(limit) },
   })) as DraftsListResponse;
 
-  // Fetch each draft's metadata in parallel — these are independent Gmail
-  // round-trips, so serializing them made the Home page wait on the sum of
-  // all of them instead of the slowest one.
+  // Fetch each draft's metadata in parallel — independent Gmail round-trips;
+  // the list should wait on the slowest one, not the sum of all of them.
   const settled = await Promise.all(
     (list.drafts ?? []).map(async (entry): Promise<EmailDraft | null> => {
       try {
@@ -166,6 +161,7 @@ function encodeHeaderWord(value: string): string {
  * caller sees a clear failure instead of a silently rewritten recipient list.
  */
 function assertSafeHeaderValue(header: string, value: string): void {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matches CR/LF and other control characters to reject header-injection attempts (see comment above)
   if (/[\x00-\x1f\x7f]/.test(value)) {
     throw new Error(`Invalid ${header} header value: contains a line break or control character.`);
   }
@@ -243,7 +239,10 @@ async function lastMessageThreadingHeaders(
     const references = [header("References"), inReplyTo].filter(Boolean).join(" ");
     return { inReplyTo, references };
   } catch (error) {
-    log.warn({ err: error, accountId: account.id, threadId }, "reply threading headers lookup failed");
+    log.warn(
+      { err: error, accountId: account.id, threadId },
+      "reply threading headers lookup failed",
+    );
     return undefined;
   }
 }
@@ -300,7 +299,10 @@ async function fetchGmailDraftFull(
   const full = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts/${draftId}`, {
     params: { format: "full" },
   })) as {
-    message?: { threadId?: string; payload?: MessagePart & { headers?: { name: string; value: string }[] } };
+    message?: {
+      threadId?: string;
+      payload?: MessagePart & { headers?: { name: string; value: string }[] };
+    };
   };
   const payload = full.message?.payload;
   const header = headerLookup(payload);

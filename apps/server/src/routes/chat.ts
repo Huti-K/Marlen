@@ -1,18 +1,29 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyInstance } from "fastify";
-import { desc, eq, inArray, or, sql } from "drizzle-orm";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { Type } from "@sinclair/typebox";
 import type { ChatStreamEvent, ChatToolCall } from "@trailin/shared";
-import { db, schema, sqlite } from "../db/index.js";
+import { desc, eq, inArray, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
 import { buildSystemPrompt, disposeSession } from "../agent/emailAgent.js";
-import { beginTurn, TurnInFlightError, type Turn } from "../agent/turnRecorder.js";
+import { beginTurn, type Turn, TurnInFlightError } from "../agent/turnRecorder.js";
+import { db, schema, sqlite } from "../db/index.js";
 import { emitServerEvent } from "../events.js";
 import { errorMessage, escapeLikeInput, likePattern } from "../util.js";
 
-interface ChatBody {
-  conversationId?: string;
-  message: string;
-}
+const conversationsQuery = Type.Object({
+  q: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer({ minimum: 1 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0 })),
+});
+
+const idParams = Type.Object({ id: Type.String() });
+
+const conversationTitleBody = Type.Object({ title: Type.String() });
+
+const chatBody = Type.Object({
+  conversationId: Type.Optional(Type.String()),
+  message: Type.String(),
+});
 
 // Conversation ids with a visibly in-flight turn, purely for the history
 // rail's live "responding…" indicator (the `running` flag below). This is
@@ -49,49 +60,47 @@ function parseToolCalls(value: string | null): ChatToolCall[] | undefined {
   }
 }
 
-export async function chatRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: { q?: string; limit?: string; offset?: string } }>(
-    "/api/conversations",
-    async (req) => {
-      const q = req.query.q?.trim();
-      const limit = Math.min(Math.max(parseInt(req.query.limit ?? "", 10) || 50, 1), 200);
-      const offset = Math.max(parseInt(req.query.offset ?? "", 10) || 0, 0);
+export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
+  app.get("/api/conversations", { schema: { querystring: conversationsQuery } }, async (req) => {
+    const q = req.query.q?.trim();
+    const limit = Math.min(req.query.limit ?? 50, 200);
+    const offset = req.query.offset ?? 0;
 
-      // Matches conversations by title, or that contain at least one matching message.
-      const pattern = q ? `%${escapeLikeInput(q)}%` : undefined;
-      const where = pattern
-        ? or(
-            likePattern(schema.conversations.title, pattern),
-            inArray(
-              schema.conversations.id,
-              db
-                .select({ id: schema.messages.conversationId })
-                .from(schema.messages)
-                .where(likePattern(schema.messages.content, pattern)),
-            ),
-          )
-        : undefined;
+    // Matches conversations by title, or that contain at least one matching message.
+    const pattern = q ? `%${escapeLikeInput(q)}%` : undefined;
+    const where = pattern
+      ? or(
+          likePattern(schema.conversations.title, pattern),
+          inArray(
+            schema.conversations.id,
+            db
+              .select({ id: schema.messages.conversationId })
+              .from(schema.messages)
+              .where(likePattern(schema.messages.content, pattern)),
+          ),
+        )
+      : undefined;
 
-      const itemsQuery = db.select().from(schema.conversations);
-      const items = await (where ? itemsQuery.where(where) : itemsQuery)
-        .orderBy(desc(schema.conversations.createdAt))
-        .limit(limit)
-        .offset(offset);
+    const itemsQuery = db.select().from(schema.conversations);
+    const items = await (where ? itemsQuery.where(where) : itemsQuery)
+      .orderBy(desc(schema.conversations.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-      const totalQuery = db.select({ count: sql<number>`count(*)` }).from(schema.conversations);
-      const [totalRow] = await (where ? totalQuery.where(where) : totalQuery);
+    const totalQuery = db.select({ count: sql<number>`count(*)` }).from(schema.conversations);
+    const [totalRow] = await (where ? totalQuery.where(where) : totalQuery);
 
-      return {
-        items: items.map((item) => ({ ...item, running: runningConversations.has(item.id) })),
-        total: Number(totalRow?.count ?? 0),
-      };
-    },
-  );
+    return {
+      items: items.map((item) => ({ ...item, running: runningConversations.has(item.id) })),
+      total: Number(totalRow?.count ?? 0),
+    };
+  });
 
-  app.patch<{ Params: { id: string }; Body: { title: string } }>(
+  app.patch(
     "/api/conversations/:id",
+    { schema: { params: idParams, body: conversationTitleBody } },
     async (req, reply) => {
-      const title = req.body?.title?.trim();
+      const title = req.body.title.trim();
       if (!title) {
         return reply.code(400).send({ error: "title is required" });
       }
@@ -111,7 +120,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.delete<{ Params: { id: string } }>("/api/conversations/:id", async (req, reply) => {
+  app.delete("/api/conversations/:id", { schema: { params: idParams } }, async (req, reply) => {
     const [existing] = await db
       .select({ id: schema.conversations.id })
       .from(schema.conversations)
@@ -141,7 +150,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/chat/system-prompt", async () => ({ prompt: await buildSystemPrompt() }));
 
-  app.get<{ Params: { id: string } }>("/api/conversations/:id/messages", async (req) => {
+  app.get("/api/conversations/:id/messages", { schema: { params: idParams } }, async (req) => {
     const rows = await db
       .select()
       .from(schema.messages)
@@ -149,65 +158,15 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(schema.messages.createdAt);
 
     // The cards column is a JSON blob internally; the API ships parsed cards.
-    let msgs = rows.map(({ cards, toolCalls, ...row }) => ({
+    return rows.map(({ cards, toolCalls, ...row }) => ({
       ...row,
       cards: parseStoredCards(cards),
       toolCalls: parseToolCalls(toolCalls),
     }));
-
-    if (msgs.length === 0) {
-      // Legacy-only fallback: automation runs now write real rows into
-      // `messages` (see automations/scheduler.ts), so this only reconstructs
-      // synthetic messages for runs that predate that change.
-      const runs = await db
-        .select()
-        .from(schema.automationRuns)
-        .where(eq(schema.automationRuns.id, req.params.id))
-        .limit(1);
-
-      if (runs.length > 0) {
-        const run = runs[0];
-        if (run) {
-          const autos = await db
-            .select()
-            .from(schema.automations)
-            .where(eq(schema.automations.id, run.automationId))
-            .limit(1);
-          const auto = autos[0];
-
-          if (auto) {
-            msgs = [
-              {
-                id: req.params.id + "-user",
-                conversationId: req.params.id,
-                role: "user",
-                content: `Scheduled automation "${auto.name}". Execute this instruction now and report the outcome:\n\n${auto.instruction}`,
-                createdAt: run.startedAt,
-                cards: undefined,
-                toolCalls: undefined,
-                error: null,
-              },
-              {
-                id: req.params.id + "-assistant",
-                conversationId: req.params.id,
-                role: "assistant",
-                content: run.result || "Run failed or no result.",
-                createdAt: run.finishedAt || run.startedAt,
-                cards: undefined,
-                toolCalls: undefined,
-                error: null,
-              },
-            ];
-          }
-        }
-      }
-    }
-
-    return msgs;
   });
 
-  app.post<{ Body: ChatBody }>("/api/chat", async (req, reply) => {
-    const message = req.body?.message?.trim();
+  app.post("/api/chat", { schema: { body: chatBody } }, async (req, reply) => {
+    const message = req.body.message.trim();
     if (!message) {
       return reply.code(400).send({ error: "message is required" });
     }
@@ -340,4 +299,4 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       if (!reply.raw.writableEnded) reply.raw.end();
     }
   });
-}
+};

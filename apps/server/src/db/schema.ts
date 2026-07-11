@@ -3,7 +3,9 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 export const conversations = sqliteTable("conversations", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
-  type: text("type", { enum: ["chat", "automation"] }).notNull().default("chat"),
+  type: text("type", { enum: ["chat", "automation"] })
+    .notNull()
+    .default("chat"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -149,7 +151,9 @@ export const mailThreadState = sqliteTable("mail_thread_state", {
   })
     .notNull()
     .default("fyi"),
-  urgency: text("urgency", { enum: ["high", "normal", "low"] }).notNull().default("normal"),
+  urgency: text("urgency", { enum: ["high", "normal", "low"] })
+    .notNull()
+    .default("normal"),
   /** When it must be answered by, in the sender's own terms ("Friday 17:00"). */
   deadline: text("deadline"),
   /** Model id that produced this row; null for error rows. */
@@ -163,7 +167,9 @@ export const mailSyncState = sqliteTable("mail_sync_state", {
   accountId: text("account_id").primaryKey(),
   /** Opaque SyncProvider cursor; null = initial backfill not started/reset. */
   cursor: text("cursor"),
-  status: text("status", { enum: ["idle", "syncing", "error"] }).notNull().default("idle"),
+  status: text("status", { enum: ["idle", "syncing", "error"] })
+    .notNull()
+    .default("idle"),
   error: text("error"),
   lastSyncedAt: text("last_synced_at"),
 });

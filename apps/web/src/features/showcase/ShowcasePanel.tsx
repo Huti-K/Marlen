@@ -15,8 +15,14 @@
  *  App.tsx. Nothing else imports it.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import * as React from "react";
-import { useTranslation } from "react-i18next";
+
+import type {
+  AccountColor,
+  AccountDrafts,
+  AccountWaiting,
+  Automation,
+  EmailThreadMessage,
+} from "@trailin/shared";
 import {
   Bell,
   Check,
@@ -32,41 +38,36 @@ import {
   TriangleAlert,
   Wrench,
 } from "lucide-react";
-import type {
-  AccountColor,
-  AccountDrafts,
-  AccountWaiting,
-  Automation,
-  EmailThreadMessage,
-} from "@trailin/shared";
-import { Button } from "@/components/ui/button";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { ListRow } from "@/components/ui/list-row";
-import { FormField } from "@/components/ui/form-field";
-import { Section } from "@/components/ui/section-header";
+import { Chip } from "@/components/ui/chip";
+import { ColorPicker } from "@/components/ui/color-picker";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FormField } from "@/components/ui/form-field";
 import { IconButton } from "@/components/ui/icon-button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { LinkButton } from "@/components/ui/link-button";
-import { ColorPicker } from "@/components/ui/color-picker";
-import { Chip } from "@/components/ui/chip";
-import { StatusChip } from "@/components/ui/status-chip";
-import { Dialog } from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ListRow } from "@/components/ui/list-row";
 import { Markdown } from "@/components/ui/markdown";
-import { RunStatusBadge } from "@/components/RunStatusBadge";
+import { Section } from "@/components/ui/section-header";
+import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusChip } from "@/components/ui/status-chip";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { AgentCardView } from "@/features/chat/cards";
 import { SHOWCASE_TURNS, type ShowcaseTurn } from "@/features/chat/cards/samples";
 import { GlanceStrip } from "@/features/home/GlanceStrip";
-import { WaitingSection } from "@/features/home/WaitingSection";
 import { ThreadHistory } from "@/features/home/ThreadHistory";
+import { WaitingSection } from "@/features/home/WaitingSection";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -75,11 +76,11 @@ import {
   hexToOklch,
   IDENTITY,
   lightnessOf,
+  type Oklch,
   oklchToHex,
   parseCssColor,
   pivotOf,
   round,
-  type Oklch,
   type Tuning,
 } from "./theme-tuning";
 
@@ -657,7 +658,8 @@ export function ShowcasePanel() {
 
     const rootLines: string[] = [];
     if (shape.radius !== DEFAULT_SHAPE.radius) rootLines.push(`  --radius: ${shape.radius}rem;`);
-    if (shape.shadow !== DEFAULT_SHAPE.shadow) rootLines.push(`  --shadow-strength: ${shape.shadow};`);
+    if (shape.shadow !== DEFAULT_SHAPE.shadow)
+      rootLines.push(`  --shadow-strength: ${shape.shadow};`);
     if (rootLines.length) parts.push(`:root {\n${rootLines.join("\n")}\n}`);
     // UI scale isn't a token — it's the root font size Tailwind's rem scales read.
     if (shape.scale !== DEFAULT_SHAPE.scale) {
@@ -689,8 +691,8 @@ export function ShowcasePanel() {
           Every component in one place, plus a live palette editor. Slide the whole UI brighter,
           punchier or warmer, retouch individual colours underneath, then{" "}
           <span className="font-medium text-foreground">Copy CSS</span> into{" "}
-          <span className="font-mono text-xs">src/index.css</span>. Delete this folder and its
-          route to remove.
+          <span className="font-mono text-xs">src/index.css</span>. Delete this folder and its route
+          to remove.
         </p>
       </div>
 
@@ -728,9 +730,7 @@ export function ShowcasePanel() {
 
         {/* ── Global adjustments ──────────────────────────────────── */}
         <div className="flex flex-col gap-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Colour — applied to every token in the {theme} theme
-          </p>
+          <GroupLabel>Colour — applied to every token in the {theme} theme</GroupLabel>
           {KNOBS.map(({ key, ...knob }) => (
             <Knob
               key={key}
@@ -743,9 +743,7 @@ export function ShowcasePanel() {
         </div>
 
         <div className="flex flex-col gap-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Shape &amp; scale — shared by both themes
-          </p>
+          <GroupLabel>Shape &amp; scale — shared by both themes</GroupLabel>
           {SHAPE_KNOBS.map(({ key, ...knob }) => (
             <Knob
               key={key}
@@ -759,9 +757,7 @@ export function ShowcasePanel() {
 
         {/* ── Base colours ────────────────────────────────────────── */}
         <div className="flex flex-col gap-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Base colours — before adjustments
-          </p>
+          <GroupLabel>Base colours — before adjustments</GroupLabel>
           {base ? (
             <div className="grid gap-x-5 gap-y-3 sm:grid-cols-2">
               {PICKABLE.map(({ name, label }) => (
@@ -769,9 +765,9 @@ export function ShowcasePanel() {
                   <ColorPicker color={baseHex(name)} onSelect={(hex) => setToken(name, hex)} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm">{label}</p>
-                    <p className="font-mono text-[11px] text-muted-foreground">{name}</p>
+                    <p className="font-mono text-2xs text-muted-foreground">{name}</p>
                   </div>
-                  <span className="font-mono text-[11px] uppercase text-muted-foreground">
+                  <span className="font-mono text-2xs uppercase text-muted-foreground">
                     {baseHex(name)}
                   </span>
                 </div>
@@ -798,7 +794,7 @@ export function ShowcasePanel() {
                   />
                   <div className="min-w-0">
                     <p className="truncate text-xs font-medium">{label}</p>
-                    <p className="truncate font-mono text-[10px] uppercase text-muted-foreground">
+                    <p className="truncate font-mono text-3xs uppercase text-muted-foreground">
                       {oklchToHex(tuned)}
                     </p>
                   </div>
@@ -809,16 +805,27 @@ export function ShowcasePanel() {
       </Section>
 
       {/* ── Buttons ───────────────────────────────────────────────── */}
-      <Section title="Buttons" description="Ink primary, tonal fills, no outlines. Hover over the icon buttons below to see the custom cursor tooltip in action.">
+      <Section
+        title="Buttons"
+        description="Ink primary, tonal fills, no outlines. Hover over the icon buttons below to see the custom cursor tooltip in action."
+      >
         <div className="flex flex-wrap items-center gap-3">
           <Button data-tooltip="Default solid button">Default</Button>
-          <Button variant="secondary" data-tooltip="Secondary style">Secondary</Button>
-          <Button variant="outline" data-tooltip="Outline style">Outline</Button>
-          <Button variant="ghost" data-tooltip="Ghost style">Ghost</Button>
+          <Button variant="secondary" data-tooltip="Secondary style">
+            Secondary
+          </Button>
+          <Button variant="outline" data-tooltip="Outline style">
+            Outline
+          </Button>
+          <Button variant="ghost" data-tooltip="Ghost style">
+            Ghost
+          </Button>
           <Button variant="destructive" data-tooltip="Warning: destructive action">
             <Trash2 /> Destructive
           </Button>
-          <Button disabled data-tooltip="This is currently disabled">Disabled</Button>
+          <Button disabled data-tooltip="This is currently disabled">
+            Disabled
+          </Button>
           <Button>
             <Loader2 className="animate-spin" /> Loading
           </Button>
@@ -890,7 +897,10 @@ export function ShowcasePanel() {
       </Section>
 
       {/* ── Form controls ─────────────────────────────────────────── */}
-      <Section title="Form controls" description="Filled fields, no borders; focus lightens the fill.">
+      <Section
+        title="Form controls"
+        description="Filled fields, no borders; focus lightens the fill."
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField id="sc-name" label="Full name" hint="As it appears on your account.">
             <Input id="sc-name" placeholder="Ada Lovelace" />
@@ -901,7 +911,11 @@ export function ShowcasePanel() {
           <FormField id="sc-plan" label="Plan">
             <SelectDemo />
           </FormField>
-          <FormField id="sc-country" label="Country" hint="Searchable — opt-in for long lists only.">
+          <FormField
+            id="sc-country"
+            label="Country"
+            hint="Searchable — opt-in for long lists only."
+          >
             <SearchableSelectDemo />
           </FormField>
           <FormField id="sc-disabled" label="Disabled">
@@ -925,7 +939,10 @@ export function ShowcasePanel() {
       </Section>
 
       {/* ── Cards & rows ──────────────────────────────────────────── */}
-      <Section title="Surfaces" description="Three tones by depth — never a border, never card-in-card.">
+      <Section
+        title="Surfaces"
+        description="Three tones by depth — never a border, never card-in-card."
+      >
         <div className="grid gap-4 sm:grid-cols-3">
           <Card tone="flat">
             <p className="text-sm font-medium">Flat card</p>
@@ -961,10 +978,16 @@ export function ShowcasePanel() {
       {/* ── Toasts ────────────────────────────────────────────────── */}
       <Section title="Toasts" description="Ephemeral system notifications that slide in.">
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={() => toast.success("Your changes have been saved.")} variant="secondary">
+          <Button
+            onClick={() => toast.success("Your changes have been saved.")}
+            variant="secondary"
+          >
             Success toast
           </Button>
-          <Button onClick={() => toast.error("Could not connect to the server.")} variant="secondary">
+          <Button
+            onClick={() => toast.error("Could not connect to the server.")}
+            variant="secondary"
+          >
             Error toast
           </Button>
         </div>
@@ -973,13 +996,13 @@ export function ShowcasePanel() {
       {/* ── Status tints ──────────────────────────────────────────── */}
       <Section title="Status tints" description="The one place semantic colour fills a shape.">
         <div className="flex flex-wrap gap-2">
-          {(["tint-neutral", "tint-accent", "tint-success", "tint-warning", "tint-danger"] as const).map(
-            (tint) => (
-              <span key={tint} className={cn(tint, "rounded-lg px-3 py-1.5 text-xs font-medium")}>
-                {tint.replace("tint-", "")}
-              </span>
-            ),
-          )}
+          {(
+            ["tint-neutral", "tint-accent", "tint-success", "tint-warning", "tint-danger"] as const
+          ).map((tint) => (
+            <span key={tint} className={cn(tint, "rounded-lg px-3 py-1.5 text-xs font-medium")}>
+              {tint.replace("tint-", "")}
+            </span>
+          ))}
         </div>
         {/* One class, every format: only --filetype-h varies. The lightness and
             chroma come from the theme, so the Grain/Saturation knobs move these too. */}
@@ -998,7 +1021,10 @@ export function ShowcasePanel() {
       </Section>
 
       {/* ── Feedback & empty ──────────────────────────────────────── */}
-      <Section title="Feedback & empty states" description="Loading, skeletons, and the nothing-here shape.">
+      <Section
+        title="Feedback & empty states"
+        description="Loading, skeletons, and the nothing-here shape."
+      >
         <LoadingRow label="Loading your drafts…" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-2/3" />
@@ -1072,6 +1098,15 @@ export function ShowcasePanel() {
   );
 }
 
+/** Small uppercase eyebrow above a knob/colour group in the Theme Lab card. */
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 /** A labelled slider with a live readout and a reset that arms once it drifts. */
 function Knob({
   label,
@@ -1103,7 +1138,7 @@ function Knob({
         <Label htmlFor={id} className="text-sm">
           {label}
         </Label>
-        <p className="truncate text-[11px] text-muted-foreground">{hint}</p>
+        <p className="truncate text-2xs text-muted-foreground">{hint}</p>
       </div>
       <input
         id={id}
@@ -1202,6 +1237,9 @@ function ChatTranscript() {
         </div>
       </div>
       {SHOWCASE_TURNS.map((turn, index) => (
+        // SHOWCASE_TURNS is a fixed module-level fixture — same length and
+        // order on every render, so the index is a stable identity here.
+        // biome-ignore lint/suspicious/noArrayIndexKey: static fixture array, never reordered/filtered
         <AssistantTurn key={index} turn={turn} />
       ))}
     </div>
@@ -1218,6 +1256,9 @@ function AssistantTurn({ turn }: { turn: ShowcaseTurn }) {
       {turn.cards?.length ? (
         <div className="flex w-full max-w-[95%] flex-col gap-2">
           {turn.cards.map((card, index) => (
+            // turn.cards comes from the same static fixture — fixed set of
+            // cards, never reordered/filtered.
+            // biome-ignore lint/suspicious/noArrayIndexKey: static fixture array, never reordered/filtered
             <AgentCardView key={index} card={card} colors={DEMO_COLORS} />
           ))}
         </div>
@@ -1227,9 +1268,9 @@ function AssistantTurn({ turn }: { turn: ShowcaseTurn }) {
         <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5 text-sm text-foreground">
           {turn.toolCalls?.length ? (
             <div className={cn("flex flex-wrap gap-1.5", text && "mb-2")}>
-              {turn.toolCalls.map((call, index) => (
+              {turn.toolCalls.map((call) => (
                 <Badge
-                  key={`${call.name}-${index}`}
+                  key={call.name}
                   variant={call.isError ? "destructive" : call.done ? "success" : "muted"}
                 >
                   <Wrench className="h-3 w-3" />

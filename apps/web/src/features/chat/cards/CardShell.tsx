@@ -1,6 +1,7 @@
-import type * as React from "react";
-import type { LucideIcon } from "lucide-react";
 import type { CardAccount } from "@trailin/shared";
+import type { LucideIcon } from "lucide-react";
+import type * as React from "react";
+import { useTranslation } from "react-i18next";
 import { AccountChip } from "./AccountChip";
 
 /**
@@ -37,7 +38,7 @@ export function CardShell({
     <div className="surface-soft overflow-hidden">
       <div className="flex flex-col gap-1 px-4 pb-2.5 pt-3.5">
         <div className="flex items-center justify-between gap-3">
-          <span className="flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+          <span className="flex shrink-0 items-center gap-1.5 font-mono text-3xs uppercase tracking-[0.12em] text-muted-foreground">
             <Icon className="h-3 w-3 shrink-0" aria-hidden />
             {label}
             {meta && (
@@ -56,5 +57,18 @@ export function CardShell({
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * Literal email body text. Never markdown: bodies are foreign content, and
+ * rendering their syntax would restyle what the sender actually wrote.
+ */
+export function CardBodyText({ text }: { text?: string | null }) {
+  const { t } = useTranslation();
+  return (
+    <p className="whitespace-pre-wrap text-sm leading-relaxed">
+      {text || t("chat.cards.emptyBody")}
+    </p>
   );
 }

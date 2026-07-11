@@ -9,22 +9,25 @@ export function CursorTooltip() {
       const target = e.target as HTMLElement;
       // Find elements explicitly requesting a tooltip OR clickable elements with an accessible name
       const tooltipElement = target.closest(
-        "[data-tooltip], button[aria-label], a[aria-label], [role='button'][aria-label], button[title], a[title], [role='button'][title], [data-restored-title]"
+        "[data-tooltip], button[aria-label], a[aria-label], [role='button'][aria-label], button[title], a[title], [role='button'][title], [data-restored-title]",
       ) as HTMLElement;
-      
+
       if (tooltipElement) {
-        const text = 
-          tooltipElement.getAttribute("data-tooltip") || 
-          tooltipElement.getAttribute("aria-label") || 
+        const text =
+          tooltipElement.getAttribute("data-tooltip") ||
+          tooltipElement.getAttribute("aria-label") ||
           tooltipElement.getAttribute("title") ||
           tooltipElement.getAttribute("data-restored-title");
-          
+
         if (text && text.trim() !== "") {
           setTooltip({ text: text.trim(), x: e.clientX, y: e.clientY });
-          
+
           // Suppress the slow, native browser tooltip
           if (tooltipElement.hasAttribute("title")) {
-            tooltipElement.setAttribute("data-restored-title", tooltipElement.getAttribute("title") || "");
+            tooltipElement.setAttribute(
+              "data-restored-title",
+              tooltipElement.getAttribute("title") || "",
+            );
             tooltipElement.removeAttribute("title");
           }
           return;
@@ -49,10 +52,7 @@ export function CursorTooltip() {
 
   if (!tooltip) return null;
 
-  return createPortal(
-    <TooltipContent tooltip={tooltip} />,
-    document.body
-  );
+  return createPortal(<TooltipContent tooltip={tooltip} />, document.body);
 }
 
 function TooltipContent({ tooltip }: { tooltip: { text: string; x: number; y: number } }) {
@@ -69,7 +69,7 @@ function TooltipContent({ tooltip }: { tooltip: { text: string; x: number; y: nu
       if (left + rect.width > window.innerWidth - 8) {
         left = tooltip.x - rect.width - 8;
       }
-      
+
       // Flip above if it overflows the bottom edge
       if (top + rect.height > window.innerHeight - 8) {
         top = tooltip.y - rect.height - 8;

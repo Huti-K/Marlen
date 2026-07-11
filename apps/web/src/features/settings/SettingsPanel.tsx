@@ -1,4 +1,11 @@
-import * as React from "react";
+import {
+  type AppStatus,
+  isLanguage,
+  LANGUAGE_LABELS,
+  type LlmProviderInfo,
+  type ModelSettings,
+  SUPPORTED_LANGUAGES,
+} from "@trailin/shared";
 import {
   Check,
   DatabaseBackup,
@@ -10,31 +17,24 @@ import {
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
+import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
-import {
-  LANGUAGE_LABELS,
-  SUPPORTED_LANGUAGES,
-  isLanguage,
-  type AppStatus,
-  type LlmProviderInfo,
-  type ModelSettings,
-} from "@trailin/shared";
-import { api } from "@/lib/api";
-import { rememberLanguage } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { ListRow } from "@/components/ui/list-row";
 import { Section } from "@/components/ui/section-header";
+import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
-import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
-import { useQuickActionMode, type QuickActionMode } from "@/lib/quickActions";
-import { useTheme, type ThemePref } from "@/lib/useTheme";
 import { ConnectionsPanel } from "@/features/connections/ConnectionsPanel";
-import { WriteAccess } from "@/features/settings/WriteAccess";
 import { Providers } from "@/features/settings/Providers";
+import { WriteAccess } from "@/features/settings/WriteAccess";
+import { api } from "@/lib/api";
+import { rememberLanguage } from "@/lib/i18n";
+import { type QuickActionMode, useQuickActionMode } from "@/lib/quickActions";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage } from "@/lib/utils";
+import { type ThemePref, useTheme } from "@/lib/useTheme";
+import { errorMessage } from "@/lib/utils";
 
 export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => void }) {
   const { t } = useTranslation();
@@ -181,7 +181,12 @@ function BackupRow() {
         <Label className="text-sm font-medium">{t("settings.backup.label")}</Label>
         <p className="text-xs text-muted-foreground">{t("settings.backup.description")}</p>
       </div>
-      <Button variant="secondary" size="sm" className="shrink-0" onClick={() => api.downloadBackup()}>
+      <Button
+        variant="secondary"
+        size="sm"
+        className="shrink-0"
+        onClick={() => api.downloadBackup()}
+      >
         <Download />
         {t("settings.backup.cta")}
       </Button>

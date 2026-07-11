@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import cron, { type ScheduledTask } from "node-cron";
 import { eq } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import cron, { type ScheduledTask } from "node-cron";
 import { beginTurn, serializeTurnCards } from "../agent/turnRecorder.js";
+import { db, schema } from "../db/index.js";
 import { getTimezoneSetting } from "../db/settings.js";
 import { env } from "../env.js";
 import { emitServerEvent } from "../events.js";
@@ -24,8 +24,8 @@ const RUN_TIMEOUT_MS =
     ? env.automationRunTimeoutMs
     : 300_000;
 
-// Demo mode never calls startScheduler(), so nothing may create cron tasks
-// behind its back — rescheduleAll() has to stay inert until boot scheduled.
+// Nothing may create cron tasks before boot has scheduled everything —
+// rescheduleAll() has to stay inert until startScheduler() runs.
 let schedulerStarted = false;
 
 export function isValidCron(expression: string): boolean {
@@ -322,4 +322,11 @@ export async function startScheduler(): Promise<void> {
   }
   schedulerStarted = true;
   log.info({ count: tasks.size }, "automations scheduled");
+}
+
+/** Destroy every cron task and re-latch; only startScheduler() re-arms scheduling. */
+export function stopScheduler(): void {
+  schedulerStarted = false;
+  for (const task of tasks.values()) void task.destroy();
+  tasks.clear();
 }

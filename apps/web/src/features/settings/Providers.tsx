@@ -1,17 +1,17 @@
-import * as React from "react";
-import { ExternalLink, Loader2, Plus, X } from "lucide-react";
-import { Trans, useTranslation } from "react-i18next";
 import type { LlmProviderInfo, LoginFlowStatus } from "@trailin/shared";
-import { api } from "@/lib/api";
+import { ExternalLink, Loader2, Plus, X } from "lucide-react";
+import * as React from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { LoadingRow } from "@/components/ui/feedback";
 import { Card } from "@/components/ui/card";
-import { ListRow } from "@/components/ui/list-row";
+import { LoadingRow, Notice } from "@/components/ui/feedback";
 import { IconButton } from "@/components/ui/icon-button";
+import { Input } from "@/components/ui/input";
+import { ListRow } from "@/components/ui/list-row";
+import { Select } from "@/components/ui/select";
+import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage } from "@/lib/utils";
+import { cn, errorMessage, openExternal } from "@/lib/utils";
 
 /**
  * Provider list + sign-in flows (subscription OAuth or API key).
@@ -103,12 +103,7 @@ export function Providers({
           onClose={() => setAdding(false)}
         />
       ) : (
-        <Button
-          variant="secondary"
-          size="sm"
-          className="w-fit"
-          onClick={() => setAdding(true)}
-        >
+        <Button variant="secondary" size="sm" className="w-fit" onClick={() => setAdding(true)}>
           <Plus /> {t("settings.addApiKey")}
         </Button>
       )}
@@ -277,30 +272,30 @@ function ApiKeyEditor({
 function LoginFlowCard({ flow, onClose }: { flow: LoginFlowStatus; onClose: () => void }) {
   const { t } = useTranslation();
   const [input, setInput] = React.useState("");
+  // Narrowed once so the sign-in button's closure below doesn't need a
+  // non-null assertion — property narrowing doesn't cross closure boundaries.
+  const authUrl = flow.authUrl;
 
   if (flow.done) {
     return (
-      <div
-        className={cn(
-          "flex items-start justify-between gap-3 rounded-lg p-3.5 text-sm",
-          flow.error ? "tint-danger" : "tint-success",
-        )}
+      <Notice
+        tone={flow.error ? "danger" : "success"}
+        onDismiss={onClose}
+        className="flex items-start justify-between gap-3"
       >
         <p>
           {flow.error ??
             t("settings.signedInWith", { provider: flow.providerName ?? flow.providerId })}
         </p>
-        <IconButton onClick={onClose} aria-label={t("common.dismiss")}>
-          <X className="h-4 w-4" />
-        </IconButton>
-      </div>
+      </Notice>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg bg-accent/10 p-3.5">
+    <Notice tone="accent" className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <p className="flex items-center gap-2 text-sm font-medium">
+        {/* tint-accent also tints text; restore the default ink since this row relies on it. */}
+        <p className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Loader2 className="h-4 w-4 animate-spin text-accent" />
           {t("settings.signingInWith", { provider: flow.providerName ?? flow.providerId })}
         </p>
@@ -341,13 +336,9 @@ function LoginFlowCard({ flow, onClose }: { flow: LoginFlowStatus; onClose: () =
         </div>
       )}
 
-      {flow.authUrl && (
+      {authUrl && (
         <div className="flex flex-col gap-1.5">
-          <Button
-            size="sm"
-            className="w-fit"
-            onClick={() => window.open(flow.authUrl, "_blank", "noopener,noreferrer")}
-          >
+          <Button size="sm" className="w-fit" onClick={() => openExternal(authUrl)}>
             <ExternalLink /> {t("settings.openSignInPage")}
           </Button>
           {flow.instructions && (
@@ -363,13 +354,19 @@ function LoginFlowCard({ flow, onClose }: { flow: LoginFlowStatus; onClose: () =
               i18nKey="settings.enterCodeAt"
               values={{ uri: flow.deviceCode.verificationUri }}
               components={{
+                // Trans clones this element and replaces its children with the
+                // translation string's interpolated `{{uri}}` (verificationUri)
+                // at render time — the fallback text below matches that value,
+                // so the anchor always has real accessible content.
                 uri: (
                   <a
                     href={flow.deviceCode.verificationUri}
                     target="_blank"
                     rel="noreferrer"
                     className="text-accent underline"
-                  />
+                  >
+                    {flow.deviceCode.verificationUri}
+                  </a>
                 ),
               }}
             />
@@ -406,6 +403,6 @@ function LoginFlowCard({ flow, onClose }: { flow: LoginFlowStatus; onClose: () =
         </div>
       )}
       {flow.prompt && <p className="text-xs text-muted-foreground">{flow.prompt.message}</p>}
-    </div>
+    </Notice>
   );
 }

@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,7 +17,9 @@ export function Chip({
       aria-pressed={active}
       className={cn(
         "flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors",
-        active ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground hover:text-foreground",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "bg-surface-2 text-muted-foreground hover:text-foreground",
         className,
       )}
       {...props}

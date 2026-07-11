@@ -7,7 +7,6 @@ import type {
 } from "@trailin/shared";
 import { EMAIL_APPS, POPULAR_APPS } from "@trailin/shared";
 import { deleteSetting, getSetting, setSetting } from "../db/settings.js";
-import { getDemoAccounts } from "../demo/accounts.js";
 import { env } from "../env.js";
 
 /**
@@ -105,26 +104,10 @@ export async function getConnectConfig(): Promise<ConnectConfig | null> {
 }
 
 export async function pipedreamConfigured(): Promise<boolean> {
-  if (env.demoMode) return true;
   return (await getConnectConfig()) !== null;
 }
 
 export async function getPipedreamStatus(): Promise<PipedreamStatus> {
-  // Demo mode reports a working built-in connection (matching
-  // pipedreamConfigured above) so the Settings UI shows the seeded accounts
-  // instead of the setup form — nothing ever calls out to Pipedream.
-  if (env.demoMode) {
-    return {
-      configured: true,
-      mode: "builtin",
-      builtinAvailable: true,
-      source: null,
-      clientId: null,
-      projectId: null,
-      environment: "development",
-      hasClientSecret: false,
-    };
-  }
   const [useCustom, config] = await Promise.all([getUseCustom(), getConnectConfig()]);
   return {
     configured: config !== null,
@@ -182,13 +165,6 @@ function buildClient(config: ConnectConfig): PipedreamClient {
 }
 
 async function getClient(): Promise<{ pd: PipedreamClient; config: ConnectConfig }> {
-  // Single choke point: every function that ever talks to Pipedream (proxy
-  // requests, account listing/deletion, connect tokens, app search) routes
-  // through here, so this is where demo mode refuses to make a live call —
-  // even if real credentials happen to be configured too.
-  if (env.demoMode) {
-    throw new Error("Demo mode: Pipedream is disabled, nothing calls out to it.");
-  }
   const config = await getConnectConfig();
   if (!config) {
     throw new Error(
@@ -236,20 +212,18 @@ export async function createConnectToken(app: string): Promise<ConnectTokenRespo
   return {
     token: res.token,
     connectLinkUrl: url.toString(),
-    expiresAt:
-      res.expiresAt instanceof Date ? res.expiresAt.toISOString() : String(res.expiresAt),
+    expiresAt: res.expiresAt instanceof Date ? res.expiresAt.toISOString() : String(res.expiresAt),
     externalUserId: config.externalUserId,
   };
 }
 
 /**
  * `listAccounts` cache: a live Pipedream accounts.list call is a real
- * round-trip (paginated, one HTTP request per page), and it used to run on
- * every call — including every browser tab focus, and every one of
- * /api/status, /api/drafts, /api/waiting and Settings hitting it
- * independently on the same page load. A short TTL plus in-flight dedup
- * turns "N callers on boot" into "one Pipedream request", without ever
- * serving data older than the TTL.
+ * round-trip (paginated, one HTTP request per page), and many callers hit it
+ * independently — every browser tab focus, plus /api/status, /api/drafts,
+ * /api/waiting and Settings on the same page load. A short TTL plus
+ * in-flight dedup turns N concurrent callers into one Pipedream request,
+ * without ever serving data older than the TTL.
  *
  * Failed fetches never populate `accountsCache` — a broken/rate-limited
  * Pipedream call simply keeps throwing to its caller (who already handles
@@ -264,8 +238,8 @@ let accountsCache: { accounts: ConnectedAccount[]; expiresAt: number } | null = 
 let accountsInFlight: Promise<ConnectedAccount[]> | null = null;
 /**
  * Generation accountsInFlight was dispatched under, paired with
- * accountsGeneration below — same bug shape (and same fix) as
- * draftsService.ts's per-account generation counter: a fetch dispatched
+ * accountsGeneration below — same generation-counter pattern as
+ * draftsService.ts's per-account one: a fetch dispatched
  * under old credentials/state must not repopulate accountsCache, or be
  * joined by a new caller, once invalidateAccountsCache has moved the
  * generation on.
@@ -316,8 +290,6 @@ async function fetchAccountsLive(): Promise<ConnectedAccount[]> {
  * still joins an in-flight fetch rather than starting a second one.
  */
 export async function listAccounts(opts: { refresh?: boolean } = {}): Promise<ConnectedAccount[]> {
-  if (env.demoMode) return getDemoAccounts();
-
   if (!opts.refresh && accountsCache && accountsCache.expiresAt > Date.now()) {
     return accountsCache.accounts;
   }
@@ -325,7 +297,8 @@ export async function listAccounts(opts: { refresh?: boolean } = {}): Promise<Co
   // Only join an in-flight fetch dispatched under the current generation —
   // one left over from before an invalidateAccountsCache call is stale, so
   // fall through and start a fresh fetch instead of joining it.
-  if (accountsInFlight && accountsInFlightGeneration === accountsGeneration) return accountsInFlight;
+  if (accountsInFlight && accountsInFlightGeneration === accountsGeneration)
+    return accountsInFlight;
 
   const gen = accountsGeneration;
   const promise: Promise<ConnectedAccount[]> = fetchAccountsLive()
@@ -368,17 +341,18 @@ const DEFAULT_APP_NAME_OVERRIDES: Record<string, string> = {
   slack_bot: "Slack",
 };
 
-async function resolveApp(
-  pd: PipedreamClient,
-  slug: string,
-): Promise<PipedreamApp | null> {
+async function resolveApp(pd: PipedreamClient, slug: string): Promise<PipedreamApp | null> {
   // A slug query isn't guaranteed to rank the exact app first, so pull a few
   // and pick the exact slug match.
   const page = await pd.apps.list({ q: slug, limit: 5 });
   for await (const app of page) {
     const a = app as { nameSlug?: string; name?: string; imgSrc?: string };
     if (a.nameSlug === slug && a.name) {
-      return { slug: a.nameSlug, name: DEFAULT_APP_NAME_OVERRIDES[slug] ?? a.name, imgSrc: a.imgSrc };
+      return {
+        slug: a.nameSlug,
+        name: DEFAULT_APP_NAME_OVERRIDES[slug] ?? a.name,
+        imgSrc: a.imgSrc,
+      };
     }
   }
   return null;
@@ -431,7 +405,9 @@ export async function proxyRequest(
   };
   if (method === "get") return pd.proxy.get(request);
   if (method === "delete") return pd.proxy.delete(request);
-  if (method === "put") return pd.proxy.put({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
-  if (method === "patch") return pd.proxy.patch({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
+  if (method === "put")
+    return pd.proxy.put({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
+  if (method === "patch")
+    return pd.proxy.patch({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
   return pd.proxy.post({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
 }

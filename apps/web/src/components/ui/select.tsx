@@ -1,7 +1,7 @@
+import { Check, ChevronDown } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import { ChevronDown, Check } from "lucide-react";
 
 const LIST_MAX_HEIGHT = 240; // matches the old max-h-60 cap
 const LIST_MIN_HEIGHT = 128; // never squeeze below ~4 rows, even on short windows
@@ -63,7 +63,7 @@ export function Select({
   const keyNav = React.useRef(false);
 
   const selectedOption = options.find((o) => o.value === value);
-  const displayValue = searchable && isOpen ? search : (selectedOption?.label || "");
+  const displayValue = searchable && isOpen ? search : selectedOption?.label || "";
 
   const filteredOptions = searchable
     ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
@@ -81,7 +81,7 @@ export function Select({
     const dropUp = spaceBelow < needed && spaceBelow < LIST_MIN_HEIGHT && spaceAbove > spaceBelow;
     const maxHeight = Math.min(
       LIST_MAX_HEIGHT,
-      Math.max(LIST_MIN_HEIGHT, dropUp ? spaceAbove : spaceBelow)
+      Math.max(LIST_MIN_HEIGHT, dropUp ? spaceAbove : spaceBelow),
     );
     setPlacement({ dropUp, maxHeight });
   };
@@ -89,7 +89,12 @@ export function Select({
   const open = () => {
     measurePlacement();
     setSearch("");
-    setHighlighted(Math.max(0, options.findIndex((o) => o.value === value)));
+    setHighlighted(
+      Math.max(
+        0,
+        options.findIndex((o) => o.value === value),
+      ),
+    );
     setIsOpen(true);
   };
   const close = () => {
@@ -119,6 +124,7 @@ export function Select({
   }, [isOpen]);
 
   // Keep the active row visible while arrowing through a long list.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: highlighted isn't read here — it drives which DOM node the [data-highlighted] query matches after re-render, so the effect must re-run whenever it changes
   React.useEffect(() => {
     if (!isOpen || !keyNav.current) return;
     scrollRowIntoView(listRef.current, '[data-highlighted="true"]');
@@ -199,7 +205,7 @@ export function Select({
           aria-hidden
           className={cn(
             "pointer-events-none absolute right-2.5 h-4 w-4 text-muted-foreground transition-transform duration-200",
-            isOpen && "rotate-180"
+            isOpen && "rotate-180",
           )}
         />
       </div>
@@ -212,7 +218,7 @@ export function Select({
           style={{ maxHeight: placement.maxHeight }}
           className={cn(
             "surface-pop absolute z-50 flex w-full flex-col gap-0.5 overflow-y-auto p-1",
-            placement.dropUp ? "animate-in-down bottom-full mb-1" : "animate-in-up mt-1"
+            placement.dropUp ? "animate-in-down bottom-full mb-1" : "animate-in-up mt-1",
           )}
         >
           {filteredOptions.length === 0 ? (
@@ -224,6 +230,12 @@ export function Select({
               const isSelected = value === option.value;
               const isActive = index === highlighted;
               return (
+                // Options stay out of the tab order by design: the input above is the
+                // combobox's one real focus target, and aria-activedescendant (set from
+                // `highlighted`) plus the input's own onKeyDown carry all keyboard
+                // interaction — giving each option its own tab stop would fight that.
+                // biome-ignore lint/a11y/useFocusableInteractive: aria-activedescendant pattern — the input owns focus, not the option
+                // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard interaction goes through the input's onKeyDown, not this row
                 <div
                   key={option.value}
                   id={`${id}-option-${index}`}
@@ -245,7 +257,7 @@ export function Select({
                         : "bg-accent/18 text-accent"
                       : isActive
                         ? "bg-surface-2 text-foreground"
-                        : "text-foreground"
+                        : "text-foreground",
                   )}
                 >
                   <span className="flex-1 truncate">{option.label}</span>

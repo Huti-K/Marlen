@@ -1,10 +1,12 @@
-import * as React from "react";
-import { ChevronDown, ChevronUp, ExternalLink, Hourglass, PenLine } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { AccountColor, AccountWaiting } from "@trailin/shared";
+import { ExternalLink, Hourglass, PenLine } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { AccountDot } from "@/components/ui/account-dot";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
+import { ListRow } from "@/components/ui/list-row";
+import { CollapsibleSectionTitle } from "@/features/home/CollapsibleSectionTitle";
+import { openExternal } from "@/lib/utils";
 
 /**
  * "Waiting on others" — sent threads nobody has replied to yet, flattened
@@ -25,7 +27,11 @@ export function WaitingSection({
   const items = React.useMemo(
     () =>
       (waiting ?? []).flatMap((account) =>
-        account.items.map((item) => ({ ...item, account: account.account, accountId: account.accountId })),
+        account.items.map((item) => ({
+          ...item,
+          account: account.account,
+          accountId: account.accountId,
+        })),
       ),
     [waiting],
   );
@@ -55,38 +61,25 @@ export function WaitingSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2
-        className="flex items-center gap-2.5 text-base font-semibold tracking-tight cursor-pointer hover:text-muted-foreground transition-colors select-none"
-        onClick={() => setIsExpanded(!isExpanded)}
-        title={isExpanded ? "Collapse" : "Expand"}
-      >
-        <div className="tint-accent flex h-7 w-7 items-center justify-center rounded-md">
-          <Hourglass className="h-4 w-4" />
-        </div>
-        {t("home.waitingTitle")}
-        <Badge variant="muted">{items.length}</Badge>
-        {isExpanded ? (
-          <ChevronUp className="h-4 w-4 text-muted-foreground ml-1" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-muted-foreground ml-1" />
-        )}
-      </h2>
+      <CollapsibleSectionTitle
+        icon={Hourglass}
+        title={t("home.waitingTitle")}
+        count={items.length}
+        expanded={isExpanded}
+        onToggle={() => setIsExpanded(!isExpanded)}
+      />
 
       {isExpanded && (
         <div className="flex flex-col gap-3">
           {items.map((item, i) => (
-            <div
+            <ListRow
               key={`${item.accountId}-${item.threadId}`}
-              className="animate-in-up flex items-center gap-3 rounded-lg bg-surface-2 px-3.5 py-3"
+              className="animate-in-up"
               style={{ animationDelay: `${i * 45}ms` }}
             >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{
-                  backgroundColor:
-                    colors.find((c) => c.accountId === item.accountId)?.hex ??
-                    UNASSIGNED_ACCOUNT_COLOR,
-                }}
+              <AccountDot
+                className="h-2.5 w-2.5"
+                color={colors.find((c) => c.accountId === item.accountId)?.hex}
               />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{item.subject}</p>
@@ -97,9 +90,8 @@ export function WaitingSection({
               <div className="flex shrink-0 items-center">
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  onClick={() => window.open(item.webUrl, "_blank", "noopener,noreferrer")}
+                  size="icon-sm"
+                  onClick={() => openExternal(item.webUrl)}
                   title={t("drafts.open")}
                   aria-label={t("drafts.open")}
                 >
@@ -107,8 +99,8 @@ export function WaitingSection({
                 </Button>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:bg-accent/10 hover:text-accent"
+                  size="icon-sm"
+                  className="hover:bg-accent/10 hover:text-accent"
                   onClick={() => nudge(item.counterpart, item.subject, item.account)}
                   title={t("home.waitingNudge")}
                   aria-label={t("home.waitingNudge")}
@@ -116,7 +108,7 @@ export function WaitingSection({
                   <PenLine className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
+            </ListRow>
           ))}
         </div>
       )}

@@ -44,7 +44,7 @@ Steps:
 /** Strips a wrapping ``` fence if the model added one despite being told not to (see humanizer.ts). */
 function stripCodeFence(text: string): string {
   const match = text.match(/^```[^\n]*\n([\s\S]*)\n```$/);
-  return match ? match[1]!.trim() : text;
+  return match ? (match[1] ?? "").trim() : text;
 }
 
 interface LearnedVoice {
@@ -196,7 +196,7 @@ export async function learnAccountVoice(accountId: string): Promise<AccountVoice
 
   // Write-then-delete: create the new style memories and persist the voice
   // record pointing at them FIRST, and only then delete the previous learn
-  // run's memories. Deleting first (the old order) meant a mid-run failure,
+  // run's memories. Deleting first would mean a mid-run failure,
   // or a directive silently skipped below, could leave the account with
   // fewer/no style directives and styleMemoryIds pointing at nothing — an
   // orphaned old memory is recoverable by hand, a lost voice is not.
@@ -274,7 +274,9 @@ export function buildVoiceLearnTool(): AgentTool {
           accounts.find((a) => a.name.toLowerCase() === trimmed.toLowerCase());
         if (!resolved) {
           const list =
-            accounts.length > 0 ? accounts.map((a) => a.name).join(", ") : "no accounts are connected";
+            accounts.length > 0
+              ? accounts.map((a) => a.name).join(", ")
+              : "no accounts are connected";
           return {
             content: [
               {

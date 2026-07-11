@@ -1,8 +1,8 @@
+import { isLanguage, type Language } from "@trailin/shared";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
-import { isLanguage, type Language } from "@trailin/shared";
-import en from "@/locales/en.json";
 import de from "@/locales/de.json";
+import en from "@/locales/en.json";
 
 const STORAGE_KEY = "trailin-language";
 
@@ -11,7 +11,7 @@ const STORAGE_KEY = "trailin-language";
  * localStorage), falling back to the browser locale. The server setting is the
  * source of truth — App syncs against it on load.
  */
-export function detectInitialLanguage(): Language {
+function detectInitialLanguage(): Language {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (isLanguage(saved)) return saved;
   const browser = navigator.language.slice(0, 2).toLowerCase();

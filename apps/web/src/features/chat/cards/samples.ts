@@ -5,18 +5,17 @@ import type { AgentCard, CardAccount } from "@trailin/shared";
  * assistant can render in chat — tool-activity chips, every card (including
  * the empty state), a formatted markdown reply, and the thinking shimmer.
  *
- * Email content is in the demo persona's voice (see
- * apps/server/src/demo/content.ts): Selin Kaya, Nordwind Studio co-founder,
- * juggling a billing dispute with Acme GmbH on her work inbox and a holiday
- * booking on her personal one. Commentary between samples is localized via
- * `contentKey`. `imgSrc` is left unset, same as the real demo accounts — this
- * also exercises AccountChip's icon fallback.
+ * Email content is written in a consistent sample persona's voice: Selin
+ * Kaya, Nordwind Studio co-founder, juggling a billing dispute with Acme
+ * GmbH on her work inbox and a holiday booking on her personal one.
+ * Commentary between samples is localized via `contentKey`. `imgSrc` is
+ * left unset — this also exercises AccountChip's icon fallback.
  */
 
 export type ShowcaseTurn = {
   /** i18n key for UI-language commentary; wins over `content`. */
   contentKey?: string;
-  /** Literal sample content (demo-persona German). */
+  /** Literal sample content (sample-persona German). */
   content?: string;
   toolCalls?: { name: string; isError: boolean; done: boolean }[];
   cards?: AgentCard[];
@@ -61,7 +60,8 @@ const HITS_CARD: AgentCard = {
       from: "Selin Kaya <selin@nordwind-studio.de>",
       to: ["t.brandt@acme-gmbh.de"],
       date: "2026-07-07T16:40:00.000Z",
-      snippet: "Hallo Herr Brandt, anbei nochmal die Rechnung als PDF. Zahlungsziel war der 30. Juni.",
+      snippet:
+        "Hallo Herr Brandt, anbei nochmal die Rechnung als PDF. Zahlungsziel war der 30. Juni.",
     },
     {
       messageId: "msg-acme-2204",
@@ -94,22 +94,19 @@ const THREAD_CARD: AgentCard = {
       from: "Sabine Möller <sabine.moeller@seeblick-ferien.de>",
       to: ["selin.kaya.mail@gmail.com"],
       date: "2026-06-28T10:15:00.000Z",
-      body:
-        "Liebe Frau Kaya,\n\nvielen Dank für Ihre Anfrage. Die Wohnung ist vom 8. bis 15. August noch frei. Der Preis liegt bei 95 € pro Nacht inkl. Endreinigung.\n\nViele Grüße\nSabine Möller",
+      body: "Liebe Frau Kaya,\n\nvielen Dank für Ihre Anfrage. Die Wohnung ist vom 8. bis 15. August noch frei. Der Preis liegt bei 95 € pro Nacht inkl. Endreinigung.\n\nViele Grüße\nSabine Möller",
     },
     {
       from: "Selin Kaya <selin.kaya.mail@gmail.com>",
       to: ["sabine.moeller@seeblick-ferien.de"],
       date: "2026-06-28T14:32:00.000Z",
-      body:
-        "Hallo Frau Möller,\n\ndas klingt gut, wir würden gerne für die ganze Woche buchen. Ist eine Anzahlung nötig, und gibt es einen Parkplatz vor Ort?\n\nViele Grüße\nSelin Kaya",
+      body: "Hallo Frau Möller,\n\ndas klingt gut, wir würden gerne für die ganze Woche buchen. Ist eine Anzahlung nötig, und gibt es einen Parkplatz vor Ort?\n\nViele Grüße\nSelin Kaya",
     },
     {
       from: "Sabine Möller <sabine.moeller@seeblick-ferien.de>",
       to: ["selin.kaya.mail@gmail.com"],
       date: "2026-06-29T08:03:00.000Z",
-      body:
-        "Liebe Frau Kaya,\n\nsehr gerne, ich reserviere die Woche für Sie. Eine Anzahlung von 30 % (rund 200 €) reicht, der Rest ist bei Anreise fällig. Ein Parkplatz direkt am Haus ist inklusive.\n\nSchicken Sie mir gern noch Ihre Adresse für die Buchungsbestätigung.\n\nViele Grüße\nSabine Möller",
+      body: "Liebe Frau Kaya,\n\nsehr gerne, ich reserviere die Woche für Sie. Eine Anzahlung von 30 % (rund 200 €) reicht, der Rest ist bei Anreise fällig. Ein Parkplatz direkt am Haus ist inklusive.\n\nSchicken Sie mir gern noch Ihre Adresse für die Buchungsbestätigung.\n\nViele Grüße\nSabine Möller",
     },
   ],
 };
@@ -123,8 +120,7 @@ const DRAFT_CARD: AgentCard = {
     subject: "Re: Rechnung #A-2291 – Zahlungserinnerung",
     to: ["t.brandt@acme-gmbh.de"],
     cc: ["buchhaltung@acme-gmbh.de"],
-    body:
-      "Hallo Herr Brandt,\n\nanbei nochmal Rechnung #A-2291 als PDF. Unser Zahlungsziel war der 30. Juni. Bitte gleichen Sie den Betrag bis Ende der Woche aus, sonst müssen wir eine Mahngebühr berechnen.\n\nBeste Grüße\nSelin Kaya\nNordwind Studio — Design & Branding\nnordwind-studio.de",
+    body: "Hallo Herr Brandt,\n\nanbei nochmal Rechnung #A-2291 als PDF. Unser Zahlungsziel war der 30. Juni. Bitte gleichen Sie den Betrag bis Ende der Woche aus, sonst müssen wir eine Mahngebühr berechnen.\n\nBeste Grüße\nSelin Kaya\nNordwind Studio — Design & Branding\nnordwind-studio.de",
     webUrl:
       "https://mail.google.com/mail/?authuser=selin%40nordwind-studio.de#drafts?compose=draft-acme-2291-reply",
     signatureAppended: true,

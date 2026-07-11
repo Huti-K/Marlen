@@ -1,4 +1,4 @@
-import { sql, type SQLWrapper } from "drizzle-orm";
+import { type SQLWrapper, sql } from "drizzle-orm";
 
 /** Human-readable message from an unknown thrown value. */
 export function errorMessage(error: unknown): string {

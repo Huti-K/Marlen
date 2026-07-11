@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ThreadTriage, ThreadUrgency } from "@trailin/shared";
-import { sqlite } from "../../db/index.js";
+import { lazyStatement } from "../../db/index.js";
 
 /**
  * Read/write side of thread enrichment. Staleness is DERIVED, never queued:
@@ -57,7 +57,7 @@ export interface EnrichmentResult {
  */
 export const ERROR_BACKOFF_MS = 10 * 60_000;
 
-const selectStale = sqlite.prepare(`
+const selectStale = lazyStatement(`
   SELECT t.id AS thread_id, t.account_id, s.error AS last_error, s.enriched_at AS last_enriched_at
   FROM mail_threads t
   LEFT JOIN mail_thread_state s ON s.thread_id = t.id
@@ -72,7 +72,7 @@ export function findStaleCandidates(limit: number): StaleCandidate[] {
   // Recomputed per call rather than cached so a long-idle process doesn't
   // retry against a stale cutoff.
   const errorCutoff = new Date(Date.now() - ERROR_BACKOFF_MS).toISOString();
-  const rows = selectStale.all(errorCutoff, limit) as Array<{
+  const rows = selectStale().all(errorCutoff, limit) as Array<{
     thread_id: string;
     account_id: string;
     last_error: string | null;
@@ -86,28 +86,28 @@ export function findStaleCandidates(limit: number): StaleCandidate[] {
   }));
 }
 
-const selectThread = sqlite.prepare("SELECT subject FROM mail_threads WHERE id = ?");
+const selectThread = lazyStatement("SELECT subject FROM mail_threads WHERE id = ?");
 
-const selectMessages = sqlite.prepare(`
+const selectMessages = lazyStatement(`
   SELECT id, from_addr, to_addrs, date, body_text, is_from_me
   FROM mail_messages WHERE thread_id = ? ORDER BY date ASC
 `);
 
-const selectStoredHash = sqlite.prepare(
+const selectStoredHash = lazyStatement(
   "SELECT input_hash FROM mail_thread_state WHERE thread_id = ?",
 );
 
 export function storedInputHash(threadId: string): string | null {
-  const row = selectStoredHash.get(threadId) as { input_hash: string } | undefined;
+  const row = selectStoredHash().get(threadId) as { input_hash: string } | undefined;
   return row?.input_hash ?? null;
 }
 
 /** null when the thread vanished between the candidate query and this read. */
 export function snapshotThread(threadId: string, accountId: string): ThreadSnapshot | null {
   const takenAt = new Date().toISOString();
-  const thread = selectThread.get(threadId) as { subject: string } | undefined;
+  const thread = selectThread().get(threadId) as { subject: string } | undefined;
   if (!thread) return null;
-  const rows = selectMessages.all(threadId) as Array<{
+  const rows = selectMessages().all(threadId) as Array<{
     id: string;
     from_addr: string;
     to_addrs: string;
@@ -136,7 +136,7 @@ export function snapshotThread(threadId: string, accountId: string): ThreadSnaps
   };
 }
 
-const upsertState = sqlite.prepare(`
+const upsertState = lazyStatement(`
   INSERT INTO mail_thread_state (
     thread_id, account_id, input_hash, gist, summary, action_items,
     triage, urgency, deadline, model, error, enriched_at
@@ -163,7 +163,7 @@ export function saveEnrichment(
   result: EnrichmentResult,
   model: string,
 ): void {
-  upsertState.run({
+  upsertState().run({
     thread_id: snapshot.threadId,
     account_id: snapshot.accountId,
     input_hash: snapshot.inputHash,
@@ -184,7 +184,7 @@ export function saveEnrichment(
  * beats none) but stamps error + snapshot hash/time so the candidate query
  * stops flagging it until something changes or the backoff elapses.
  */
-const markErrorStmt = sqlite.prepare(`
+const markErrorStmt = lazyStatement(`
   INSERT INTO mail_thread_state (thread_id, account_id, input_hash, error, enriched_at)
   VALUES (@thread_id, @account_id, @input_hash, @error, @enriched_at)
   ON CONFLICT(thread_id) DO UPDATE SET
@@ -194,7 +194,7 @@ const markErrorStmt = sqlite.prepare(`
 `);
 
 export function saveEnrichmentError(snapshot: ThreadSnapshot, error: string): void {
-  markErrorStmt.run({
+  markErrorStmt().run({
     thread_id: snapshot.threadId,
     account_id: snapshot.accountId,
     input_hash: snapshot.inputHash,
@@ -208,10 +208,8 @@ export function saveEnrichmentError(snapshot: ThreadSnapshot, error: string): vo
  * (e.g. after an unread flip touched the thread row) so the timestamp
  * pre-filter stops surfacing this thread every cycle.
  */
-const touchStmt = sqlite.prepare(
-  "UPDATE mail_thread_state SET enriched_at = ? WHERE thread_id = ?",
-);
+const touchStmt = lazyStatement("UPDATE mail_thread_state SET enriched_at = ? WHERE thread_id = ?");
 
 export function touchEnrichment(threadId: string, takenAt: string): void {
-  touchStmt.run(takenAt, threadId);
+  touchStmt().run(takenAt, threadId);
 }

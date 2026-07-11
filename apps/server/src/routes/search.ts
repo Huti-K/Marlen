@@ -1,17 +1,16 @@
-import type { FastifyInstance } from "fastify";
-import { and, desc, eq, ne, or } from "drizzle-orm";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { Type } from "@sinclair/typebox";
 import type { SearchResult } from "@trailin/shared";
-import { db, schema, sqlite } from "../db/index.js";
-import { escapeLikeInput, likePattern } from "../util.js";
-import { getDemoDraftStore } from "../db/settings.js";
-import { env } from "../env.js";
+import { and, desc, eq, ne, or } from "drizzle-orm";
+import { db, lazyStatement, schema } from "../db/index.js";
 import { listMemories } from "../db/memories.js";
 import { listDocuments, searchChunks } from "../library/store.js";
+import { escapeLikeInput, likePattern } from "../util.js";
 import "../email/registerProviders.js";
 import { listDraftsCached } from "../email/draftsService.js";
 import { getDraftProvider } from "../email/providers.js";
-import { listAccounts } from "../pipedream/connect.js";
 import { moduleLogger } from "../logger.js";
+import { listAccounts } from "../pipedream/connect.js";
 
 const log = moduleLogger("search");
 
@@ -103,7 +102,7 @@ interface MessageHitRow {
 // and to `conversations` for the title/type/id the palette actually shows.
 // The MATCH operand must be the FTS5 table's own name, not an alias, or
 // SQLite treats it as a plain (nonexistent) column reference.
-const messageHitsStmt = sqlite.prepare(`
+const messageHitsStmt = lazyStatement(`
   SELECT c.id AS id, c.title AS title, c.created_at AS createdAt, m.content AS content
   FROM messages_fts
   JOIN messages m ON m.rowid = messages_fts.rowid
@@ -121,7 +120,7 @@ const messageHitsStmt = sqlite.prepare(`
 async function searchChats(query: string, pattern: string): Promise<SearchResult[]> {
   const match = buildMessagesMatch(query);
   const messageHits = match
-    ? (messageHitsStmt.all(match, PER_TYPE_LIMIT * 4) as MessageHitRow[])
+    ? (messageHitsStmt().all(match, PER_TYPE_LIMIT * 4) as MessageHitRow[])
     : [];
 
   const results: SearchResult[] = [];
@@ -147,7 +146,12 @@ async function searchChats(query: string, pattern: string): Promise<SearchResult
         createdAt: schema.conversations.createdAt,
       })
       .from(schema.conversations)
-      .where(and(ne(schema.conversations.type, "automation"), likePattern(schema.conversations.title, pattern)))
+      .where(
+        and(
+          ne(schema.conversations.type, "automation"),
+          likePattern(schema.conversations.title, pattern),
+        ),
+      )
       .orderBy(desc(schema.conversations.createdAt))
       .limit(PER_TYPE_LIMIT * 2);
     for (const row of titleHits) {
@@ -181,7 +185,12 @@ async function searchRuns(query: string, pattern: string): Promise<SearchResult[
     })
     .from(schema.automationRuns)
     .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId))
-    .where(or(likePattern(schema.automationRuns.result, pattern), likePattern(schema.automations.name, pattern)))
+    .where(
+      or(
+        likePattern(schema.automationRuns.result, pattern),
+        likePattern(schema.automations.name, pattern),
+      ),
+    )
     .orderBy(desc(schema.automationRuns.startedAt))
     .limit(PER_TYPE_LIMIT);
 
@@ -189,8 +198,7 @@ async function searchRuns(query: string, pattern: string): Promise<SearchResult[
     const name = row.automationName ?? "Automation";
     const dateLabel = row.startedAt ? row.startedAt.slice(0, 10) : "";
     const q = query.toLowerCase();
-    const snippetSource =
-      row.result && row.result.toLowerCase().includes(q) ? row.result : name;
+    const snippetSource = row.result?.toLowerCase().includes(q) ? row.result : name;
     return {
       type: "run" as const,
       id: row.id,
@@ -204,40 +212,14 @@ async function searchRuns(query: string, pattern: string): Promise<SearchResult[
 /**
  * Unsent drafts across every connected account that has a DraftProvider
  * (Gmail, Outlook, ...) — accounts for apps with no draft driver (Notion,
- * Slack, zoho_mail, ...) are skipped rather than attempted. Demo mode
- * searches the seeded fake store (subject, to and body are all cheaply
- * available there); live mode fetches each such account's drafts in parallel
- * and matches on subject/to only — fetching every draft's full body just to
- * search would be too slow.
+ * Slack, zoho_mail, ...) are skipped rather than attempted. Fetches each
+ * such account's drafts in parallel and matches on subject/to only —
+ * fetching every draft's full body just to search would be too slow.
  */
 async function searchDrafts(query: string): Promise<SearchResult[]> {
   const q = query.toLowerCase();
   const contains = (value: string | undefined) => !!value && value.toLowerCase().includes(q);
   const results: SearchResult[] = [];
-
-  if (env.demoMode) {
-    const store = await getDemoDraftStore();
-    const all = Object.entries(store)
-      .flatMap(([accountId, drafts]) => drafts.map((draft) => ({ accountId, draft })))
-      .sort((a, b) => b.draft.date.localeCompare(a.draft.date));
-    for (const { accountId, draft } of all) {
-      if (results.length >= PER_TYPE_LIMIT) break;
-      const subjectHit = contains(draft.subject);
-      const toHit = contains(draft.to);
-      const bodyHit = contains(draft.body);
-      if (!subjectHit && !toHit && !bodyHit) continue;
-      const snippetSource = subjectHit ? draft.subject : toHit ? draft.to : draft.body;
-      results.push({
-        type: "draft",
-        id: draft.id,
-        title: draft.subject || "(no subject)",
-        snippet: buildSnippet(snippetSource, query),
-        date: draft.date,
-        accountId,
-      });
-    }
-    return results;
-  }
 
   const accounts = (await listAccounts()).filter((a) => getDraftProvider(a.app) !== null);
   // Cached (and, on a stale hit, stale-while-revalidate) rather than a live
@@ -330,8 +312,10 @@ function safeSource(source: string, run: Promise<SearchResult[]>): Promise<Searc
   });
 }
 
-export async function searchRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: { q?: string } }>("/api/search", async (req) => {
+const searchQuery = Type.Object({ q: Type.Optional(Type.String()) });
+
+export const searchRoutes: FastifyPluginAsyncTypebox = async (app) => {
+  app.get("/api/search", { schema: { querystring: searchQuery } }, async (req) => {
     const query = (req.query.q ?? "").trim();
     if (!query) return { results: [] };
     const pattern = `%${escapeLikeInput(query)}%`;
@@ -348,4 +332,4 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
     const results: SearchResult[] = [...runs, ...chats, ...drafts, ...documents, ...memories];
     return { results };
   });
-}
+};

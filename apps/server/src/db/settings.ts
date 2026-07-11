@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
 import { isLanguage, type Language } from "@trailin/shared";
+import { eq } from "drizzle-orm";
 import { db, schema } from "./index.js";
 
 /** Simple key/value settings persisted in SQLite. */
@@ -77,7 +77,9 @@ export async function getAccountColors(): Promise<import("@trailin/shared").Acco
   }
 }
 
-export async function setAccountColors(colors: import("@trailin/shared").AccountColor[]): Promise<void> {
+export async function setAccountColors(
+  colors: import("@trailin/shared").AccountColor[],
+): Promise<void> {
   await setSetting(ACCOUNT_COLORS_SETTING_KEY, JSON.stringify(colors));
 }
 
@@ -119,38 +121,4 @@ export async function setAccountVoices(
   voices: import("@trailin/shared").AccountVoice[],
 ): Promise<void> {
   await setSetting(ACCOUNT_VOICES_SETTING_KEY, JSON.stringify(voices));
-}
-
-export const DEMO_DRAFTS_SETTING_KEY = "demo.drafts";
-
-/** One demo Gmail draft, stored whole (list + detail views both read this). */
-export interface DemoDraftRecord {
-  id: string;
-  messageId: string;
-  threadId: string;
-  subject: string;
-  to: string;
-  cc?: string;
-  bcc?: string;
-  date: string;
-  webUrl: string;
-  body: string;
-}
-
-/** Demo drafts, keyed by the fake account id — seeded once, then edited via deletes. */
-export type DemoDraftStore = Record<string, DemoDraftRecord[]>;
-
-/** Fake Gmail drafts for demo mode (see email/gmailDrafts.ts), keyed by account id. */
-export async function getDemoDraftStore(): Promise<DemoDraftStore> {
-  const raw = await getSetting(DEMO_DRAFTS_SETTING_KEY);
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-
-export async function setDemoDraftStore(store: DemoDraftStore): Promise<void> {
-  await setSetting(DEMO_DRAFTS_SETTING_KEY, JSON.stringify(store));
 }

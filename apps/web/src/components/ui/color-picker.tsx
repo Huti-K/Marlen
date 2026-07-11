@@ -1,6 +1,6 @@
 import * as React from "react";
-import { createPortal } from "react-dom";
 import { HexColorPicker } from "react-colorful";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 interface ColorPickerProps {
@@ -96,8 +96,14 @@ export function ColorPicker({ color, onSelect }: ColorPickerProps) {
 
       {open &&
         createPortal(
+          // Portaled content still bubbles React synthetic events up the component
+          // tree (not the DOM tree), so a click here would otherwise reach whatever
+          // row/card renders the trigger. This wrapper only guards that propagation —
+          // the real interactive controls below (canvas, input) carry their own roles.
+          // biome-ignore lint/a11y/noStaticElementInteractions: propagation guard only, not a control itself
           <div
             ref={popoverRef}
+            role="presentation"
             className="surface-pop animate-in-up fixed z-[130] p-3 flex flex-col gap-3 rounded-xl"
             style={pos ?? { left: 0, top: 0, visibility: "hidden" }}
             onClick={(e) => e.stopPropagation()}
@@ -106,7 +112,9 @@ export function ColorPicker({ color, onSelect }: ColorPickerProps) {
               <HexColorPicker color={color} onChange={onSelect} />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider pl-1">Hex</span>
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider pl-1">
+                Hex
+              </span>
               <input
                 type="text"
                 value={color}

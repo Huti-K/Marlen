@@ -7,13 +7,30 @@
     "dev": "pnpm --parallel --filter @trailin/server --filter @trailin/web dev",
     "dev:server": "pnpm --filter @trailin/server dev",
     "dev:web": "pnpm --filter @trailin/web dev",
-    "demo": "TRAILIN_DEMO=1 pnpm --parallel --filter @trailin/server --filter @trailin/web dev",
     "build": "pnpm -r build",
     "start": "pnpm --filter @trailin/server start",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @trailin/server test",
+    "format": "biome format --write .",
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write .",
+    "conventions": "node scripts/check-conventions.mjs",
+    "check": "biome check --error-on-warnings . && node scripts/check-conventions.mjs && pnpm -r typecheck && pnpm --filter @trailin/server test",
+    "prepare": "simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec lint-staged && node scripts/check-conventions.mjs"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json}": "biome check --write --error-on-warnings --no-errors-on-unmatched --files-ignore-unknown=true"
   },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@10.18.3"
+  "packageManager": "pnpm@10.18.3",
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
+    "lint-staged": "^17.0.8",
+    "simple-git-hooks": "^2.13.1"
+  }
 }

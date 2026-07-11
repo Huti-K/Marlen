@@ -1,14 +1,15 @@
 import type { ConnectedAccount } from "@trailin/shared";
-import { emitServerEvent } from "../../events.js";
 import { env } from "../../env.js";
+import { emitServerEvent } from "../../events.js";
 import { logger } from "../../logger.js";
-import { errorMessage } from "../../util.js";
 import { listAccounts } from "../../pipedream/connect.js";
+import { errorMessage } from "../../util.js";
 import { applySyncPage, getSyncState, markSyncStatus, setSyncCursor } from "./mailStore.js";
 import {
   getSyncProvider,
   SyncCursorExpiredError,
   type SyncOptions,
+  type SyncPage,
 } from "./syncProviders.js";
 // Side-effect import: populates the SyncProvider registry.
 import "./registerSyncProviders.js";
@@ -48,7 +49,7 @@ async function runSync(account: ConnectedAccount): Promise<void> {
   let changed = 0;
   try {
     for (let pages = 0; pages < MAX_PAGES_PER_SWEEP; pages++) {
-      let page;
+      let page: SyncPage;
       try {
         page = await provider.fetchChanges(account, cursor, syncOptions());
       } catch (error) {
@@ -98,11 +99,14 @@ async function sweep(): Promise<void> {
   await Promise.all(accounts.map((account) => syncAccount(account)));
 }
 
-/**
- * Kick off an immediate sweep and keep polling. Works in demo mode too — the
- * demo SyncProvider feeds the same tables from the seeded mailbox, so every
- * downstream consumer behaves identically in both modes.
- */
+/** Stop polling; a sweep already in flight finishes on its own. */
+export function stopSyncEngine(): void {
+  if (!timer) return;
+  clearInterval(timer);
+  timer = null;
+}
+
+/** Kick off an immediate sweep and keep polling. */
 export function startSyncEngine(): void {
   if (timer) return;
   void sweep();

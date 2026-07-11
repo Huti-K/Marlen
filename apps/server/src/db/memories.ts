@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
 import { MEMORY_MAX_LENGTH, type MemoryEntry } from "@trailin/shared";
+import { eq } from "drizzle-orm";
 import { emitServerEvent } from "../events.js";
 import { db, schema } from "./index.js";
 
@@ -12,7 +12,7 @@ import { db, schema } from "./index.js";
  * in the document library as a note instead (see library_write).
  */
 
-// Re-exported so existing server imports of the cap from this module keep working.
+// The cap is defined in @trailin/shared (the UI enforces it too); re-exported for server callers.
 export { MEMORY_MAX_LENGTH };
 export const MEMORY_MAX_COUNT = 200;
 

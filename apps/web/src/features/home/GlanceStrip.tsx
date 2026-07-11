@@ -1,6 +1,6 @@
+import type { AccountDrafts, AccountWaiting, Automation, RunFeedItem } from "@trailin/shared";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import type { AccountDrafts, AccountWaiting, Automation, RunFeedItem } from "@trailin/shared";
 import { countUrgentItems } from "@/features/home/BriefingHero";
 
 /** "14:32" today, "Fri · 14:32" otherwise — the same shape BriefingHero uses
@@ -52,7 +52,8 @@ export function GlanceStrip({
   if (draftsCount > 0) stats.push(t("home.glance.drafts", { count: draftsCount }));
   if (urgentCount > 0) stats.push(t("home.briefingUrgent", { count: urgentCount }));
   if (waitingCount > 0) stats.push(t("home.glance.waiting", { count: waitingCount }));
-  if (nextRunAt) stats.push(t("home.glance.nextRun", { when: nextRunLabel(nextRunAt, i18n.language) }));
+  if (nextRunAt)
+    stats.push(t("home.glance.nextRun", { when: nextRunLabel(nextRunAt, i18n.language) }));
 
   if (stats.length === 0) return null;
 

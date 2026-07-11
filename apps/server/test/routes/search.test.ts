@@ -37,7 +37,9 @@ describe("buildMessagesMatch", () => {
     expect(match).toBe('"hello" "world"');
     // messages_fts is external-content over `messages` — MATCH must not throw
     // even against an empty table, and an empty table must yield no rows.
-    const rows = sqlite.prepare("SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?").all(match);
+    const rows = sqlite
+      .prepare("SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?")
+      .all(match);
     expect(rows).toHaveLength(0);
   });
 

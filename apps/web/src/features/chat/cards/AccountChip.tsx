@@ -1,6 +1,7 @@
-import * as React from "react";
-import { Mail } from "lucide-react";
 import type { CardAccount } from "@trailin/shared";
+import { Mail } from "lucide-react";
+import * as React from "react";
+import { AccountDot } from "@/components/ui/account-dot";
 
 /**
  * App icon + account address + a color dot — the one visual anchor that
@@ -30,10 +31,7 @@ export function AccountChip({ account, color }: { account?: CardAccount; color?:
       ) : (
         <Mail className="h-3.5 w-3.5 shrink-0" />
       )}
-      <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{ backgroundColor: color || "var(--muted-foreground)" }}
-      />
+      <AccountDot color={color} />
       <span className="truncate">{account.name}</span>
     </span>
   );

@@ -1,16 +1,16 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import { eq } from "drizzle-orm";
 import { LANGUAGE_ENGLISH_NAMES, type Language } from "@trailin/shared";
+import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { getEmailWriteSetting, getLanguageSetting, getTimezoneSetting } from "../db/settings.js";
 import { modelRegistry, resolveActiveModel } from "../llm/registry.js";
-import { loadEmailTools, type EmailToolset } from "../pipedream/mcp.js";
+import { type EmailToolset, loadEmailTools } from "../pipedream/mcp.js";
 import { buildBriefingTool } from "./briefingTool.js";
 import { parseStoredCards } from "./cards.js";
 import { buildDelegateTool } from "./delegate.js";
 import { buildKnowledgeContext, buildKnowledgeTools } from "./knowledgeTools.js";
-import { runPrompt, type RunHandlers, type TurnLogger } from "./run.js";
+import { type RunHandlers, runPrompt, type TurnLogger } from "./run.js";
 import { buildVoiceContext } from "./voice.js";
 import { buildVoiceLearnTool } from "./voiceLearn.js";
 import { buildWaitingThreadsTool } from "./waitingTools.js";
@@ -404,5 +404,5 @@ export async function createEphemeralSession(): Promise<AgentSession> {
   }
 }
 
-// Re-exported so existing callers (scheduler.ts) keep working.
-export { runPrompt, type RunHandlers };
+// Re-exported for automations/scheduler.ts.
+export { type RunHandlers, runPrompt };

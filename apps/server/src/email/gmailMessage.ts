@@ -1,11 +1,10 @@
+import { decodeHTML } from "entities";
 import { stripHtml } from "./textUtils.js";
 
 /**
  * Gmail message-payload helpers shared by every file that reads the Gmail
- * REST API (gmailDrafts.ts, gmailSync.ts, gmailAttachments.ts). Before this
- * module, gmailSync imported these as private helpers out of gmailDrafts and
- * gmailAttachments carried its own copy of the MIME walk — one provider's
- * wire format now lives in one place.
+ * REST API (gmailDrafts.ts, gmailSync.ts, gmailAttachments.ts) — one
+ * provider's wire format in one place.
  */
 
 export const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -23,7 +22,8 @@ export type MessageHeaders = { headers?: { name: string; value: string }[] };
 /** Case-insensitive header lookup, the way Gmail's `payload.headers` needs to be read. */
 export function headerLookup(payload: MessageHeaders | undefined) {
   const headers = payload?.headers ?? [];
-  return (name: string) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
+  return (name: string) =>
+    headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
 
 /** Depth-first search for the first part of the wanted MIME type. */
@@ -54,22 +54,8 @@ export function plainTextBody(payload: MessagePart | undefined): string {
   return stripHtml(decodeBody(html.body.data));
 }
 
-/**
- * Decode the common HTML entities Gmail escapes in `message.snippet`. Not a
- * full entity decoder — just enough for the handful Gmail actually emits.
- */
-const HTML_ENTITIES: Record<string, string> = {
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&quot;": '"',
-  "&#39;": "'",
-  "&nbsp;": " ",
-};
-
+/** Decode the HTML entities Gmail escapes in `message.snippet` — named and
+ * numeric alike; non-breaking spaces come back as plain spaces. */
 export function decodeHtmlEntities(text: string): string {
-  return text.replace(
-    /&amp;|&lt;|&gt;|&quot;|&#39;|&nbsp;/g,
-    (match) => HTML_ENTITIES[match] ?? match,
-  );
+  return decodeHTML(text).replace(/\u00a0/g, " ");
 }

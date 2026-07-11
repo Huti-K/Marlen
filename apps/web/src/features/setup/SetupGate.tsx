@@ -1,13 +1,14 @@
-import * as React from "react";
+import { type AppStatus, isSetupComplete, type LlmProviderInfo } from "@trailin/shared";
 import { Check } from "lucide-react";
+import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { isSetupComplete, type AppStatus, type LlmProviderInfo } from "@trailin/shared";
-import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { SectionHeader } from "@/components/ui/section-header";
+import { Notice } from "@/components/ui/feedback";
 import { LinkButton } from "@/components/ui/link-button";
-import { Providers } from "@/features/settings/Providers";
+import { SectionHeader } from "@/components/ui/section-header";
 import { Accounts } from "@/features/connections/Accounts";
+import { Providers } from "@/features/settings/Providers";
+import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -90,10 +91,10 @@ export function SetupGate({
         </div>
 
         {status === null ? (
-          <div className="tint-warning animate-in-up flex flex-col items-start gap-1.5 rounded-lg p-4">
+          <Notice tone="warning" className="animate-in-up flex flex-col items-start gap-1.5 p-4">
             <p className="text-sm font-medium">{t("setup.offlineTitle")}</p>
             <p className="text-sm">{t("setup.offlineBody")}</p>
-          </div>
+          </Notice>
         ) : (
           <>
             <Step
@@ -123,25 +124,25 @@ export function SetupGate({
                   <LinkButton onClick={() => onFinish(true)}>{t("setup.advancedLink")}</LinkButton>
                 </div>
               ) : (
-                <div className="flex flex-col items-start gap-3 rounded-lg bg-surface-2 p-4">
+                <Notice tone="neutral" className="flex flex-col items-start gap-3 p-4">
                   <p className="text-sm text-muted-foreground">{t("setup.pipedreamMissingBody")}</p>
                   <Button variant="secondary" size="sm" onClick={() => onFinish(true)}>
                     {t("setup.openSettings")}
                   </Button>
-                </div>
+                </Notice>
               )}
             </Step>
           </>
         )}
 
         {complete ? (
-          <div className="tint-success flex flex-col items-start gap-2 rounded-lg p-4">
+          <Notice tone="success" className="flex flex-col items-start gap-2 p-4">
             <p className="text-sm font-medium">{t("setup.allSetTitle")}</p>
             <p className="text-sm">{t("setup.allSetBody")}</p>
             <Button className="mt-1" onClick={() => onFinish(false)}>
               {t("setup.openApp")}
             </Button>
-          </div>
+          </Notice>
         ) : (
           <LinkButton onClick={() => onFinish(false)} className="text-sm hover:no-underline">
             {t("setup.skip")}

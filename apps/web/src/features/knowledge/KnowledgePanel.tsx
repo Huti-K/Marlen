@@ -1,4 +1,11 @@
-import * as React from "react";
+import type {
+  AccountColor,
+  ConnectedAccount,
+  LibraryDocument,
+  LibraryStatus,
+  MemoryEntry,
+} from "@trailin/shared";
+import { formatFileSize, MEMORY_MAX_LENGTH } from "@trailin/shared";
 import {
   Brain,
   Check,
@@ -17,28 +24,23 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import * as React from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  AccountColor,
-  ConnectedAccount,
-  LibraryDocument,
-  LibraryStatus,
-  MemoryEntry,
-} from "@trailin/shared";
-import { formatFileSize, MEMORY_MAX_LENGTH } from "@trailin/shared";
-import { api, type LibrarySearchHit } from "@/lib/api";
+import { AccountDot } from "@/components/ui/account-dot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Chip } from "@/components/ui/chip";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner } from "@/components/ui/feedback";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ErrorBanner } from "@/components/ui/feedback";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { api, type LibrarySearchHit } from "@/lib/api";
 import { relativeTime } from "@/lib/dates";
 import { takePendingKnowledgeFocus } from "@/lib/paletteFocus";
-import { toast } from "@/lib/toast";
 import { useServerEvents } from "@/lib/serverEvents";
+import { toast } from "@/lib/toast";
 import { cn, errorMessage, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
 
 /** Connected accounts whose name looks like an email address — the only ones
@@ -83,10 +85,7 @@ export function KnowledgePanel() {
     });
   }, []);
 
-  const emailAccounts = React.useMemo(
-    () => (accounts ?? []).filter(isEmailAccount),
-    [accounts],
-  );
+  const emailAccounts = React.useMemo(() => (accounts ?? []).filter(isEmailAccount), [accounts]);
 
   // The search palette navigates here, then dispatches this with the hit's
   // id — but only once this effect's listener is attached, which loses the
@@ -139,12 +138,13 @@ export function KnowledgePanel() {
 
 /* ---------------- Shared ---------------- */
 
-/** Icon tile, title, live count, and a slot for the section's own controls. */
+/** Icon tile, title, live count, an optional description line, and a slot for the section's own controls. */
 function SectionHead({
   icon: Icon,
   tone,
   title,
   count,
+  description,
   children,
 }: {
   icon: typeof Brain;
@@ -153,21 +153,28 @@ function SectionHead({
   title: string;
   /** `null` while the first fetch is in flight, so the badge doesn't flash a zero. */
   count: number | null;
+  /** The section's one-line blurb, rendered below the header row when given. */
+  description?: string;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-md", tone)}>
-        <Icon className="h-4 w-4" />
-      </span>
-      <h2 className="text-base font-semibold tracking-tight">{title}</h2>
-      {count !== null && count > 0 && (
-        <Badge variant="muted" className="tabular">
-          {count}
-        </Badge>
+    <>
+      <div className="flex items-center gap-2.5">
+        <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-md", tone)}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+        {count !== null && count > 0 && (
+          <Badge variant="muted" className="tabular">
+            {count}
+          </Badge>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1">{children}</div>
+      </div>
+      {description && (
+        <p className="max-w-prose text-pretty text-sm text-muted-foreground">{description}</p>
       )}
-      <div className="ml-auto flex shrink-0 items-center gap-1">{children}</div>
-    </div>
+    </>
   );
 }
 
@@ -216,6 +223,9 @@ function TileSkeleton({ tiles }: { tiles: number }) {
   return (
     <div role="status" aria-label={t("common.loading")} className={DOC_GRID}>
       {Array.from({ length: tiles }, (_, i) => (
+        // Interchangeable placeholders with no content of their own — index is
+        // the only identity available, and the count never reorders.
+        // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder count, never reordered
         <div key={i} className="flex flex-col gap-2 p-2">
           <Skeleton className="aspect-[4/3] w-full rounded-lg" />
           <Skeleton className="h-3.5 w-2/3" />
@@ -309,7 +319,10 @@ function MemoryStrip({
   }, [refresh]);
 
   useServerEvents(["memories"], () => {
-    void api.memories().then(setMemories).catch(() => {});
+    void api
+      .memories()
+      .then(setMemories)
+      .catch(() => {});
   });
 
   React.useEffect(() => {
@@ -345,7 +358,9 @@ function MemoryStrip({
   }, [memories, query, filter, accountLabel]);
 
   // Reset the cap whenever the visible set changes shape, so a narrower
-  // filter or search doesn't leave "show more" sitting past the end.
+  // filter or search doesn't leave "show more" sitting past the end. query
+  // and filter aren't read in the body — they're the reset triggers.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query/filter drive the reset, not the effect body
   React.useEffect(() => {
     setVisible(MEMORY_INITIAL_VISIBLE);
   }, [query, filter]);
@@ -361,8 +376,7 @@ function MemoryStrip({
   // Doubles as the dot-column/group-header gate below: both only earn their
   // keep once there's something to slice by — an account already used to
   // scope a memory, or one available to pick.
-  const showFilterRow =
-    emailAccounts.length > 0 || memories.some((m) => m.accountId !== null);
+  const showFilterRow = emailAccounts.length > 0 || memories.some((m) => m.accountId !== null);
 
   // One group per account with a (filtered) entry, alphabetized, then a
   // trailing General group for global entries — mirrors the chip row above,
@@ -424,6 +438,10 @@ function MemoryStrip({
   // `open` is a dependency, not just a guard: opening happens in the effect
   // above, so on the commit where a hit arrives at a collapsed strip the row is
   // still display:none and scrollIntoView is a no-op. Re-run once it unfolds.
+  // orderedEntries/visible are likewise re-run triggers, not read here: the
+  // effect above can expand `visible` on a later commit, and the target row
+  // only exists in the DOM once that happens.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: orderedEntries/visible re-trigger the scroll once the row mounts, not read in the body
   React.useEffect(() => {
     if (!focusId || !open) return;
     listRef.current
@@ -456,6 +474,9 @@ function MemoryStrip({
         tone="tint-accent"
         title={t("knowledge.sections.memory.title")}
         count={loading ? null : memories.length}
+        // Folded away with the rest of the body below, not the header row it
+        // renders alongside — omit rather than let it show through collapsed.
+        description={open ? t("knowledge.sections.memory.description") : undefined}
       >
         <Button
           variant="ghost"
@@ -474,11 +495,7 @@ function MemoryStrip({
       </SectionHead>
 
       <div id="knowledge-memory-body" hidden={!open} className="flex flex-col gap-3">
-        <p className="max-w-prose text-pretty text-sm text-muted-foreground">
-          {t("knowledge.sections.memory.description")}
-        </p>
-
-        {/* Top row: search only — scope assignment now lives inside the
+        {/* Top row: search only — scope assignment lives inside the
             editor card itself, both for the composer and for row edits. */}
         {memories.length > MEMORY_SEARCH_THRESHOLD && (
           <SearchField
@@ -572,102 +589,110 @@ function MemoryStrip({
               {t("common.noResultsBody", {
                 query:
                   query.trim() ||
-                  (filter === "general" ? t("knowledge.sections.memory.general") : accountLabel(filter)),
+                  (filter === "general"
+                    ? t("knowledge.sections.memory.general")
+                    : accountLabel(filter)),
               })}
             </p>
           )
         ) : (
           <div className="flex flex-col gap-3">
             <div ref={listRef} className="flex flex-col gap-3">
-              {groups
-                ? // Grouped: an account's rows under its own sub-header, sorted by
-                  // name, General trailing. The visible cap is spent across groups
-                  // in that same order, so a group only appears once it actually
-                  // has a row to show.
-                  (() => {
-                    let consumed = 0;
-                    let position = 0;
-                    return groups.map((group) => {
-                      const budget = visible - consumed;
-                      if (budget <= 0) return null;
-                      const rows = group.entries.slice(0, budget);
-                      if (rows.length === 0) return null;
-                      consumed += rows.length;
-                      return (
-                        <div key={group.key} className="flex flex-col gap-1.5">
-                          <p className="flex items-center gap-2 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+              {groups ? (
+                // Grouped: an account's rows under its own sub-header, sorted by
+                // name, General trailing. The visible cap is spent across groups
+                // in that same order, so a group only appears once it actually
+                // has a row to show.
+                (() => {
+                  let consumed = 0;
+                  let position = 0;
+                  return groups.map((group) => {
+                    const budget = visible - consumed;
+                    if (budget <= 0) return null;
+                    const rows = group.entries.slice(0, budget);
+                    if (rows.length === 0) return null;
+                    consumed += rows.length;
+                    return (
+                      <div key={group.key} className="flex flex-col gap-1.5">
+                        <p className="flex items-center gap-2 px-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                          {group.general ? (
                             <span
                               aria-hidden
-                              className={cn(
-                                "h-1.5 w-1.5 shrink-0 rounded-full",
-                                group.general && "bg-foreground/80",
-                              )}
-                              style={group.general ? undefined : { backgroundColor: group.color }}
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/80"
                             />
-                            {group.label}
-                          </p>
-                          <ul className="flex flex-col gap-1.5">
-                            {rows.map((entry) => {
-                              const i = position++;
-                              return (
-                                <li key={entry.id} className="animate-in-up" style={stagger(i)}>
-                                  <MemoryRow
-                                    entry={entry}
-                                    onChanged={refresh}
-                                    highlighted={entry.id === focusId}
-                                    accountLabel={entry.accountId ? accountLabel(entry.accountId) : null}
-                                    resolveColor={accountColor}
-                                    emailAccounts={emailAccounts}
-                                    filterActive={
-                                      entry.accountId !== null
-                                        ? filter === entry.accountId
-                                        : filter === "general"
-                                    }
-                                    onToggleFilter={
-                                      entry.accountId
-                                        ? () => toggleAccountFilter(entry.accountId as string)
-                                        : toggleGeneralFilter
-                                    }
-                                    // Same gate as the filter chip row: reserve the dot
-                                    // column for every row once any account is in play,
-                                    // so global rows' text still lines up with scoped
-                                    // rows' text.
-                                    showDotColumn={showFilterRow}
-                                  />
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </div>
-                      );
-                    });
-                  })()
-                : // Nothing to group by — the flat list this always was.
-                  <ul className="flex flex-col gap-1.5">
-                    {shown.map((entry, i) => (
-                      <li key={entry.id} className="animate-in-up" style={stagger(i)}>
-                        <MemoryRow
-                          entry={entry}
-                          onChanged={refresh}
-                          highlighted={entry.id === focusId}
-                          accountLabel={entry.accountId ? accountLabel(entry.accountId) : null}
-                          resolveColor={accountColor}
-                          emailAccounts={emailAccounts}
-                          filterActive={
-                            entry.accountId !== null ? filter === entry.accountId : filter === "general"
-                          }
-                          onToggleFilter={
-                            entry.accountId
-                              ? () => toggleAccountFilter(entry.accountId as string)
-                              : toggleGeneralFilter
-                          }
-                          // showFilterRow is false here by construction (that's
-                          // why `groups` is null) — no dot column at all.
-                          showDotColumn={showFilterRow}
-                        />
-                      </li>
-                    ))}
-                  </ul>}
+                          ) : (
+                            <AccountDot color={group.color} />
+                          )}
+                          {group.label}
+                        </p>
+                        <ul className="flex flex-col gap-1.5">
+                          {rows.map((entry) => {
+                            const i = position++;
+                            return (
+                              <li key={entry.id} className="animate-in-up" style={stagger(i)}>
+                                <MemoryRow
+                                  entry={entry}
+                                  onChanged={refresh}
+                                  highlighted={entry.id === focusId}
+                                  accountLabel={
+                                    entry.accountId ? accountLabel(entry.accountId) : null
+                                  }
+                                  resolveColor={accountColor}
+                                  emailAccounts={emailAccounts}
+                                  filterActive={
+                                    entry.accountId !== null
+                                      ? filter === entry.accountId
+                                      : filter === "general"
+                                  }
+                                  onToggleFilter={
+                                    entry.accountId
+                                      ? () => toggleAccountFilter(entry.accountId as string)
+                                      : toggleGeneralFilter
+                                  }
+                                  // Same gate as the filter chip row: reserve the dot
+                                  // column for every row once any account is in play,
+                                  // so global rows' text still lines up with scoped
+                                  // rows' text.
+                                  showDotColumn={showFilterRow}
+                                />
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    );
+                  });
+                })()
+              ) : (
+                // Nothing to group by — the flat list this always was.
+                <ul className="flex flex-col gap-1.5">
+                  {shown.map((entry, i) => (
+                    <li key={entry.id} className="animate-in-up" style={stagger(i)}>
+                      <MemoryRow
+                        entry={entry}
+                        onChanged={refresh}
+                        highlighted={entry.id === focusId}
+                        accountLabel={entry.accountId ? accountLabel(entry.accountId) : null}
+                        resolveColor={accountColor}
+                        emailAccounts={emailAccounts}
+                        filterActive={
+                          entry.accountId !== null
+                            ? filter === entry.accountId
+                            : filter === "general"
+                        }
+                        onToggleFilter={
+                          entry.accountId
+                            ? () => toggleAccountFilter(entry.accountId as string)
+                            : toggleGeneralFilter
+                        }
+                        // showFilterRow is false here by construction (that's
+                        // why `groups` is null) — no dot column at all.
+                        showDotColumn={showFilterRow}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             {remaining > 0 && (
               <Button
@@ -709,29 +734,19 @@ function MemoryFilterChip({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      title={title}
-      className={cn(
-        "flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors",
-        active
-          ? "bg-primary text-primary-foreground"
-          : "bg-surface-2 text-muted-foreground hover:text-foreground",
-      )}
-    >
+    <Chip active={active} onClick={onClick} title={title}>
       {general ? (
         <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/80" />
       ) : (
-        color && (
-          <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        )
+        color && <AccountDot color={color} />
       )}
-      <span className="max-w-[9rem] truncate">{children}</span>
-    </button>
+      <span className="max-w-36 truncate">{children}</span>
+    </Chip>
   );
 }
+
+/** The counter only appears once a memory is nearing the length cap, not from the first keystroke. */
+const MEMORY_COUNTER_THRESHOLD = MEMORY_MAX_LENGTH - 60;
 
 /**
  * The one shared editor for adding and editing a memory: an auto-growing
@@ -811,12 +826,11 @@ function MemoryEditor({
         className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
       />
       <div className="flex flex-wrap items-center gap-2">
-        <div
-          role="group"
+        <fieldset
           aria-label={t("knowledge.sections.memory.scopeLabel")}
           aria-disabled={busy}
           className={cn(
-            "flex min-w-0 flex-1 flex-wrap items-center gap-1.5",
+            "m-0 flex min-w-0 flex-1 flex-wrap items-center gap-1.5 border-0 p-0",
             busy && "pointer-events-none opacity-60",
           )}
         >
@@ -834,12 +848,12 @@ function MemoryEditor({
               {a.name.split("@")[0]}
             </MemoryFilterChip>
           ))}
-        </div>
+        </fieldset>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          {value.length >= 240 && (
+          {value.length >= MEMORY_COUNTER_THRESHOLD && (
             <span
               className={cn(
-                "tabular-nums text-[11px]",
+                "tabular-nums text-2xs",
                 value.length >= MEMORY_MAX_LENGTH ? "text-destructive" : "text-muted-foreground",
               )}
             >
@@ -957,10 +971,16 @@ function MemoryRow({
               onClick={onToggleFilter}
               aria-pressed={filterActive}
               aria-label={t("knowledge.sections.memory.filterAccountHint", { name: accountLabel })}
-              data-tooltip={t("knowledge.sections.memory.filterAccountHint", { name: accountLabel })}
+              data-tooltip={t("knowledge.sections.memory.filterAccountHint", {
+                name: accountLabel,
+              })}
               className="h-2.5 w-2.5 shrink-0 rounded-full"
-              style={{ backgroundColor: (entry.accountId && resolveColor(entry.accountId)) ?? UNASSIGNED_ACCOUNT_COLOR }}
-            />
+            >
+              <AccountDot
+                className="h-2.5 w-2.5"
+                color={entry.accountId ? resolveColor(entry.accountId) : undefined}
+              />
+            </button>
           ) : (
             // Global entry, but others on the strip are scoped — give it a real
             // (theme-aware "black") dot rather than a blank placeholder, and let
@@ -976,21 +996,14 @@ function MemoryRow({
               />
             )
           )}
-          <div
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={() => setEditing(true)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setEditing(true);
-              }
-            }}
             data-tooltip={t("memory.edit")}
-            className="min-w-0 flex-1 cursor-text truncate rounded-md text-sm leading-relaxed text-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2"
+            className="min-w-0 flex-1 cursor-text truncate rounded-md text-left text-sm leading-relaxed text-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2"
           >
             {entry.content}
-          </div>
+          </button>
           {/* Quick path that skips the edit card entirely — harmless next to
               the edit card's own delete button, since only one is ever on
               screen for a given row at a time. */}
@@ -1158,19 +1171,25 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
     return [...titleMatches, ...contentMatches];
   }, [status, query, snippetByDocId]);
 
+  // Reset the cap whenever the query changes shape, so a narrower search
+  // doesn't leave "show more" sitting past the end. query isn't read in the
+  // body — it's the reset trigger.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query drives the reset, not the effect body
   React.useEffect(() => {
     setVisible(INITIAL_VISIBLE);
   }, [query]);
 
   // Opened from the search palette: a live query might be hiding it, and it may
-  // sit past the fold. Clear the one, reach past the other.
+  // sit past the fold. Clear the one, reach past the other. Only focusId/status
+  // should re-fire this — including query/snippetByDocId would re-run it right
+  // after the setQuery("") below clears the query that made it fire.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query/snippetByDocId are read but must not re-trigger this effect (it clears query itself)
   React.useEffect(() => {
     if (!focusId || !status) return;
     const doc = status.documents.find((d) => d.id === focusId);
     if (!doc) return;
     const q = query.trim().toLowerCase();
     if (q && !doc.title.toLowerCase().includes(q) && !snippetByDocId.has(doc.id)) setQuery("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId, status]);
 
   React.useEffect(() => {
@@ -1179,6 +1198,10 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
     if (index >= 0 && index >= visible) setVisible(index + 1);
   }, [focusId, documents, visible]);
 
+  // documents/visible are re-run triggers, not read here: the effect above can
+  // expand `visible` on a later commit, and the target row only exists in the
+  // DOM once that happens.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: documents/visible re-trigger the scroll once the row mounts, not read in the body
   React.useEffect(() => {
     if (!focusId) return;
     listRef.current
@@ -1256,6 +1279,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
           tone="bg-primary/10 text-primary"
           title={t("knowledge.sections.library.title")}
           count={status.documents.length}
+          description={t("knowledge.sections.library.description")}
         >
           <input
             ref={fileInputRef}
@@ -1270,10 +1294,6 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
             {uploading ? t("library.uploading") : t("library.upload")}
           </Button>
         </SectionHead>
-
-        <p className="max-w-prose text-pretty text-sm text-muted-foreground">
-          {t("knowledge.sections.library.description")}
-        </p>
 
         <LibraryFolderControl folder={status.folder} onStatus={setStatus} />
       </div>
@@ -1351,6 +1371,9 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
   );
 }
 
+/** How long the "saved" checkmark holds before the control reverts to idle. */
+const SAVED_FLASH_MS = 500;
+
 function LibraryFolderControl({
   folder,
   onStatus,
@@ -1383,7 +1406,7 @@ function LibraryFolderControl({
       onStatus(next);
       setDraft(next.folder);
       setState("saved");
-      setTimeout(() => setState("idle"), 500);
+      setTimeout(() => setState("idle"), SAVED_FLASH_MS);
     } catch (err) {
       toast.error(errorMessage(err));
       startEdit();
@@ -1416,7 +1439,7 @@ function LibraryFolderControl({
       setTimeout(() => {
         setMode("display");
         setState("idle");
-      }, 500);
+      }, SAVED_FLASH_MS);
     } catch (err) {
       toast.error(errorMessage(err));
       setState("idle");
@@ -1549,8 +1572,7 @@ function extHue(ext: string): number {
 }
 
 /** Feeds `.tint-file` (index.css) the one value it needs. */
-const hueStyle = (ext: string) =>
-  ({ "--filetype-h": String(extHue(ext)) }) as React.CSSProperties;
+const hueStyle = (ext: string) => ({ "--filetype-h": String(extHue(ext)) }) as React.CSSProperties;
 
 /**
  * A folder-style tile: colour block on top, name and metadata beneath. No fill
@@ -1617,13 +1639,13 @@ function DocumentTile({
             // The tile has no room for the reason — keep it a hover away.
             <Badge
               variant="destructive"
-              className="h-4 self-start px-1 py-0 text-[10px]"
+              className="h-4 self-start px-1 py-0 text-3xs"
               data-tooltip={doc.error ?? undefined}
             >
               {t("library.error")}
             </Badge>
           ) : (
-            <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+            <span className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground">
               <span
                 className="tint-file shrink-0 rounded px-1 py-0.5 font-mono text-[9px] uppercase leading-none"
                 style={hueStyle(doc.ext)}
@@ -1641,7 +1663,7 @@ function DocumentTile({
           )}
 
           {snippet && !failed && (
-            <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground/70">
+            <span className="mt-0.5 line-clamp-2 text-2xs leading-snug text-muted-foreground/70">
               {snippet}
             </span>
           )}

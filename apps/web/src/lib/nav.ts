@@ -1,4 +1,11 @@
-import { BookOpen, CalendarClock, Inbox, MessagesSquare, Settings2, type LucideIcon } from "lucide-react";
+import {
+  BookOpen,
+  CalendarClock,
+  Inbox,
+  type LucideIcon,
+  MessagesSquare,
+  Settings2,
+} from "lucide-react";
 
 export type View = "home" | "chat" | "automations" | "knowledge" | "settings";
 

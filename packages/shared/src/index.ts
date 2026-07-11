@@ -462,8 +462,6 @@ export interface AppStatus {
   emailAccountsKnown: boolean;
   provider: string;
   model: string;
-  /** True when the server is running in dev-only demo mode (seeded fake data). */
-  demo?: boolean;
 }
 
 /** The app is usable once the model has credentials and an email account is linked.
@@ -534,14 +532,14 @@ export const THREAD_URGENCIES = ["high", "normal", "low"] as const;
 export type ThreadUrgency = (typeof THREAD_URGENCIES)[number];
 
 export type ServerEventTopic =
-  | "runs"           // automation run started/finished (activity feed, run history)
-  | "drafts"         // a Gmail draft was created or deleted
-  | "mail"           // the local mailbox mirror changed (messages synced/updated/removed)
-  | "mail_state"     // enrichment updated thread summaries/triage (email/enrich/)
-  | "memories"       // agent memory saved/updated/deleted
-  | "library"        // library document written/changed
-  | "conversations"  // chat/automation conversation list changed
-  | "automations";   // automation definitions created/updated/deleted
+  | "runs" // automation run started/finished (activity feed, run history)
+  | "drafts" // a Gmail draft was created or deleted
+  | "mail" // the local mailbox mirror changed (messages synced/updated/removed)
+  | "mail_state" // enrichment updated thread summaries/triage (email/enrich/)
+  | "memories" // agent memory saved/updated/deleted
+  | "library" // library document written/changed
+  | "conversations" // chat/automation conversation list changed
+  | "automations"; // automation definitions created/updated/deleted
 
 export interface ServerEvent {
   topic: ServerEventTopic;
@@ -552,7 +550,13 @@ export type ChatStreamEvent =
   | { type: "conversation"; conversationId: string }
   | { type: "text_delta"; delta: string }
   | { type: "thinking" }
-  | { type: "tool_start"; toolCallId: string; toolName: string; parameters?: unknown; contentOffset: number }
+  | {
+      type: "tool_start";
+      toolCallId: string;
+      toolName: string;
+      parameters?: unknown;
+      contentOffset: number;
+    }
   /** Progress text from a long-running tool (e.g. delegate's "2/5 tasks done"), between its tool_start and tool_end. */
   | { type: "tool_update"; toolCallId: string; toolName: string; detail: string }
   | { type: "tool_end"; toolCallId: string; toolName: string; isError: boolean; result?: unknown }

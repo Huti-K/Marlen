@@ -1,4 +1,9 @@
-import { Agent, estimateTokens, serializeConversation, type AgentMessage } from "@earendil-works/pi-agent-core";
+import {
+  Agent,
+  type AgentMessage,
+  estimateTokens,
+  serializeConversation,
+} from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { modelRegistry, resolveActiveModel } from "../llm/registry.js";
 import { moduleLogger } from "../logger.js";
@@ -119,7 +124,10 @@ async function summarizePrefix(prefix: AgentMessage[]): Promise<string> {
 }
 
 /** Compacts agent.state.messages in place when the estimated context nears the model's window. Returns true when a compaction happened. Never throws (fail-open: on any error the messages are left untouched and false is returned). */
-export async function maybeCompact(agent: Agent, log: CompactionLogger = defaultLog): Promise<boolean> {
+export async function maybeCompact(
+  agent: Agent,
+  log: CompactionLogger = defaultLog,
+): Promise<boolean> {
   try {
     const { systemPrompt, model, messages } = agent.state;
     const estimatedTokens = estimateStateTokens(systemPrompt, messages);
@@ -132,7 +140,10 @@ export async function maybeCompact(agent: Agent, log: CompactionLogger = default
 
     const summary = await summarizePrefix(prefix);
     if (!summary) {
-      log.warn({ prefixMessages: prefix.length }, "compaction summary was empty, leaving messages untouched");
+      log.warn(
+        { prefixMessages: prefix.length },
+        "compaction summary was empty, leaving messages untouched",
+      );
       return false;
     }
 

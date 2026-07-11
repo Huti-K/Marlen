@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  addressListOf,
   formatRecipient,
   formatRecipients,
-  recipientAddresses,
-  addressListOf,
-  newestByReceivedDate,
   type GraphRecipient,
+  newestByReceivedDate,
+  recipientAddresses,
 } from "../../src/email/graphMessage.js";
 
 describe("formatRecipient", () => {

@@ -1,6 +1,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { LlmProviderInfo, ModelSettings } from "@trailin/shared";
 import { credentialStore } from "../auth/credentialStore.js";
 import { getSetting, setSetting } from "../db/settings.js";

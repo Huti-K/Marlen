@@ -102,7 +102,8 @@ export const api = {
   loginCancel: () => http<{ ok: boolean }>("POST", "/api/llm/login/cancel"),
   saveApiKey: (providerId: string, apiKey: string) =>
     http<{ ok: boolean }>("POST", "/api/llm/key", { providerId, apiKey }),
-  llmLogout: (providerId: string) => http<{ ok: boolean }>("POST", "/api/llm/logout", { providerId }),
+  llmLogout: (providerId: string) =>
+    http<{ ok: boolean }>("POST", "/api/llm/logout", { providerId }),
 
   pipedreamStatus: () => get<PipedreamStatus>("/api/pipedream"),
   savePipedream: (body: PipedreamConfigInput) =>
@@ -131,7 +132,8 @@ export const api = {
   },
   // The pinned automation's latest successful run, for the Home page lead card.
   // Unlike runsFeed, never filtered by showInActivity and never paginated away.
-  pinnedRun: () => get<{ run: RunFeedItem | null; automation: Automation | null }>("/api/runs/pinned"),
+  pinnedRun: () =>
+    get<{ run: RunFeedItem | null; automation: Automation | null }>("/api/runs/pinned"),
   drafts: (opts?: { refresh?: boolean }) =>
     get<AccountDrafts[]>(`/api/drafts${opts?.refresh ? "?refresh=1" : ""}`),
   draftDetail: (accountId: string, draftId: string) =>
@@ -165,9 +167,7 @@ export const api = {
     if (params.limit !== undefined) search.set("limit", String(params.limit));
     if (params.offset !== undefined) search.set("offset", String(params.offset));
     const qs = search.toString();
-    return get<{ items: Conversation[]; total: number }>(
-      `/api/conversations${qs ? `?${qs}` : ""}`,
-    );
+    return get<{ items: Conversation[]; total: number }>(`/api/conversations${qs ? `?${qs}` : ""}`);
   },
   conversationMessages: (id: string) =>
     get<ChatMessage[]>(`/api/conversations/${encodeURIComponent(id)}/messages`),
@@ -178,8 +178,12 @@ export const api = {
     http<{ ok: boolean }>("DELETE", `/api/conversations/${encodeURIComponent(id)}`),
 
   automations: () => get<Automation[]>("/api/automations"),
-  createAutomation: (body: { name: string; instruction: string; schedule: string; showInActivity?: boolean }) =>
-    http<Automation>("POST", "/api/automations", body),
+  createAutomation: (body: {
+    name: string;
+    instruction: string;
+    schedule: string;
+    showInActivity?: boolean;
+  }) => http<Automation>("POST", "/api/automations", body),
   updateAutomation: (id: string, body: Partial<Automation>) =>
     http<Automation>("PATCH", `/api/automations/${encodeURIComponent(id)}`, body),
   // Setting pinned true unpins every other automation server-side (exactly one may lead Home).
@@ -189,7 +193,8 @@ export const api = {
     http<{ ok: boolean }>("DELETE", `/api/automations/${encodeURIComponent(id)}`),
   runAutomation: (id: string) =>
     http<{ ok: boolean }>("POST", `/api/automations/${encodeURIComponent(id)}/run`),
-  automationRuns: (id: string) => get<AutomationRun[]>(`/api/automations/${encodeURIComponent(id)}/runs`),
+  automationRuns: (id: string) =>
+    get<AutomationRun[]>(`/api/automations/${encodeURIComponent(id)}/runs`),
 
   memories: () => get<MemoryEntry[]>("/api/memories"),
   // `accountId` is only sent when the caller passes it explicitly — omitting it

@@ -1,12 +1,13 @@
-import type { FastifyInstance } from "fastify";
-import { eq, inArray } from "drizzle-orm";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { Type } from "@sinclair/typebox";
 import type { AccountDrafts, ConnectedAccount, EmailDraft, EmailThread } from "@trailin/shared";
+import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import "../email/registerProviders.js";
 import { listDraftsCached } from "../email/draftsService.js";
-import { getDraftProvider, type DraftProvider } from "../email/providers.js";
-import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
+import { type DraftProvider, getDraftProvider } from "../email/providers.js";
 import { AppError, badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
+import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
 
 /** Resolve a connected account (any app with a draft provider) by its Pipedream account id. */
@@ -62,10 +63,20 @@ async function attachConversationLinks(byAccount: AccountDrafts[]): Promise<Acco
   }));
 }
 
-export async function draftRoutes(app: FastifyInstance): Promise<void> {
+const draftsQuery = Type.Object({ refresh: Type.Optional(Type.String()) });
+const draftParams = Type.Object({ accountId: Type.String(), draftId: Type.String() });
+const draftPatchBody = Type.Object({
+  body: Type.Optional(Type.String()),
+  subject: Type.Optional(Type.String()),
+});
+const threadParams = Type.Object({ accountId: Type.String(), threadId: Type.String() });
+const threadQuery = Type.Object({ excludeMessageId: Type.Optional(Type.String()) });
+
+export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
   /** Live drafts per connected account that has a DraftProvider (Gmail, Outlook, ...). */
-  app.get<{ Querystring: { refresh?: string } }>(
+  app.get(
     "/api/drafts",
+    { schema: { querystring: draftsQuery } },
     async (req): Promise<AccountDrafts[]> => {
       if (!(await pipedreamConfigured())) return [];
       const refresh = req.query.refresh === "1";
@@ -101,22 +112,20 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
   );
 
   /** Full draft content for the in-app viewer. */
-  app.get<{ Params: { accountId: string; draftId: string } }>(
-    "/api/drafts/:accountId/:draftId",
-    async (req) => {
-      try {
-        const found = await findDraftAccount(req.params.accountId);
-        if (!found) throw notFound("account not found");
-        return await found.provider.getDraftDetail(found.account, req.params.draftId);
-      } catch (error) {
-        throw toProviderError(error, "draft not found");
-      }
-    },
-  );
+  app.get("/api/drafts/:accountId/:draftId", { schema: { params: draftParams } }, async (req) => {
+    try {
+      const found = await findDraftAccount(req.params.accountId);
+      if (!found) throw notFound("account not found");
+      return await found.provider.getDraftDetail(found.account, req.params.draftId);
+    } catch (error) {
+      throw toProviderError(error, "draft not found");
+    }
+  });
 
   /** Discard a draft (user-initiated from the UI; the agent has no such tool). */
-  app.delete<{ Params: { accountId: string; draftId: string } }>(
+  app.delete(
     "/api/drafts/:accountId/:draftId",
+    { schema: { params: draftParams } },
     async (req) => {
       try {
         const found = await findDraftAccount(req.params.accountId);
@@ -136,23 +145,24 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
    * without one (no driver written yet) reports 400 rather than assuming
    * every connected account works like Gmail.
    */
-  app.patch<{
-    Params: { accountId: string; draftId: string };
-    Body: { body?: string; subject?: string };
-  }>("/api/drafts/:accountId/:draftId", async (req) => {
-    try {
-      const found = await findDraftAccount(req.params.accountId);
-      if (!found) throw notFound("account not found");
-      if (!found.provider.updateDraft) {
-        throw badRequest("editing a draft is not supported for this account");
+  app.patch(
+    "/api/drafts/:accountId/:draftId",
+    { schema: { params: draftParams, body: draftPatchBody } },
+    async (req) => {
+      try {
+        const found = await findDraftAccount(req.params.accountId);
+        if (!found) throw notFound("account not found");
+        if (!found.provider.updateDraft) {
+          throw badRequest("editing a draft is not supported for this account");
+        }
+        const { body, subject } = req.body;
+        await found.provider.updateDraft(found.account, req.params.draftId, { body, subject });
+        return { ok: true };
+      } catch (error) {
+        throw toProviderError(error, "draft not found");
       }
-      const { body, subject } = req.body ?? {};
-      await found.provider.updateDraft(found.account, req.params.draftId, { body, subject });
-      return { ok: true };
-    } catch (error) {
-      throw toProviderError(error, "draft not found");
-    }
-  });
+    },
+  );
 
   /**
    * The full email thread a draft belongs to, for the in-app viewer.
@@ -160,11 +170,9 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
    * updateDraft above. `excludeMessageId` omits the draft's own message,
    * which some providers (Gmail) count as part of the thread it replies to.
    */
-  app.get<{
-    Params: { accountId: string; threadId: string };
-    Querystring: { excludeMessageId?: string };
-  }>(
+  app.get(
     "/api/threads/:accountId/:threadId",
+    { schema: { params: threadParams, querystring: threadQuery } },
     async (req): Promise<EmailThread> => {
       try {
         const found = await findDraftAccount(req.params.accountId);
@@ -182,4 +190,4 @@ export async function draftRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
-}
+};

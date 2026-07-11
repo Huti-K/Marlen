@@ -1,11 +1,7 @@
-import type { FastifyInstance } from "fastify";
-import {
-  clearCredential,
-  getModelSettings,
-  listProviders,
-  saveApiKey,
-  setActiveModelIds,
-} from "../llm/registry.js";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { Type } from "@sinclair/typebox";
+import { resetSessions } from "../agent/emailAgent.js";
+import { badRequest, conflict } from "../errors.js";
 import {
   cancelLogin,
   getLoginStatus,
@@ -13,22 +9,33 @@ import {
   provideLoginSelection,
   startLogin,
 } from "../llm/loginFlow.js";
-import { resetSessions } from "../agent/emailAgent.js";
-import { badRequest, conflict } from "../errors.js";
+import {
+  clearCredential,
+  getModelSettings,
+  listProviders,
+  saveApiKey,
+  setActiveModelIds,
+} from "../llm/registry.js";
 import { errorMessage } from "../util.js";
 
-export async function llmRoutes(app: FastifyInstance): Promise<void> {
+const modelBody = Type.Object({ provider: Type.String(), model: Type.String() });
+
+const providerIdBody = Type.Object({ providerId: Type.String() });
+
+const loginInputBody = Type.Object({ value: Type.String() });
+
+const loginSelectBody = Type.Object({ optionId: Type.String() });
+
+const keyBody = Type.Object({ providerId: Type.String(), apiKey: Type.String() });
+
+export const llmRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/llm/providers", async () => listProviders());
 
   app.get("/api/llm/model", async () => getModelSettings());
 
-  app.put<{ Body: { provider: string; model: string } }>("/api/llm/model", async (req) => {
-    const { provider, model } = req.body ?? {};
-    if (!provider || !model) {
-      throw badRequest("provider and model are required");
-    }
+  app.put("/api/llm/model", { schema: { body: modelBody } }, async (req) => {
     try {
-      await setActiveModelIds(provider, model);
+      await setActiveModelIds(req.body.provider, req.body.model);
     } catch (error) {
       throw badRequest(errorMessage(error));
     }
@@ -39,11 +46,9 @@ export async function llmRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/llm/login/status", async () => getLoginStatus());
 
-  app.post<{ Body: { providerId: string } }>("/api/llm/login/start", async (req) => {
-    const providerId = req.body?.providerId;
-    if (!providerId) throw badRequest("providerId is required");
+  app.post("/api/llm/login/start", { schema: { body: providerIdBody } }, async (req) => {
     try {
-      return startLogin(providerId, {
+      return startLogin(req.body.providerId, {
         info: (m) => req.log.info(m),
         warn: (m) => req.log.warn(m),
       });
@@ -52,8 +57,8 @@ export async function llmRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post<{ Body: { value: string } }>("/api/llm/login/input", async (req) => {
-    const value = req.body?.value?.trim();
+  app.post("/api/llm/login/input", { schema: { body: loginInputBody } }, async (req) => {
+    const value = req.body.value.trim();
     if (!value) throw badRequest("value is required");
     try {
       provideLoginInput(value);
@@ -63,11 +68,9 @@ export async function llmRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post<{ Body: { optionId: string } }>("/api/llm/login/select", async (req) => {
-    const optionId = req.body?.optionId;
-    if (!optionId) throw badRequest("optionId is required");
+  app.post("/api/llm/login/select", { schema: { body: loginSelectBody } }, async (req) => {
     try {
-      provideLoginSelection(optionId);
+      provideLoginSelection(req.body.optionId);
       return { ok: true };
     } catch (error) {
       throw conflict(errorMessage(error));
@@ -79,31 +82,26 @@ export async function llmRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  app.post<{ Body: { providerId: string; apiKey: string } }>(
-    "/api/llm/key",
-    async (req) => {
-      const { providerId, apiKey } = req.body ?? {};
-      if (!providerId || !apiKey?.trim()) {
-        throw badRequest("providerId and apiKey are required");
-      }
-      // Only saveApiKey's own validation belongs to this catch — resetSessions
-      // below is a separate failure mode and must not be reported as a bad
-      // request too.
-      try {
-        await saveApiKey(providerId, apiKey.trim());
-      } catch (error) {
-        throw badRequest(errorMessage(error));
-      }
-      await resetSessions();
-      return { ok: true };
-    },
-  );
-
-  app.post<{ Body: { providerId: string } }>("/api/llm/logout", async (req) => {
-    const providerId = req.body?.providerId;
-    if (!providerId) throw badRequest("providerId is required");
-    await clearCredential(providerId);
+  app.post("/api/llm/key", { schema: { body: keyBody } }, async (req) => {
+    const apiKey = req.body.apiKey.trim();
+    if (!apiKey) {
+      throw badRequest("providerId and apiKey are required");
+    }
+    // Only saveApiKey's own validation belongs to this catch — resetSessions
+    // below is a separate failure mode and must not be reported as a bad
+    // request too.
+    try {
+      await saveApiKey(req.body.providerId, apiKey);
+    } catch (error) {
+      throw badRequest(errorMessage(error));
+    }
     await resetSessions();
     return { ok: true };
   });
-}
+
+  app.post("/api/llm/logout", { schema: { body: providerIdBody } }, async (req) => {
+    await clearCredential(req.body.providerId);
+    await resetSessions();
+    return { ok: true };
+  });
+};

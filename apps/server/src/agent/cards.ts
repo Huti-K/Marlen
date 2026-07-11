@@ -1,6 +1,6 @@
 import {
-  BRIEFING_PRIORITIES,
   type AgentCard,
+  BRIEFING_PRIORITIES,
   type BriefingItem,
   type BriefingPriority,
   type BriefingRollup,
@@ -11,6 +11,7 @@ import {
   type EmailThreadMessage,
   type MessageCard,
 } from "@trailin/shared";
+import { splitAddressList } from "../email/textUtils.js";
 
 /**
  * Turns tool `details` payloads into `AgentCard`s the chat can render, and
@@ -45,7 +46,9 @@ function toStringArray(value: unknown): string[] | undefined {
 
 function truncateSnippet(text: string): string {
   const collapsed = text.replace(/\s+/g, " ").trim();
-  return collapsed.length > SNIPPET_LENGTH ? `${collapsed.slice(0, SNIPPET_LENGTH).trimEnd()}…` : collapsed;
+  return collapsed.length > SNIPPET_LENGTH
+    ? `${collapsed.slice(0, SNIPPET_LENGTH).trimEnd()}…`
+    : collapsed;
 }
 
 /** Maps a resolved connected account onto the card's account slot. */
@@ -120,7 +123,8 @@ function parseBriefingItem(value: unknown): BriefingItem | undefined {
     receivedAt,
     draftId,
   } = value;
-  if (!isString(threadId) || !isString(sender) || !isString(subject) || !isString(gist)) return undefined;
+  if (!isString(threadId) || !isString(sender) || !isString(subject) || !isString(gist))
+    return undefined;
   return {
     threadId,
     ...(isString(messageId) ? { messageId } : {}),
@@ -186,9 +190,7 @@ export function parseAgentCard(details: unknown): AgentCard | undefined {
     switch (details.kind) {
       case "email_hits": {
         if (!Array.isArray(details.hits)) return undefined;
-        const hits = details.hits
-          .map(parseEmailHit)
-          .filter((h): h is EmailHit => h !== undefined);
+        const hits = details.hits.map(parseEmailHit).filter((h): h is EmailHit => h !== undefined);
         return {
           kind: "email_hits",
           ...(account ? { account } : {}),
@@ -227,7 +229,9 @@ export function parseAgentCard(details: unknown): AgentCard | undefined {
           ? details.accounts.map(parseCardAccount).filter((a): a is CardAccount => a !== undefined)
           : undefined;
         const rollups = Array.isArray(details.rollups)
-          ? details.rollups.map(parseBriefingRollup).filter((r): r is BriefingRollup => r !== undefined)
+          ? details.rollups
+              .map(parseBriefingRollup)
+              .filter((r): r is BriefingRollup => r !== undefined)
           : undefined;
         return {
           kind: "briefing",
@@ -250,8 +254,8 @@ export function parseAgentCard(details: unknown): AgentCard | undefined {
 /**
  * Parses a messages.cards JSON blob back into validated cards for the API.
  * Same trust posture as parseAgentCard: the column is our own write, but it
- * round-trips through JSON and old rows may predate a card shape change, so
- * anything malformed is dropped rather than crashing message restore.
+ * round-trips through JSON, so anything malformed is dropped rather than
+ * crashing message restore.
  */
 export function parseStoredCards(raw: string | null | undefined): MessageCard[] | undefined {
   if (!raw) return undefined;
@@ -283,20 +287,16 @@ export function parseStoredCards(raw: string | null | undefined): MessageCard[] 
 function headerValue(headers: unknown, name: string): string | undefined {
   if (!Array.isArray(headers)) return undefined;
   for (const h of headers) {
-    if (isRecord(h) && isString(h.name) && isString(h.value) && h.name.toLowerCase() === name.toLowerCase()) {
+    if (
+      isRecord(h) &&
+      isString(h.name) &&
+      isString(h.value) &&
+      h.name.toLowerCase() === name.toLowerCase()
+    ) {
       return h.value;
     }
   }
   return undefined;
-}
-
-/** Splits a header address list ("A <a@x>, B <b@y>") into individual entries. */
-function splitAddressList(value: string | undefined): string[] {
-  if (!value) return [];
-  return value
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
 }
 
 function decodeBase64Url(data: string): string | undefined {
@@ -344,8 +344,8 @@ function gmailMessageFields(raw: unknown): GmailFields | undefined {
   const from = headerValue(headers, "from") ?? (isString(raw.from) ? raw.from : undefined);
   if (!from) return undefined;
 
-  const to = splitAddressList(headerValue(headers, "to") ?? (isString(raw.to) ? raw.to : undefined));
-  const cc = splitAddressList(headerValue(headers, "cc") ?? (isString(raw.cc) ? raw.cc : undefined));
+  const to = splitAddressList(headerValue(headers, "to") ?? (isString(raw.to) ? raw.to : ""));
+  const cc = splitAddressList(headerValue(headers, "cc") ?? (isString(raw.cc) ? raw.cc : ""));
   const subject = headerValue(headers, "subject") ?? (isString(raw.subject) ? raw.subject : "");
 
   const dateHeader = headerValue(headers, "date");
@@ -354,7 +354,9 @@ function gmailMessageFields(raw: unknown): GmailFields | undefined {
     dateHeader ??
     (internalDate && /^\d+$/.test(internalDate)
       ? new Date(Number(internalDate)).toISOString()
-      : (isString(raw.date) ? raw.date : ""));
+      : isString(raw.date)
+        ? raw.date
+        : "");
 
   const rawSnippet = isString(raw.snippet) ? raw.snippet : "";
   const bodyText = (payload ? findPlainTextBody(payload) : undefined) ?? "";
@@ -402,7 +404,10 @@ function firstArray(data: Record<string, unknown>, keys: string[]): unknown[] | 
   return undefined;
 }
 
-function cardFromFindEmail(account: CardAccount, data: Record<string, unknown>): AgentCard | undefined {
+function cardFromFindEmail(
+  account: CardAccount,
+  data: Record<string, unknown>,
+): AgentCard | undefined {
   const list = firstArray(data, ["messages", "results", "items", "hits"]);
   if (!list) return undefined;
   const hits: EmailHit[] = [];
@@ -422,9 +427,16 @@ function cardFromFindEmail(account: CardAccount, data: Record<string, unknown>):
   return hits.length > 0 ? { kind: "email_hits", account, hits } : undefined;
 }
 
-function cardFromGetThread(account: CardAccount, data: Record<string, unknown>): AgentCard | undefined {
+function cardFromGetThread(
+  account: CardAccount,
+  data: Record<string, unknown>,
+): AgentCard | undefined {
   const list = firstArray(data, ["messages"]);
-  const threadId = isString(data.id) ? data.id : isString(data.threadId) ? data.threadId : undefined;
+  const threadId = isString(data.id)
+    ? data.id
+    : isString(data.threadId)
+      ? data.threadId
+      : undefined;
   if (!list || !threadId) return undefined;
 
   const messages: EmailThreadMessage[] = [];
@@ -441,10 +453,15 @@ function cardFromGetThread(account: CardAccount, data: Record<string, unknown>):
       body: fields.body,
     });
   }
-  return messages.length > 0 ? { kind: "email_thread", account, threadId, subject, messages } : undefined;
+  return messages.length > 0
+    ? { kind: "email_thread", account, threadId, subject, messages }
+    : undefined;
 }
 
-function cardFromGetEmail(account: CardAccount, data: Record<string, unknown>): AgentCard | undefined {
+function cardFromGetEmail(
+  account: CardAccount,
+  data: Record<string, unknown>,
+): AgentCard | undefined {
   const fields = gmailMessageFields(data);
   if (!fields?.threadId) return undefined;
   return {

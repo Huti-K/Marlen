@@ -3,7 +3,9 @@
     "skipToContent": "Skip to content",
     "openMenu": "Open menu",
     "openChat": "Open chat",
-    "closeChat": "Close chat"
+    "closeChat": "Close chat",
+    "expandChat": "Expand chat",
+    "collapseChat": "Collapse chat"
   },
   "views": {
     "chat": {
@@ -29,21 +31,22 @@
   },
   "sidebar": {
     "closeMenu": "Close menu",
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
     "finishSetup": "Finish setup",
     "lightMode": "Light mode",
-    "darkMode": "Dark mode",
-    "demoBadge": "Demo"
+    "darkMode": "Dark mode"
   },
   "common": {
     "cancel": "Cancel",
     "close": "Close",
+    "expand": "Expand",
+    "collapse": "Collapse",
     "dismiss": "Dismiss",
     "loading": "Loading…",
     "saving": "Saving…",
     "saved": "Saved",
     "retry": "Retry",
-    "refresh": "Refresh",
-    "clear": "Clear",
     "signIn": "Sign in",
     "signOut": "Sign out",
     "submit": "Submit",
@@ -212,7 +215,6 @@
     "removeSavedConfirm": "Remove the Pipedream credentials saved in the app?",
     "emailAccounts": "Connected accounts",
     "noAccounts": "No email accounts connected yet. Use the buttons above, you can connect several accounts per provider.",
-    "connectApp": "Connect {{app}}",
     "finishConnecting": "Complete the connection in the window that just opened, it closes by itself when you're done.",
     "healthy": "Healthy",
     "unhealthy": "Unhealthy",
@@ -223,8 +225,6 @@
     "sourceEnv": "from .env",
     "edit": "Edit",
     "accountColor": "Account color",
-    "customColor": "Custom color",
-    "colorPresets": "Color presets",
     "advanced": "Advanced",
     "advancedBuiltin": "Built-in Pipedream",
     "advancedCustom": "Own Pipedream project",
@@ -290,7 +290,6 @@
   },
   "automations": {
     "new": "New automation",
-    "edit": "Edit",
     "save": "Save",
     "create": "Create",
     "formTitle": "New automation",

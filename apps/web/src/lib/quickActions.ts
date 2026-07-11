@@ -9,7 +9,7 @@ export type QuickActionMode = "send" | "prefill";
 
 const STORAGE_KEY = "trailin-quick-action-mode";
 
-export function getQuickActionMode(): QuickActionMode {
+function getQuickActionMode(): QuickActionMode {
   if (typeof window === "undefined") return "send";
   return localStorage.getItem(STORAGE_KEY) === "prefill" ? "prefill" : "send";
 }

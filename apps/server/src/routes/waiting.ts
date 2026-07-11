@@ -1,14 +1,18 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { Type } from "@sinclair/typebox";
 import type { AccountWaiting } from "@trailin/shared";
 import { accountSupportsWaiting, listWaiting } from "../email/waiting.js";
-import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 import { upstreamError } from "../errors.js";
+import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
 
-export async function waitingRoutes(app: FastifyInstance): Promise<void> {
+const waitingQuery = Type.Object({ refresh: Type.Optional(Type.String()) });
+
+export const waitingRoutes: FastifyPluginAsyncTypebox = async (app) => {
   /** Sent threads still awaiting a reply, computed from the mailbox mirror, per synced account, for the Home page. */
-  app.get<{ Querystring: { refresh?: string } }>(
+  app.get(
     "/api/waiting",
+    { schema: { querystring: waitingQuery } },
     async (req): Promise<AccountWaiting[]> => {
       if (!(await pipedreamConfigured())) return [];
       const refresh = req.query.refresh === "1";
@@ -37,4 +41,4 @@ export async function waitingRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
-}
+};

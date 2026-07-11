@@ -1,14 +1,15 @@
-import * as React from "react";
-import { ChevronDown, ChevronRight, ExternalLink, Loader2, Trash2, Sparkles } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { EmailDraft, EmailThreadMessage } from "@trailin/shared";
-import { api } from "@/lib/api";
+import { ChevronDown, ChevronRight, ExternalLink, Loader2, Sparkles, Trash2 } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { errorMessage } from "@/lib/utils";
-import { toast } from "@/lib/toast";
+import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
+import { Textarea } from "@/components/ui/textarea";
 import { ThreadHistory } from "@/features/home/ThreadHistory";
+import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
+import { errorMessage, openExternal } from "@/lib/utils";
 
 /** One draft — click to read the full content right here, edit its body in place. */
 export function DraftRow({
@@ -53,12 +54,10 @@ export function DraftRow({
     // Kick off both requests before awaiting either — a slow/failed thread
     // fetch must never delay or break the draft body.
     const threadPromise = draft.threadId
-      ? api
-          .draftThread(accountId, draft.threadId, draft.messageId)
-          .catch(() => {
-            setThreadFailed(true);
-            return null;
-          })
+      ? api.draftThread(accountId, draft.threadId, draft.messageId).catch(() => {
+          setThreadFailed(true);
+          return null;
+        })
       : Promise.resolve(null);
     try {
       const [detailResult, threadResult] = await Promise.all([
@@ -83,13 +82,12 @@ export function DraftRow({
 
   // Opened from the search palette: expand, fetch and scroll to it even if it
   // was already rendered collapsed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when the palette re-targets this row, not on every detail/loadDetail change
   React.useEffect(() => {
     if (!forceOpen) return;
     setOpen(true);
     if (!detail) void loadDetail();
     rowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    // Only re-run when the palette re-targets this row, not on every detail/loadDetail change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceOpen]);
 
   const discard = async () => {
@@ -140,9 +138,7 @@ export function DraftRow({
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">
-              {draft.subject || t("drafts.noSubject")}
-            </p>
+            <p className="truncate text-sm font-medium">{draft.subject || t("drafts.noSubject")}</p>
             <p className="truncate text-xs text-muted-foreground">
               {draft.to && `${t("drafts.to")} ${draft.to}`}
               {draft.to && draft.date && " · "}
@@ -156,9 +152,8 @@ export function DraftRow({
         <div className="flex items-center shrink-0">
           <Button
             variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:bg-secondary hover:text-foreground"
-            onClick={() => window.open(draft.webUrl, "_blank", "noopener,noreferrer")}
+            size="icon-sm"
+            onClick={() => openExternal(draft.webUrl)}
             title={t("drafts.open")}
             aria-label={t("drafts.open")}
           >
@@ -166,8 +161,8 @@ export function DraftRow({
           </Button>
           <Button
             variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:bg-accent/10 hover:text-accent"
+            size="icon-sm"
+            className="hover:bg-accent/10 hover:text-accent"
             onClick={(e) => {
               e.stopPropagation();
               window.dispatchEvent(new CustomEvent("trailin:show-chat"));
@@ -175,7 +170,7 @@ export function DraftRow({
                 // The agent wrote this draft — reopen that conversation, with
                 // its context and draft card, instead of starting cold.
                 window.dispatchEvent(
-                  new CustomEvent("trailin:open-chat", { detail: draft.conversationId })
+                  new CustomEvent("trailin:open-chat", { detail: draft.conversationId }),
                 );
               } else {
                 // Draft from outside Trailin (or an unlinked older one): a
@@ -183,7 +178,7 @@ export function DraftRow({
                 window.dispatchEvent(
                   new CustomEvent("trailin:prefill-chat", {
                     detail: { text: t("drafts.refinePrompt", { subject: draft.subject }) },
-                  })
+                  }),
                 );
               }
             }}
@@ -194,10 +189,10 @@ export function DraftRow({
           </Button>
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             onClick={() => setConfirmOpen(true)}
             disabled={busy}
-            className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            className="hover:bg-destructive/10 hover:text-destructive"
             title={t("drafts.discard")}
             aria-label={t("drafts.discard")}
           >
@@ -213,7 +208,7 @@ export function DraftRow({
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("common.loading")}
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5 pt-2 text-[14px]">
+            <div className="flex flex-col gap-2.5 pt-2 text-sm">
               <div className="flex flex-col gap-1 text-[13px] text-muted-foreground">
                 {draft.to && (
                   <div>
@@ -237,19 +232,9 @@ export function DraftRow({
 
               {thread && thread.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setThreadOpen((v) => !v)}
-                    aria-expanded={threadOpen}
-                    className="flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {threadOpen ? (
-                      <ChevronDown className="h-3 w-3 shrink-0" />
-                    ) : (
-                      <ChevronRight className="h-3 w-3 shrink-0" />
-                    )}
+                  <DisclosureToggle open={threadOpen} onToggle={() => setThreadOpen((v) => !v)}>
                     {t("drafts.conversation", { count: thread.length })}
-                  </button>
+                  </DisclosureToggle>
                   {threadOpen && <ThreadHistory messages={thread} />}
                 </div>
               )}
@@ -264,7 +249,7 @@ export function DraftRow({
                   onChange={(e) => setBodyDraft(e.target.value)}
                   placeholder={t("drafts.emptyBodyText")}
                   rows={Math.max(6, bodyDraft.split("\n").length)}
-                  className="resize-none text-[14px] leading-relaxed text-foreground/90"
+                  className="resize-none text-sm leading-relaxed text-foreground/90"
                 />
                 {dirty && (
                   <div className="flex justify-end gap-2">

@@ -1,26 +1,47 @@
+import type {
+  AccountColor,
+  AccountDrafts,
+  AccountWaiting,
+  Automation,
+  RunFeedItem,
+} from "@trailin/shared";
+import {
+  CalendarClock,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Mail,
+  MessageSquareShare,
+  Newspaper,
+  Wrench,
+} from "lucide-react";
 import * as React from "react";
-import { CalendarClock, ChevronDown, ChevronUp, FileText, Mail, MessageSquareShare, Newspaper, RefreshCw, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { AccountColor, AccountDrafts, AccountWaiting, Automation, RunFeedItem } from "@trailin/shared";
-import type { View } from "@/lib/nav";
-import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select } from "@/components/ui/select";
-import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
-import { Card } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
-import { DraftRow } from "@/features/home/DraftRow";
+import { AccountDot } from "@/components/ui/account-dot";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
+import { Select } from "@/components/ui/select";
+import { DigestView, hasDigestShape, parseDigest } from "@/features/automations/DigestView";
 import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
+import { CollapsibleSectionTitle } from "@/features/home/CollapsibleSectionTitle";
+import { DraftRow } from "@/features/home/DraftRow";
 import { GlanceStrip } from "@/features/home/GlanceStrip";
 import { WaitingSection } from "@/features/home/WaitingSection";
-import { DigestView, hasDigestShape, parseDigest } from "@/features/automations/DigestView";
-import { dateTimeLabel, dayLabel as formatDayLabel, timeLabel as formatTimeLabel } from "@/lib/dates";
+import { api } from "@/lib/api";
+import {
+  dateTimeLabel,
+  dayLabel as formatDayLabel,
+  timeLabel as formatTimeLabel,
+} from "@/lib/dates";
+import type { View } from "@/lib/nav";
 import { takePendingDraftFocus } from "@/lib/paletteFocus";
 import { openRunInChat } from "@/lib/runNavigation";
 import { useServerEvents } from "@/lib/serverEvents";
-import { errorMessage, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
 /** Widening windows for the "Needs your review" drafts filter; defaults to "today". */
 type DraftRange = "today" | "7d" | "30d" | "all";
@@ -108,12 +129,30 @@ export function HomePanel({
       });
 
     const results = await Promise.allSettled([
-      apply(api.drafts(), (v) => setDrafts((cache.drafts = v))),
-      apply(api.runsFeed(), (v) => setRuns((cache.runs = v.items))),
-      apply(api.automations(), (v) => setAutomations((cache.automations = v))),
-      apply(api.accountColors(), (v) => setColors((cache.colors = v.colors))),
-      apply(api.waiting(), (v) => setWaiting((cache.waiting = v))),
-      apply(api.pinnedRun(), (v) => setPinned((cache.pinned = v))),
+      apply(api.drafts(), (v) => {
+        cache.drafts = v;
+        setDrafts(v);
+      }),
+      apply(api.runsFeed(), (v) => {
+        cache.runs = v.items;
+        setRuns(v.items);
+      }),
+      apply(api.automations(), (v) => {
+        cache.automations = v;
+        setAutomations(v);
+      }),
+      apply(api.accountColors(), (v) => {
+        cache.colors = v.colors;
+        setColors(v.colors);
+      }),
+      apply(api.waiting(), (v) => {
+        cache.waiting = v;
+        setWaiting(v);
+      }),
+      apply(api.pinnedRun(), (v) => {
+        cache.pinned = v;
+        setPinned(v);
+      }),
     ]);
 
     if (!isCurrent()) return;
@@ -185,8 +224,6 @@ export function HomePanel({
   // away instead of waiting on the slow live mailbox drafts fetch.
   return (
     <div className="flex flex-col gap-10 pt-1">
-
-
       {error && !offline && <ErrorBanner>{error}</ErrorBanner>}
 
       {setupIncomplete ? (
@@ -276,22 +313,13 @@ function ReviewSection({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <h2 
-          className="flex items-center gap-2.5 text-base font-semibold tracking-tight cursor-pointer hover:text-muted-foreground transition-colors select-none"
-          onClick={() => setIsExpanded(!isExpanded)}
-          title={isExpanded ? "Collapse" : "Expand"}
-        >
-          <div className="tint-accent flex h-7 w-7 items-center justify-center rounded-md">
-            <FileText className="h-4 w-4" />
-          </div>
-          {t("home.reviewTitle")}
-          {filteredTotal > 0 && <Badge variant="muted">{filteredTotal}</Badge>}
-          {isExpanded ? (
-            <ChevronUp className="h-4 w-4 text-muted-foreground ml-1" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground ml-1" />
-          )}
-        </h2>
+        <CollapsibleSectionTitle
+          icon={FileText}
+          title={t("home.reviewTitle")}
+          count={filteredTotal}
+          expanded={isExpanded}
+          onToggle={() => setIsExpanded(!isExpanded)}
+        />
         {unfilteredTotal > 0 && (
           <Select
             id="draft-range"
@@ -315,13 +343,9 @@ function ReviewSection({
 
           {!drafts ? (
             <LoadingRow />
-          ) : unfilteredTotal === 0 && !hasErroredAccount ? (
+          ) : (unfilteredTotal === 0 || filteredTotal === 0) && !hasErroredAccount ? (
             <p className="rounded-lg bg-surface-2 px-3.5 py-3 text-xs text-muted-foreground">
-              {t("home.reviewEmpty")}
-            </p>
-          ) : filteredTotal === 0 && !hasErroredAccount ? (
-            <p className="rounded-lg bg-surface-2 px-3.5 py-3 text-xs text-muted-foreground">
-              {t("home.reviewEmptyFiltered")}
+              {t(unfilteredTotal === 0 ? "home.reviewEmpty" : "home.reviewEmptyFiltered")}
             </p>
           ) : (
             <div className="flex flex-col gap-8">
@@ -331,13 +355,9 @@ function ReviewSection({
                   <div key={accountDrafts.accountId} className="flex flex-col gap-3">
                     {filteredAccounts.length > 1 && (
                       <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor:
-                              colors.find((c) => c.accountId === accountDrafts.accountId)?.hex ??
-                              UNASSIGNED_ACCOUNT_COLOR,
-                          }}
+                        <AccountDot
+                          className="h-2.5 w-2.5"
+                          color={colors.find((c) => c.accountId === accountDrafts.accountId)?.hex}
                         />
                         <Mail className="h-3.5 w-3.5" />
                         {accountDrafts.account}
@@ -451,7 +471,7 @@ function ActivitySection({
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tight">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <div className="tint-accent flex h-7 w-7 items-center justify-center rounded-md">
             <Wrench className="h-4 w-4" />
           </div>
           {t("home.activityTitle")}
@@ -483,20 +503,11 @@ function ActivitySection({
           {earlierRuns.length > 0 && (
             <div className="flex flex-col gap-4">
               {showEarlier && renderDayGroups(earlierRuns)}
-              <button
-                type="button"
-                className="flex w-fit items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                onClick={() => setShowEarlier((v) => !v)}
-              >
-                {showEarlier ? (
-                  <ChevronUp className="h-3 w-3 shrink-0" />
-                ) : (
-                  <ChevronDown className="h-3 w-3 shrink-0" />
-                )}
+              <DisclosureToggle open={showEarlier} onToggle={() => setShowEarlier((v) => !v)}>
                 {showEarlier
                   ? t("home.activityShowLess")
                   : t("home.activityShowEarlier", { count: earlierRuns.length })}
-              </button>
+              </DisclosureToggle>
             </div>
           )}
         </div>
@@ -521,6 +532,7 @@ function ActivityRunCard({
   const { t } = useTranslation();
   const [expanded, setExpanded] = React.useState(defaultExpanded);
   const hasResult = !!run.result;
+  const toggleExpanded = () => setExpanded(!expanded);
 
   return (
     <Card
@@ -528,24 +540,38 @@ function ActivityRunCard({
       className="animate-in-up flex flex-col gap-3"
       style={{ animationDelay: `${index * 45}ms` }}
     >
-      <div 
-        className={hasResult ? "flex items-center justify-between gap-3 cursor-pointer" : "flex items-center justify-between gap-3"}
-        onClick={() => hasResult && setExpanded(!expanded)}
+      <div
+        className={cn("flex items-center justify-between gap-3", hasResult && "cursor-pointer")}
+        {...(hasResult
+          ? {
+              role: "button" as const,
+              tabIndex: 0,
+              "aria-expanded": expanded,
+              onClick: toggleExpanded,
+              onKeyDown: (e: React.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleExpanded();
+                }
+              },
+            }
+          : {})}
       >
         <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
           <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="truncate">
-            {run.automationName ?? t("home.deletedAutomation")}
-          </span>
-          {hasResult && (
-            expanded ? <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-          )}
+          <span className="truncate">{run.automationName ?? t("home.deletedAutomation")}</span>
+          {hasResult &&
+            (expanded ? (
+              <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+            ))}
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            className="h-6 w-6"
             title={t("home.openInChat")}
             aria-label={t("home.openInChat")}
             onClick={(e) => {
@@ -567,7 +593,7 @@ function ActivityRunCard({
             content={run.result}
             automationName={run.automationName}
             runDate={run.startedAt}
-            className="text-[14px] text-foreground/90"
+            className="text-sm text-foreground/90"
           />
         </div>
       )}

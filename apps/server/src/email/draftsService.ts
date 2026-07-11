@@ -1,5 +1,4 @@
 import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
-import { env } from "../env.js";
 import { emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
 import { getDraftProvider } from "./providers.js";
@@ -78,10 +77,14 @@ function providerFor(account: ConnectedAccount) {
  * caller can gate its cache.set on nothing having invalidated in the
  * meantime.
  */
-function dedupedFetch(account: ConnectedAccount): { promise: Promise<EmailDraft[]>; generation: number } {
+function dedupedFetch(account: ConnectedAccount): {
+  promise: Promise<EmailDraft[]>;
+  generation: number;
+} {
   const gen = currentGeneration(account.id);
   const existing = inFlight.get(account.id);
-  if (existing && inFlightGeneration.get(account.id) === gen) return { promise: existing, generation: gen };
+  if (existing && inFlightGeneration.get(account.id) === gen)
+    return { promise: existing, generation: gen };
   const promise = providerFor(account)
     .listDrafts(account)
     .finally(() => {
@@ -130,9 +133,6 @@ function scheduleBackgroundRefresh(account: ConnectedAccount, previous: EmailDra
 /**
  * Cached, stale-while-revalidate drafts list for one account.
  *
- * - demo mode: always a direct live call — demo data is a cheap local read,
- *   and demo mutations (create/delete a draft) need to show up instantly, so
- *   caching it would only add a reason for it to look stale.
  * - `refresh: true`: live fetch (still deduped against any fetch already in
  *   flight for this account), cache the result, return it.
  * - fresh cache entry (< TTL_MS old): return it as-is.
@@ -144,12 +144,11 @@ export async function listDraftsCached(
   account: ConnectedAccount,
   opts: { refresh?: boolean } = {},
 ): Promise<EmailDraft[]> {
-  if (env.demoMode) return providerFor(account).listDrafts(account);
-
   if (opts.refresh) {
     const fetch = dedupedFetch(account);
     const drafts = await fetch.promise;
-    if (fetch.generation === currentGeneration(account.id)) cache.set(account.id, { drafts, fetchedAt: Date.now() });
+    if (fetch.generation === currentGeneration(account.id))
+      cache.set(account.id, { drafts, fetchedAt: Date.now() });
     return drafts;
   }
 
@@ -162,7 +161,8 @@ export async function listDraftsCached(
 
   const fetch = dedupedFetch(account);
   const drafts = await fetch.promise;
-  if (fetch.generation === currentGeneration(account.id)) cache.set(account.id, { drafts, fetchedAt: Date.now() });
+  if (fetch.generation === currentGeneration(account.id))
+    cache.set(account.id, { drafts, fetchedAt: Date.now() });
   return drafts;
 }
 

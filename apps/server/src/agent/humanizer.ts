@@ -9,7 +9,7 @@ const log = moduleLogger("humanizer");
  * Copy-edit pass for outgoing email draft bodies. Runs as a one-shot,
  * tool-less LLM call (same pattern as delegate.ts) right before a draft is
  * saved, in buildDraftTool's execute (pipedream/mcp.ts) — so every surface
- * that creates a draft (chat, automations, demo mode) gets the same
+ * that creates a draft (chat, automations) gets the same
  * de-AI-ification, not just the ones the main agent's own system prompt
  * happens to steer well.
  */
@@ -49,7 +49,7 @@ export interface HumanizeDraftBodyResult {
 /** Strips a wrapping ``` fence if the model added one despite being told not to. */
 function stripCodeFence(text: string): string {
   const match = text.match(/^```[^\n]*\n([\s\S]*)\n```$/);
-  return match ? match[1]!.trim() : text;
+  return match ? (match[1] ?? "").trim() : text;
 }
 
 /**
@@ -72,9 +72,7 @@ export async function humanizeDraftBody(
       initialState: { systemPrompt: SYSTEM_PROMPT, model, tools: [] },
       streamFn: (m, c, o) => modelRegistry.streamSimple(m, c, o),
     });
-    const userMessage = input.subject
-      ? `Subject: ${input.subject}\n\n${original}`
-      : original;
+    const userMessage = input.subject ? `Subject: ${input.subject}\n\n${original}` : original;
     const raw = await runPrompt({ agent }, userMessage);
     const rewritten = stripCodeFence(raw.trim());
 

@@ -1,8 +1,7 @@
-import * as React from "react";
+import { Mail } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useTranslation } from "react-i18next";
-import { Mail } from "lucide-react";
 import { isMailboxUrl } from "@/lib/mailboxLinks";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -30,13 +29,13 @@ const components: Components = {
     }
 
     if (href?.startsWith("mailto:")) {
+      // Copies the address instead of navigating, so this is a button styled as
+      // a link, not a real anchor — it never leads anywhere.
+      const email = href.replace("mailto:", "");
       return (
-        <a
-          {...props}
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            const email = href.replace("mailto:", "");
+        <button
+          type="button"
+          onClick={() => {
             if (!navigator.clipboard) {
               toast.error(t("markdown.copyFailed", { email }));
               return;
@@ -50,7 +49,7 @@ const components: Components = {
           title={t("markdown.copyEmailAddress")}
         >
           {children}
-        </a>
+        </button>
       );
     }
 
@@ -66,12 +65,24 @@ const components: Components = {
       </a>
     );
   },
-  ul: ({ children }) => <ul className="my-2 ml-5 list-disc space-y-1.5 marker:text-accent/80">{children}</ul>,
-  ol: ({ children }) => <ol className="my-2 ml-5 list-decimal space-y-1.5 marker:text-muted-foreground/70">{children}</ol>,
+  ul: ({ children }) => (
+    <ul className="my-2 ml-5 list-disc space-y-1.5 marker:text-accent/80">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="my-2 ml-5 list-decimal space-y-1.5 marker:text-muted-foreground/70">
+      {children}
+    </ol>
+  ),
   li: ({ children }) => <li className="leading-relaxed text-foreground/90 pl-1">{children}</li>,
-  h1: ({ children }) => <h1 className="mt-6 mb-3 text-xl font-semibold tracking-tight text-foreground">{children}</h1>,
-  h2: ({ children }) => <h2 className="mt-5 mb-2 text-lg font-semibold tracking-tight text-foreground">{children}</h2>,
-  h3: ({ children }) => <h3 className="mt-4 mb-2 text-base font-semibold tracking-tight text-foreground">{children}</h3>,
+  h1: ({ children }) => (
+    <h1 className="mt-6 mb-3 text-xl font-semibold tracking-tight text-foreground">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="mt-5 mb-2 text-lg font-semibold tracking-tight text-foreground">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="mt-4 mb-2 text-base font-semibold tracking-tight text-foreground">{children}</h3>
+  ),
   blockquote: ({ children }) => (
     <blockquote className="my-3 border-l-2 border-border pl-4 text-[0.95em] text-muted-foreground italic">
       {children}
@@ -79,7 +90,10 @@ const components: Components = {
   ),
   hr: () => <hr className="my-6 border-border" />,
   code: ({ children, ...props }) => (
-    <code className="rounded bg-surface-2/60 px-1.5 py-0.5 font-mono text-[0.85em] text-foreground/80" {...props}>
+    <code
+      className="rounded bg-surface-2/60 px-1.5 py-0.5 font-mono text-[0.85em] text-foreground/80"
+      {...props}
+    >
       {children}
     </code>
   ),
@@ -94,11 +108,11 @@ const components: Components = {
     </div>
   ),
   th: ({ children }) => (
-    <th className="border-b border-border px-3 py-2 font-medium text-muted-foreground">{children}</th>
+    <th className="border-b border-border px-3 py-2 font-medium text-muted-foreground">
+      {children}
+    </th>
   ),
-  td: ({ children }) => (
-    <td className="border-b border-border px-3 py-2 align-top">{children}</td>
-  ),
+  td: ({ children }) => <td className="border-b border-border px-3 py-2 align-top">{children}</td>,
 };
 
 /** Renders LLM-produced markdown (chat replies, automation run reports) as styled text. */

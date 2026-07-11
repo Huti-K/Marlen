@@ -1,4 +1,13 @@
 import type { ConnectedAccount } from "@trailin/shared";
+import { proxyRequest } from "../pipedream/connect.js";
+import { errorMessage } from "../util.js";
+import {
+  decodeHtmlEntities,
+  GMAIL_API,
+  headerLookup,
+  type MessagePart,
+  plainTextBody,
+} from "./gmailMessage.js";
 import {
   parseOpaqueCursor,
   SyncCursorExpiredError,
@@ -7,15 +16,6 @@ import {
   type SyncPage,
   type SyncProvider,
 } from "./sync/syncProviders.js";
-import { errorMessage } from "../util.js";
-import { proxyRequest } from "../pipedream/connect.js";
-import {
-  decodeHtmlEntities,
-  GMAIL_API,
-  headerLookup,
-  plainTextBody,
-  type MessagePart,
-} from "./gmailMessage.js";
 import { splitAddressList } from "./textUtils.js";
 
 /**
@@ -128,7 +128,9 @@ function toSyncMessage(msg: GmailMessageFull): SyncMessage {
     // internalDate is ms-epoch and Gmail always returns it for a full fetch;
     // falling back to "now" (rather than "") keeps every SyncMessage's date
     // usable for ordering, per syncProviders.ts's contract.
-    date: msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : new Date().toISOString(),
+    date: msg.internalDate
+      ? new Date(Number(msg.internalDate)).toISOString()
+      : new Date().toISOString(),
     snippet: decodeHtmlEntities(msg.snippet ?? ""),
     bodyText: plainTextBody(msg.payload),
     isFromMe: labelIds.includes("SENT"),
@@ -137,10 +139,7 @@ function toSyncMessage(msg: GmailMessageFull): SyncMessage {
   };
 }
 
-async function fetchMessageFull(
-  account: ConnectedAccount,
-  id: string,
-): Promise<GmailMessageFull> {
+async function fetchMessageFull(account: ConnectedAccount, id: string): Promise<GmailMessageFull> {
   return (await proxyRequest(account.id, "get", `${GMAIL_API}/messages/${id}`, {
     params: { format: "full" },
   })) as GmailMessageFull;
@@ -156,7 +155,11 @@ interface ProfileResponse {
  * this point, not into a gap between "listed" and "captured".
  */
 async function fetchStartHistoryId(account: ConnectedAccount): Promise<string> {
-  const profile = (await proxyRequest(account.id, "get", `${GMAIL_API}/profile`)) as ProfileResponse;
+  const profile = (await proxyRequest(
+    account.id,
+    "get",
+    `${GMAIL_API}/profile`,
+  )) as ProfileResponse;
   if (!profile.historyId) throw new Error("Gmail profile response is missing historyId");
   return profile.historyId;
 }
@@ -314,7 +317,11 @@ async function fetchHistoryPage(
 
 /** This module's SyncProvider — registered by ./sync/registerSyncProviders.ts. */
 export const gmailSyncProvider: SyncProvider = {
-  fetchChanges(account: ConnectedAccount, cursor: string | null, opts: SyncOptions): Promise<SyncPage> {
+  fetchChanges(
+    account: ConnectedAccount,
+    cursor: string | null,
+    opts: SyncOptions,
+  ): Promise<SyncPage> {
     // A tampered/unreadable cursor parses to null — same as "no cursor",
     // restart the backfill (see parseOpaqueCursor in syncProviders.ts).
     const parsed = parseOpaqueCursor(cursor, isCursor);

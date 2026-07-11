@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 export function RunStatusBadge({ status }: { status: "running" | "success" | "error" }) {
   const { t } = useTranslation();
   return (
-    <Badge variant={status === "success" ? "success" : status === "error" ? "destructive" : "muted"}>
+    <Badge
+      variant={status === "success" ? "success" : status === "error" ? "destructive" : "muted"}
+    >
       {t(`automations.runStatus.${status}`)}
     </Badge>
   );

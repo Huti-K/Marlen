@@ -1,5 +1,5 @@
-import * as React from "react";
 import type { LucideIcon } from "lucide-react";
+import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 /** Icon-circle + title/body placeholder for empty lists — the one shape for "nothing here yet". */

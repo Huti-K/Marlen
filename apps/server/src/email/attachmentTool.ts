@@ -1,7 +1,7 @@
 import { extname } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { formatFileSize, type ConnectedAccount } from "@trailin/shared";
-import { LIBRARY_EXTENSIONS, saveUpload, SUPPORTED_FORMATS } from "../library/ingest.js";
+import { type ConnectedAccount, formatFileSize } from "@trailin/shared";
+import { LIBRARY_EXTENSIONS, SUPPORTED_FORMATS, saveUpload } from "../library/ingest.js";
 import { errorMessage } from "../util.js";
 import type { AttachmentProvider, EmailAttachment } from "./attachmentProviders.js";
 
@@ -13,10 +13,6 @@ import type { AttachmentProvider, EmailAttachment } from "./attachmentProviders.
  * (pipedream/mcp.ts) wires this once per live account whose app has a
  * provider, alongside the MCP-bridged tools — copy the shape of
  * buildDraftTool there.
- *
- * Live accounts only: demo mode swaps the entire email toolset
- * (mcp.ts's loadEmailTools) before attachment tools are wired, and the demo
- * mailbox has no attachments to download, so there is no demo path here.
  */
 
 const text = (value: string) => ({
@@ -78,7 +74,9 @@ export function buildSaveAttachmentTool(
         }
         picked = match;
       } else if (attachments.length === 1) {
-        picked = attachments[0]!;
+        const [only] = attachments;
+        if (!only) throw new Error("Attachment list changed unexpectedly.");
+        picked = only;
       } else {
         const supported = attachments.filter((a) => hasSupportedExt(a.filename));
         if (supported.length !== 1) {
@@ -87,7 +85,9 @@ export function buildSaveAttachmentTool(
               `Call again with filename set to the one to save.`,
           );
         }
-        picked = supported[0]!;
+        const [only] = supported;
+        if (!only) throw new Error("Supported attachment list changed unexpectedly.");
+        picked = only;
       }
 
       // Check the extension before downloading anything.
@@ -110,7 +110,9 @@ export function buildSaveAttachmentTool(
       try {
         stored = await saveUpload(picked.filename, buffer);
       } catch (error) {
-        throw new Error(`Could not save "${picked.filename}" to the library: ${errorMessage(error)}`);
+        throw new Error(
+          `Could not save "${picked.filename}" to the library: ${errorMessage(error)}`,
+        );
       }
 
       return text(

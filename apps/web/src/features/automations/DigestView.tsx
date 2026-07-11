@@ -1,14 +1,16 @@
-import * as React from "react";
-import { AlertTriangle, MessageCircleQuestion, PenLine } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { AccountColor, ConnectedAccount } from "@trailin/shared";
-import { api } from "@/lib/api";
+import { AlertTriangle, MessageCircleQuestion, PenLine } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { AccountDot } from "@/components/ui/account-dot";
+import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
+import { api } from "@/lib/api";
 import { dispatchQuickAction } from "@/lib/quickActions";
 import { cn } from "@/lib/utils";
 
 /**
- * Morning-briefing-shaped digests (see apps/server/src/demo/content.ts and
+ * Morning-briefing-shaped digests (see
  * apps/server/src/automations/defaults.ts) look like:
  *
  *   **selin.kaya.mail@gmail.com (Personal)**
@@ -29,7 +31,7 @@ import { cn } from "@/lib/utils";
  */
 
 /** One recognized item bullet: `- **Sender** — Subject — gist`. */
-export interface DigestItem {
+interface DigestItem {
   sender: string;
   subject: string;
   gist: string;
@@ -44,7 +46,7 @@ export interface DigestItem {
  *  collects item bullets found with no heading above them at all — it never
  *  has footnotes, since an unheaded non-item bullet has nothing to attach
  *  to and is kept in `otherMarkdown` instead. */
-export interface DigestAccountSection {
+interface DigestAccountSection {
   /** Raw heading text, e.g. "selin.kaya.mail@gmail.com (Personal)". */
   heading: string;
   /** Email address extracted from the heading, if any. */
@@ -53,7 +55,7 @@ export interface DigestAccountSection {
   footnotes: string[];
 }
 
-export interface ParsedDigest {
+interface ParsedDigest {
   accounts: DigestAccountSection[];
   /** Everything outside a recognized account section — other headings, a
    *  drafts-created note, the closing report paragraph — kept verbatim so
@@ -195,7 +197,10 @@ export function DigestView({
   const [colors, setColors] = React.useState<AccountColor[]>([]);
 
   React.useEffect(() => {
-    api.pipedreamAccounts().then(setAccounts).catch(() => {});
+    api
+      .pipedreamAccounts()
+      .then(setAccounts)
+      .catch(() => {});
     api
       .accountColors()
       .then((r) => setColors(r.colors))
@@ -242,31 +247,29 @@ export function DigestView({
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
-      {sectionsByUrgency(parsed.accounts).map((section, sectionIndex) => {
+      {sectionsByUrgency(parsed.accounts).map((section) => {
         if (section.items.length === 0 && section.footnotes.length === 0) return null;
-        const account = section.email
-          ? accounts.find((a) => a.name.toLowerCase() === section.email!.toLowerCase())
+        const sectionEmail = section.email;
+        const account = sectionEmail
+          ? accounts.find((a) => a.name.toLowerCase() === sectionEmail.toLowerCase())
           : undefined;
         const hex = account ? colors.find((c) => c.accountId === account.id)?.hex : undefined;
         const items = urgentFirst(section.items);
 
         return (
-          <div key={sectionIndex} className="flex flex-col gap-2">
+          <div key={section.heading || "implicit"} className="flex flex-col gap-2">
             {section.heading && (
               <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: hex || "var(--muted-foreground)" }}
-                />
+                <AccountDot color={hex} className="h-2 w-2" />
                 {section.heading}
               </span>
             )}
 
             {items.length > 0 && (
               <div className="flex flex-col gap-1">
-                {items.map((item, itemIndex) => (
+                {items.map((item) => (
                   <div
-                    key={itemIndex}
+                    key={`${item.sender}-${item.subject}`}
                     className={cn(
                       "group -mx-2 flex items-start justify-between gap-2 rounded-lg px-2 py-1.5",
                       item.urgent && "tint-warning",
@@ -274,42 +277,46 @@ export function DigestView({
                   >
                     <p className="min-w-0 flex-1 text-sm leading-relaxed">
                       {item.urgent && (
-                        <AlertTriangle className="mr-1 -mt-0.5 inline-block h-3.5 w-3.5 shrink-0" />
+                        <AlertTriangle
+                          className="mr-1 -mt-0.5 inline-block h-3.5 w-3.5 shrink-0"
+                          aria-hidden
+                        />
                       )}
-                      <span className="font-semibold">{item.sender}</span>{" "}
-                      {item.subject}
+                      <span className="font-medium">{item.sender}</span> {item.subject}
                       <span className="mx-1.5 text-muted-foreground/50">·</span>
                       <span className={cn(!item.urgent && "text-muted-foreground")}>
                         {item.gist}
                       </span>
                     </p>
                     <div className="flex shrink-0 items-center gap-0.5">
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
                         onClick={() => draftReply(item, section)}
-                        className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-secondary hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
+                        className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                         data-tooltip={t("automations.digest.draftReply")}
                         aria-label={t("automations.digest.draftReply")}
                       >
-                        <PenLine className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
+                        <PenLine />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
                         onClick={() => askAbout(item)}
-                        className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-secondary hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100"
+                        className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
                         data-tooltip={t("automations.digest.askAbout")}
                         aria-label={t("automations.digest.askAbout")}
                       >
-                        <MessageCircleQuestion className="h-3.5 w-3.5" />
-                      </button>
+                        <MessageCircleQuestion />
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {section.footnotes.map((note, noteIndex) => (
-              <p key={noteIndex} className="px-2 text-xs text-muted-foreground">
+            {section.footnotes.map((note) => (
+              <p key={note} className="px-2 text-xs text-muted-foreground">
                 {note}
               </p>
             ))}

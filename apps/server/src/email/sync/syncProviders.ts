@@ -4,8 +4,7 @@ import type { ConnectedAccount } from "@trailin/shared";
  * Sync-provider abstraction: every mail app Trailin can mirror locally
  * implements this interface against its own change-feed API — Gmail via
  * history.list (../gmailSync.ts), Outlook via Microsoft Graph delta
- * queries (../outlookSync.ts), the demo mailbox via the seeded store
- * (demo/demoSync.ts). Mirrors the DraftProvider registry in ../providers.ts:
+ * queries (../outlookSync.ts). Mirrors the DraftProvider registry in ../providers.ts:
  * adding a provider is one new file plus one import line in
  * registerSyncProviders.ts — nothing else changes.
  *
