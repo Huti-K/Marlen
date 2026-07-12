@@ -356,7 +356,7 @@ const automationHistory: AgentTool = defineTool({
   name: "automation_history",
   label: "Automation run history",
   description:
-    `Past scheduled-automation runs (morning briefings, end-of-day learnings, etc.) — use ` +
+    `Past scheduled-automation runs (morning briefings, etc.) — use ` +
     `when the user references "your briefing", "you flagged X", or asks what an automation ` +
     `found or did on some day. Lists recent runs newest first with a short preview of each ` +
     `result; call automation_run_read with a run's id for the full text.`,

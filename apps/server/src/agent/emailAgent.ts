@@ -104,7 +104,7 @@ ${AI_WRITING_TELLS}
   (never just the latest message), then summarize it chronologically: who wants what, what was
   agreed or decided, what changed along the way, what is still open, and what (if anything) is
   waiting on the user.
-- Past scheduled-automation runs (morning briefings, end-of-day learnings) are on record: use
+- Past scheduled-automation runs (e.g. morning briefings) are on record: use
   automation_history to find runs and automation_run_read for a run's full text whenever the user
   references "your briefing", something "you flagged", or what an automation found on some day.
 - list_waiting_threads shows, per connected account with waiting-thread tracking, threads where the

@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
  * line. Item bullets are also recognized when the agent skips a heading
  * altogether, rendering as an unlabeled ("implicit") section. This module
  * parses that shape and renders it as a structured digest; anything that
- * isn't shaped like this — a chat reply, an End-of-day learnings run, a
+ * isn't shaped like this — a chat reply, another automation's run, a
  * one-off report — falls back to the plain Markdown renderer untouched.
  */
 
