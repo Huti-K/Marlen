@@ -44,10 +44,17 @@ export const env = {
   agentProvider: optional("AGENT_PROVIDER") ?? "anthropic",
   agentModel: optional("AGENT_MODEL") ?? "claude-opus-4-8",
 
-  /** Mailbox mirror (email/sync/): poll cadence, initial backfill window, page size. */
+  /**
+   * Mailbox mirror (email/sync/): poll cadence, initial backfill window, page
+   * size. The backfill default is a year so long-running conversations are
+   * searchable/readable out of the box (the Mail-history setting overrides it,
+   * up to 10 years); triage cost doesn't scale with it — enrichment only
+   * touches threads inside its own, much smaller activity window
+   * (enrich.windowDays below).
+   */
   sync: {
     intervalMs: num("SYNC_INTERVAL_MS", 180_000),
-    backfillDays: num("SYNC_BACKFILL_DAYS", 30),
+    backfillDays: num("SYNC_BACKFILL_DAYS", 365),
     pageSize: num("SYNC_PAGE_SIZE", 50),
   },
   /** Thread enrichment (email/enrich/): cheap-tier model override + cycle caps. */
@@ -56,6 +63,14 @@ export const env = {
     model: optional("ENRICH_MODEL"),
     batch: num("ENRICH_BATCH", 20),
     concurrency: num("ENRICH_CONCURRENCY", 2),
+    /**
+     * Only threads with activity in this window are (re)triaged. Decouples
+     * triage cost from the mirror's backfill window: a deep Mail-history
+     * backfill stays searchable/readable without LLM-triaging years of
+     * dormant threads whose triage nothing reads (briefing looks at 1 day,
+     * waiting lanes at 14). New mail moves a thread back inside the window.
+     */
+    windowDays: num("ENRICH_WINDOW_DAYS", 60),
   },
   /** Contacts core (email/contacts/): cheap-tier model override + cycle caps. */
   contacts: {

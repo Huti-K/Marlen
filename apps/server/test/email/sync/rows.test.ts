@@ -21,6 +21,7 @@ describe("decodeStringArray", () => {
 describe("toMailMessage", () => {
   const row: MailMessageRow = {
     providerMessageId: "m-1",
+    subject: "Hello there",
     fromAddr: "alice@example.com",
     toAddrs: '["bob@example.com"]',
     ccAddrs: '["carol@example.com"]',
@@ -33,6 +34,7 @@ describe("toMailMessage", () => {
   it("maps snake_case-derived fields to their provider-neutral names", () => {
     const message = toMailMessage(row);
     expect(message.providerMessageId).toBe("m-1");
+    expect(message.subject).toBe("Hello there");
     expect(message.from).toBe("alice@example.com");
     expect(message.bodyText).toBe("hello");
     expect(message.date).toBe(row.date);

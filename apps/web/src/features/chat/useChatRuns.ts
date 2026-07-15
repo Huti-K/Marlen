@@ -19,6 +19,9 @@ export interface UseChatRunsOptions {
   setHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
   /** Called after an async run/open settles, mirroring the composer's own focus timing. */
   onFocusComposer: () => void;
+  /** Mailbox picked in the header chip before a conversation exists; sent with the
+   *  first message so the new conversation (and its first turn) opens focused on it. */
+  pendingFocusAccountId?: string | null;
 }
 
 export interface UseChatRunsResult {
@@ -49,7 +52,12 @@ export interface UseChatRunsResult {
 export function useChatRuns({
   setHistoryOpen,
   onFocusComposer,
+  pendingFocusAccountId,
 }: UseChatRunsOptions): UseChatRunsResult {
+  // Mirrored to a ref so `send` (memoized, not re-created per keystroke) always
+  // reads the latest header pick without widening its dependency list.
+  const pendingFocusRef = React.useRef(pendingFocusAccountId);
+  pendingFocusRef.current = pendingFocusAccountId;
   // Mirrors `state` synchronously so a handler can read the freshest value
   // even before React has re-rendered — the same guarantee the refs this
   // hook replaces used to give (e.g. newConversation() immediately followed
@@ -112,27 +120,36 @@ export function useChatRuns({
         streaming: true,
       };
       const conversationIdAtStart = stateRef.current.activeConversationId;
+      // The header pick only seeds a brand-new conversation — an existing one
+      // already owns its focus (moved by the chip's PATCH, @-mentions, or the
+      // agent), which this must never clobber.
+      const focusAccountId = conversationIdAtStart
+        ? undefined
+        : (pendingFocusRef.current ?? undefined);
       dispatch({ type: "start-run", runId, userMessage, assistantMessage });
 
       try {
-        await streamChat({ conversationId: conversationIdAtStart, message, refs }, (event) => {
-          if (event.type === "conversation") {
-            // Read before dispatching: mirrors the reducer's own "is this run
-            // still the active one" check, so the persisted id matches what
-            // just became visible.
-            const wasActive = stateRef.current.activeRunId === runId;
+        await streamChat(
+          { conversationId: conversationIdAtStart, message, refs, focusAccountId },
+          (event) => {
+            if (event.type === "conversation") {
+              // Read before dispatching: mirrors the reducer's own "is this run
+              // still the active one" check, so the persisted id matches what
+              // just became visible.
+              const wasActive = stateRef.current.activeRunId === runId;
+              dispatch({ type: "stream", runId, event });
+              if (wasActive) localStorage.setItem(LAST_CONVERSATION_KEY, event.conversationId);
+              // The conversation row has already been committed when this stream
+              // event arrives. Invalidate same-tab history directly rather than
+              // relying only on the separate SSE connection, which may still be
+              // connecting. Fires for every run, active or backgrounded.
+              dispatchTrailin("conversations-changed");
+              return;
+            }
+            if (event.type === "error") toast.error(event.message);
             dispatch({ type: "stream", runId, event });
-            if (wasActive) localStorage.setItem(LAST_CONVERSATION_KEY, event.conversationId);
-            // The conversation row has already been committed when this stream
-            // event arrives. Invalidate same-tab history directly rather than
-            // relying only on the separate SSE connection, which may still be
-            // connecting. Fires for every run, active or backgrounded.
-            dispatchTrailin("conversations-changed");
-            return;
-          }
-          if (event.type === "error") toast.error(event.message);
-          dispatch({ type: "stream", runId, event });
-        });
+          },
+        );
       } catch (err) {
         toast.error(err);
         dispatch({ type: "run-error", runId, message: errorMessage(err) });

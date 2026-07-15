@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { AppStatus } from "@trailin/shared";
-import { EMAIL_APPS } from "@trailin/shared";
+import { EMAIL_APPS, isFirstSyncPending } from "@trailin/shared";
+import { getSyncState } from "../email/sync/mailStore.js";
 import { activeModelConfigured, getActiveModelIds } from "../llm/registry.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 
@@ -11,14 +12,19 @@ export const accountRoutes: FastifyPluginAsyncTypebox = async (app) => {
     // A Pipedream hiccup must not take the whole readiness gate down — report
     // the count as unknown instead of silently claiming zero accounts.
     let emailAccounts = 0;
+    let emailAccountsImporting = 0;
     let emailAccountsKnown = true;
     if (configured) {
       try {
         // Only mail apps count toward the setup gate — a Notion or Slack
         // connection alone must not make the app look "set up".
         const accounts = await listAccounts();
-        emailAccounts = accounts.filter((a) =>
+        const mailAccounts = accounts.filter((a) =>
           (EMAIL_APPS as readonly string[]).includes(a.app),
+        );
+        emailAccounts = mailAccounts.length;
+        emailAccountsImporting = mailAccounts.filter((a) =>
+          isFirstSyncPending(getSyncState(a.id)),
         ).length;
       } catch {
         emailAccountsKnown = false;
@@ -29,6 +35,7 @@ export const accountRoutes: FastifyPluginAsyncTypebox = async (app) => {
       modelConfigured: await activeModelConfigured(),
       emailAccounts,
       emailAccountsKnown,
+      emailAccountsImporting,
       provider,
       model,
     };

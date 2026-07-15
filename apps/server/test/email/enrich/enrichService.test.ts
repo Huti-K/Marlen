@@ -50,6 +50,9 @@ afterAll(() => {
   else process.env.DATABASE_PATH = originalDatabasePath;
 });
 
+/** Relative to "now" so fixtures stay inside the enrichment activity floor as real time passes. */
+const daysAgo = (d: number) => new Date(Date.now() - d * 24 * 60 * 60 * 1000).toISOString();
+
 /** Fills in every SyncMessage field a fixture doesn't care about. */
 function message(
   overrides: Partial<SyncMessage> & Pick<SyncMessage, "providerMessageId" | "providerThreadId">,
@@ -59,7 +62,7 @@ function message(
     from: "sender@example.com",
     to: ["recipient@example.com"],
     cc: [],
-    date: "2026-01-01T00:00:00.000Z",
+    date: daysAgo(30),
     snippet: "Hi there",
     bodyText: "Hi there",
     isFromMe: false,
@@ -136,7 +139,7 @@ describe("runCycle", () => {
         providerMessageId: "m-greta-1",
         providerThreadId: "t-greta",
         from: "greta@example.com",
-        date: "2026-05-01T00:00:00.000Z",
+        date: daysAgo(10),
       }),
     ]);
 
@@ -176,7 +179,7 @@ describe("runCycle", () => {
         providerMessageId: "m-greta-1",
         providerThreadId: "t-greta",
         from: "greta@example.com",
-        date: "2026-05-01T00:00:00.000Z",
+        date: daysAgo(10),
         isUnread: true,
       }),
     ]);
@@ -201,7 +204,7 @@ describe("runCycle", () => {
         providerThreadId: "t-greta",
         from: "greta@example.com",
         subject: "Second message",
-        date: "2026-05-02T00:00:00.000Z",
+        date: daysAgo(9),
       }),
     ]);
 
@@ -223,7 +226,7 @@ describe("runCycle", () => {
         providerThreadId: "t-greta",
         from: "greta@example.com",
         subject: "Third message",
-        date: "2026-05-03T00:00:00.000Z",
+        date: daysAgo(8),
       }),
     ]);
 

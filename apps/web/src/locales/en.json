@@ -16,6 +16,10 @@
       "title": "Home",
       "description": "Drafts waiting for your review, and what the agent has been doing."
     },
+    "email": {
+      "title": "Mails",
+      "description": "Your inboxes: read threads, review drafts, and compose."
+    },
     "automations": {
       "title": "Automations",
       "description": "Run the agent on a schedule with a standing instruction."
@@ -287,6 +291,9 @@
     "finishConnecting": "Complete the connection in the window that just opened, it closes by itself when you're done.",
     "healthy": "Healthy",
     "unhealthy": "Unhealthy",
+    "importing": "Importing mail…",
+    "syncStale": "Sync failing · {{when}}",
+    "syncNever": "Sync failing",
     "disconnect": "Disconnect",
     "disconnectConfirm": "Disconnect this account?",
     "projectFooter": "Pipedream project <code>{{projectId}}</code> · {{environment}} · {{source}}",
@@ -298,12 +305,17 @@
     "advancedBuiltin": "Built-in Pipedream",
     "advancedCustom": "Own Pipedream project",
     "editNote": "Edit note",
-    "notePlaceholder": "What this account is for — the agent reads this note"
+    "notePlaceholder": "What this account is for — the agent reads this note",
+    "learnVoiceTitle": "Learn your writing style?",
+    "learnVoiceBody": "Trailin can study {{name}}'s sent mail to match your tone and pick up your signature when it drafts for you. This runs in the background and you can change or remove what it learns in Settings.",
+    "learnVoiceConfirm": "Learn my style",
+    "learnVoiceStarted": "Learning your writing style from {{name}} — it'll appear in Settings shortly."
   },
   "home": {
     "setupBanner": "Trailin isn't fully set up, the agent can't reach your mail yet.",
     "setupBannerCta": "Finish setup",
     "offlineBanner": "Can't reach your email provider right now, check your connection.",
+    "importingBanner": "Importing your mail — this page fills itself in as the first sync lands.",
     "missedBanner_one": "1 automation didn't run while the app was closed.",
     "missedBanner_other": "{{count}} automations didn't run while the app was closed.",
     "missedRun": "Run now",
@@ -349,6 +361,75 @@
       "waiting_one": "{{count}} waiting on a reply",
       "waiting_other": "{{count}} waiting on replies",
       "nextRun": "Next run {{when}}"
+    }
+  },
+  "email": {
+    "lanes": {
+      "inbox": "Inbox",
+      "drafts": "Drafts"
+    },
+    "filters": {
+      "recent": "Recent",
+      "unread": "Unread",
+      "needs_attention": "Needs attention"
+    },
+    "allAccounts": "All accounts",
+    "accountFilterLabel": "Mailbox",
+    "noSubject": "(no subject)",
+    "emptyTitle": "The inbox is quiet",
+    "emptyBody": "Threads from your connected mailboxes appear here as they sync.",
+    "emptyFiltered": "No threads match this filter.",
+    "importingTitle": "Still importing",
+    "importingBody": "This mailbox is syncing for the first time — threads appear here once the import lands.",
+    "syncError": "Mail sync for {{account}} is failing — showing the last mirrored state.",
+    "triage": {
+      "needs_reply": "Needs reply",
+      "needs_action": "Needs action",
+      "waiting_on": "Waiting",
+      "fyi": "FYI",
+      "done": "Done"
+    },
+    "thread": {
+      "back": "Back",
+      "reply": "Reply",
+      "replyUnavailable": "Drafts aren't supported for this mailbox",
+      "askAgent": "Ask the agent about this thread",
+      "openInMailbox": "Open in mailbox",
+      "messageCount_one": "{{count}} message",
+      "messageCount_other": "{{count}} messages"
+    },
+    "replyNoRecipient": "No recipient could be derived from this thread.",
+    "replyStartedToast": "Reply draft created.",
+    "actions": {
+      "archive": "Archive",
+      "delete": "Delete",
+      "move": "Move to folder",
+      "labels": "Labels",
+      "markUnread": "Mark unread",
+      "forward": "Forward"
+    },
+    "comingSoon": "This action isn't wired up in Trailin yet — use \"Open in mailbox\" for now. The button marks where it will land.",
+    "drafts": {
+      "emptyTitle": "No open drafts",
+      "emptyBody": "Drafts you or the agent write appear here for review before sending."
+    },
+    "compose": {
+      "trigger": "New draft",
+      "title": "New draft",
+      "from": "From",
+      "to": "To",
+      "cc": "Cc",
+      "bcc": "Bcc",
+      "showCcBcc": "Cc/Bcc",
+      "subject": "Subject",
+      "subjectPlaceholder": "Subject",
+      "bodyLabel": "Message",
+      "bodyPlaceholder": "Write your message…",
+      "recipientPlaceholder": "Add a recipient…",
+      "removeRecipient": "Remove {{address}}",
+      "saveDraft": "Save draft",
+      "savedToast": "Draft saved.",
+      "noAccounts": "No connected mailbox supports drafts yet."
     }
   },
   "drafts": {
@@ -447,12 +528,27 @@
       "sent_one": "{{count}} sent",
       "sent_other": "{{count}} sent",
       "lastContact": "Last contact {{when}}",
+      "nameLabel": "Name",
+      "namePlaceholder": "Full name",
+      "nameHint": "Overrides the name detected from mail.",
       "categoryLabel": "Category",
       "categorySourceUser": "Set manually",
       "categorySourceAuto": "Detected automatically",
       "threadsTitle": "Recent threads",
       "noThreads": "No recent threads yet.",
-      "loadError": "Couldn't load this contact."
+      "loadError": "Couldn't load this contact.",
+      "delete": "Delete contact",
+      "deleteConfirmTitle": "Delete {{name}}?",
+      "deleteConfirmBody": "Removes {{name}} from your contacts. Their mail history stays, and they'll reappear only if you add them again."
+    },
+    "add": {
+      "trigger": "Add contact",
+      "title": "Add contact",
+      "addressLabel": "Email address",
+      "addressPlaceholder": "name@example.com",
+      "nameLabel": "Name",
+      "namePlaceholder": "Full name (optional)",
+      "submit": "Add contact"
     },
     "newsletters": {
       "searchPlaceholder": "Search newsletters…",
@@ -534,11 +630,12 @@
     "aiDone": "Signed in, using {{model}}.",
     "stepEmailTitle": "Connect an email account",
     "stepEmailDescription": "Link Gmail or Outlook so the agent can see your mail. You can add more accounts later.",
-    "pipedreamMissingBody": "This build has no built-in email bridge. Add your own free Pipedream project in Settings → Email, a one-time, three-field setup.",
-    "openSettings": "Open settings",
+    "pipedreamMissingBody": "This build has no built-in email bridge — Trailin connects through your own free Pipedream project instead. Set it up once right here, then link your accounts:",
     "advancedLink": "Advanced: use my own Pipedream project",
     "allSetTitle": "You're all set",
     "allSetBody": "The agent can now read your mail, draft replies, and answer your questions.",
+    "allSetImporting": "Importing your mail now — Home fills in over the next few minutes.",
+    "allSetReadOnly": "Trailin starts read-only: the agent drafts and answers, but never sends or changes anything until you allow it in Settings → Permissions.",
     "openApp": "Open Trailin",
     "skip": "Skip for now, I'll look around first",
     "offlineTitle": "Can't reach the server",

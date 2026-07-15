@@ -244,6 +244,77 @@ async function fetchChanges(
   }
 }
 
+/** The delta SELECT plus parentFolderId — the fullHistory fetch classifies sent vs received (and junk/deleted for exclusion) by folder, since a conversation query has no stream. */
+const THREAD_SELECT = `${DELTA_SELECT},parentFolderId`;
+
+interface GraphFolderResponse {
+  id?: string;
+}
+
+/** Resolve a well-known folder name ("sentitems", "junkemail", "deleteditems") to its real Graph id. */
+async function wellKnownFolderId(
+  account: ConnectedAccount,
+  name: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const res = (await proxyRequest(account.id, "get", `${GRAPH_API}/mailFolders('${name}')`, {
+    params: { $select: "id" },
+    signal,
+  })) as GraphFolderResponse;
+  return res.id ?? null;
+}
+
+interface GraphThreadMessagesResponse {
+  value?: (GraphDeltaMessage & { parentFolderId?: string })[];
+  "@odata.nextLink"?: string;
+}
+
+/**
+ * Complete history of one conversation — /me/messages filtered by
+ * conversationId spans every folder and every age, which is what lets
+ * read_thread's fullHistory path reach past the mirror's backfill window.
+ * The delta streams' exclusions are re-created by folder id: drafts by flag,
+ * junk/deleted by parent folder; sent-items membership supplies isFromMe.
+ */
+async function fetchOutlookThread(
+  account: ConnectedAccount,
+  providerThreadId: string,
+  signal?: AbortSignal,
+): Promise<SyncMessage[]> {
+  const [sentId, junkId, deletedId] = await Promise.all([
+    wellKnownFolderId(account, "sentitems", signal),
+    wellKnownFolderId(account, "junkemail", signal),
+    wellKnownFolderId(account, "deleteditems", signal),
+  ]);
+  const excluded = new Set([junkId, deletedId].filter((id): id is string => id !== null));
+
+  const messages: SyncMessage[] = [];
+  // Graph ids never contain quotes; escape defensively per OData literal rules.
+  const idLiteral = providerThreadId.replace(/'/g, "''");
+  let url: string | null = `${GRAPH_API}/messages`;
+  let params: Record<string, string> | undefined = {
+    $select: THREAD_SELECT,
+    $filter: `conversationId eq '${idLiteral}'`,
+    $top: "50",
+  };
+  while (url) {
+    const res = (await proxyRequest(account.id, "get", url, {
+      ...(params ? { params } : {}),
+      signal,
+    })) as GraphThreadMessagesResponse;
+    for (const message of res.value ?? []) {
+      if (message.isDraft) continue;
+      if (message.parentFolderId && excluded.has(message.parentFolderId)) continue;
+      const fromMe = message.parentFolderId !== undefined && message.parentFolderId === sentId;
+      messages.push(toSyncMessage(message, fromMe ? "sent" : "inbox"));
+    }
+    // A nextLink carries the whole query itself — follow it verbatim.
+    url = res["@odata.nextLink"] ?? null;
+    params = undefined;
+  }
+  return messages;
+}
+
 /** Graph field selected by fetchMessageHeaders — the delta streams above never request this (see DELTA_SELECT). */
 const HEADERS_SELECT = "internetMessageHeaders";
 
@@ -282,4 +353,8 @@ async function fetchMessageHeaders(
 }
 
 /** This module's SyncProvider — registered by ./sync/registerSyncProviders.ts. */
-export const outlookSyncProvider: SyncProvider = { fetchChanges, fetchMessageHeaders };
+export const outlookSyncProvider: SyncProvider = {
+  fetchChanges,
+  fetchMessageHeaders,
+  fetchThread: fetchOutlookThread,
+};

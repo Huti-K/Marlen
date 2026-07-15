@@ -90,10 +90,11 @@ function buildReportStyleTool(onReport: (report: LearnedVoice) => void): AgentTo
 /**
  * Analyze one account's sent mail and persist the learned style (as
  * account-scoped memories) and signature (on AccountVoice). This runs
- * several tool round-trips against the model — expect 30-90s. File-local:
- * only voiceLearnTool's execute below calls it.
+ * several tool round-trips against the model — expect 30-90s. Called by
+ * voiceLearnTool's execute below (interactive chat) and by voiceLearnService
+ * (the accept-on-connect background run).
  */
-async function learnAccountVoice(accountId: string): Promise<AccountVoice> {
+export async function learnAccountVoice(accountId: string): Promise<AccountVoice> {
   const account = (await listAccounts()).find((a) => a.id === accountId);
   if (!account) throw new Error(`No connected account with id ${accountId}.`);
   if (!account.name.includes("@")) {

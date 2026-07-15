@@ -12,8 +12,9 @@
 
   Ink is the brand (near-black CTAs). Indigo is the single spot accent.
   No borders at rest anywhere; the only strokes are the a11y focus ring and
-  the --border hairline, reserved for dividers inside dense content
-  (thread rails, markdown tables, meta rows).
+  the --border hairline — dividers inside dense content (thread rails,
+  markdown tables, meta rows) plus the two outlined shapes DESIGN.md
+  sanctions: the agent card shell and .surface-pop panels.
 */
 :root,
 .light {
@@ -219,13 +220,14 @@
   }
   /*
     Anchored floating panel: select menus, the color picker — floats over
-    content with no scrim. Elevation is tone-only, so in dark mode the panel
-    itself steps one tone brighter than a card; in light it is already the
-    brightest tone.
+    content with no scrim. In dark mode the panel steps one tone brighter
+    than a card; the hairline carries the edge in light, where the panel is
+    the same white as the surfaces it floats over.
   */
   .surface-pop {
     background: var(--surface);
     border-radius: var(--radius);
+    border: 1px solid var(--border);
   }
   /*
     Fills recess against what they SIT ON, not against the page. A neutral

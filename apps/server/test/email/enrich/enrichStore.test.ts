@@ -83,6 +83,9 @@ function enrichFail(
   saveEnrichmentError(snapshotOf(mirrorThreadId, accountId, takenAt), error);
 }
 
+/** Fixture dates are relative to "now" so they stay inside (or outside) the activity floor as real time passes. */
+const daysAgo = (d: number) => new Date(Date.now() - d * 24 * 60 * 60 * 1000).toISOString();
+
 describe("findStaleCandidates", () => {
   const acct = "acct-stale";
   // Comfortably outside ERROR_BACKOFF_MS (10 minutes) of "now".
@@ -93,7 +96,7 @@ describe("findStaleCandidates", () => {
     message({
       providerMessageId: "m-never-1",
       providerThreadId: "t-never",
-      date: "2026-05-01T00:00:00.000Z",
+      date: daysAgo(20),
     }),
   ]);
 
@@ -102,7 +105,7 @@ describe("findStaleCandidates", () => {
     message({
       providerMessageId: "m-fresh-1",
       providerThreadId: "t-fresh",
-      date: "2026-05-02T00:00:00.000Z",
+      date: daysAgo(18),
     }),
   ]);
   enrichOk(`${acct}:t-fresh`, acct, new Date().toISOString());
@@ -113,7 +116,7 @@ describe("findStaleCandidates", () => {
     message({
       providerMessageId: "m-stale-1",
       providerThreadId: "t-stale",
-      date: "2026-05-03T00:00:00.000Z",
+      date: daysAgo(15),
     }),
   ]);
   enrichOk(`${acct}:t-stale`, acct, FAR_PAST);
@@ -121,7 +124,7 @@ describe("findStaleCandidates", () => {
     message({
       providerMessageId: "m-stale-2",
       providerThreadId: "t-stale",
-      date: "2026-05-03T01:00:00.000Z",
+      date: daysAgo(14),
     }),
   ]);
 
@@ -130,7 +133,7 @@ describe("findStaleCandidates", () => {
     message({
       providerMessageId: "m-err-cold-1",
       providerThreadId: "t-err-cold",
-      date: "2026-05-04T00:00:00.000Z",
+      date: daysAgo(10),
     }),
   ]);
   enrichFail(`${acct}:t-err-cold`, acct, FAR_PAST, "boom");
@@ -140,10 +143,20 @@ describe("findStaleCandidates", () => {
     message({
       providerMessageId: "m-err-hot-1",
       providerThreadId: "t-err-hot",
-      date: "2026-05-05T00:00:00.000Z",
+      date: daysAgo(9),
     }),
   ]);
   enrichFail(`${acct}:t-err-hot`, acct, new Date().toISOString(), "still failing");
+
+  // Dormant: never enriched but last activity predates the 60-day floor —
+  // must NOT be a candidate however deep the mirror's backfill reaches.
+  seed(acct, [
+    message({
+      providerMessageId: "m-dormant-1",
+      providerThreadId: "t-dormant",
+      date: daysAgo(90),
+    }),
+  ]);
 
   it("returns exactly the never-enriched, stale, and cooled-down-errored threads", () => {
     const ids = findStaleCandidates(50)
@@ -160,8 +173,23 @@ describe("findStaleCandidates", () => {
 
   it("orders every category together, newest last_message_at first", () => {
     const ids = findStaleCandidates(50).map((c) => c.threadId);
-    // Last message dates: t-err-cold 05-04, t-stale 05-03T01, t-never 05-01.
+    // Last messages: t-err-cold 10d ago, t-stale 14d ago, t-never 20d ago.
     expect(ids).toEqual([`${acct}:t-err-cold`, `${acct}:t-stale`, `${acct}:t-never`]);
+  });
+
+  it("excludes a dormant thread older than the activity floor, and revives it on new mail", () => {
+    expect(findStaleCandidates(50).map((c) => c.threadId)).not.toContain(`${acct}:t-dormant`);
+    // New mail moves last_message_at inside the floor — candidate again.
+    seed(acct, [
+      message({
+        providerMessageId: "m-dormant-2",
+        providerThreadId: "t-dormant",
+        date: daysAgo(1),
+      }),
+    ]);
+    expect(findStaleCandidates(50).map((c) => c.threadId)).toContain(`${acct}:t-dormant`);
+    // Remove it again so the other assertions in this suite stay unaffected.
+    applySyncPage(acct, { upserts: [], deletes: ["m-dormant-2"], cursor: "seed", hasMore: false });
   });
 
   it("respects limit across the merged branches, keeping the overall newest", () => {
@@ -185,9 +213,11 @@ describe("findStaleCandidates", () => {
 describe("selectStale query plan", () => {
   it("never does a full scan of mail_threads without an index", () => {
     const sql = _selectStaleSqlForTest();
-    const plan = sqlite
-      .prepare(`EXPLAIN QUERY PLAN ${sql}`)
-      .all({ limit: 20, errorCutoff: new Date().toISOString() }) as Array<{ detail: string }>;
+    const plan = sqlite.prepare(`EXPLAIN QUERY PLAN ${sql}`).all({
+      limit: 20,
+      errorCutoff: new Date().toISOString(),
+      activityFloor: daysAgo(60),
+    }) as Array<{ detail: string }>;
     expect(plan.length).toBeGreaterThan(0);
     for (const row of plan) {
       // A bare "SCAN t" (no index) would mean the whole mail_threads table is

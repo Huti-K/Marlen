@@ -1,4 +1,4 @@
-import type { ThreadTriage, ThreadUrgency } from "@trailin/shared";
+import type { MailThreadFilter, ThreadTriage, ThreadUrgency } from "@trailin/shared";
 import { lazyStatement } from "../../db/index.js";
 import { buildFtsMatch } from "../../db/sql.js";
 import {
@@ -104,7 +104,7 @@ export interface ThreadOverview {
   deadline: string | null;
 }
 
-export type ThreadFilter = "recent" | "unread" | "needs_attention";
+export type ThreadFilter = MailThreadFilter;
 
 const THREAD_FILTER_SQL: Record<ThreadFilter, string> = {
   recent: "1 = 1",

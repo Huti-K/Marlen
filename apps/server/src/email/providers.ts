@@ -1,4 +1,4 @@
-import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import type { ConnectedAccount, CreatedDraft, EmailDraft } from "@trailin/shared";
 import { createProviderRegistry } from "./registry.js";
 
 /**
@@ -33,14 +33,6 @@ export interface CreateDraftInput {
   threadId?: string;
 }
 
-export interface CreateDraftResult {
-  draftId: string;
-  messageId: string;
-  threadId: string;
-  /** Deep link to review/send the draft in the provider's web UI. */
-  webUrl: string;
-}
-
 /** Body of DraftProvider.updateDraft: only body/subject are overridable. */
 export interface UpdateDraftPatch {
   body?: string;
@@ -62,7 +54,7 @@ export interface DraftProvider {
     account: ConnectedAccount,
     draftId: string,
   ): Promise<{ body: string; cc: string; bcc: string }>;
-  createDraft(account: ConnectedAccount, input: CreateDraftInput): Promise<CreateDraftResult>;
+  createDraft(account: ConnectedAccount, input: CreateDraftInput): Promise<CreatedDraft>;
   deleteDraft(account: ConnectedAccount, draftId: string): Promise<void>;
   /**
    * Optional capability: not every provider can do this (yet), so routes

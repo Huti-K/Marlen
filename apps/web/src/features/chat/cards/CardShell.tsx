@@ -6,8 +6,10 @@ import { AccountChip } from "./AccountChip";
 
 /**
  * Shared frame for agent cards. Cards are the agent's work products, so they
- * are the one elevated block in the chat stream (`surface`) while speech
- * bubbles stay recessed — depth by tone, per DESIGN.md, never by lines.
+ * read as discrete blocks in the chat stream: a `surface` panel carrying a
+ * hairline outline (`border-border`) — the one place the app outlines a shape,
+ * a documented exception in DESIGN.md — so a card stands apart from the white
+ * chat rail and from adjacent cards without a heavier grey wrapper around it.
  *
  * The mono uppercase eyebrow is the cards' signature: a specimen label naming
  * what the agent did (search, thread, draft) plus its scope, set in the data
@@ -35,7 +37,7 @@ export function CardShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="surface overflow-hidden">
+    <div className="surface overflow-hidden border-2 border-border">
       <div className="flex flex-col gap-1 px-4 pb-2.5 pt-3.5">
         <div className="flex items-center justify-between gap-3">
           <span className="flex shrink-0 items-center gap-1.5 font-mono text-3xs uppercase tracking-[0.12em] text-muted-foreground">

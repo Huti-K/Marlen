@@ -269,4 +269,13 @@ export const SCHEMA_STEPS: readonly string[] = [
     ALTER TABLE memories ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE memories ADD COLUMN last_used_at TEXT;
   `,
+  // 9: manual contact overrides. display_name_override is a user-set name that
+  // wins over the derived display_name and survives re-derivation (which only
+  // writes the derived column). hidden_at is the People lane's soft "delete":
+  // the row (and any enrichment/memories/category override) is kept, just
+  // filtered out of the lists — a re-derivation never resurrects it.
+  `
+    ALTER TABLE contacts ADD COLUMN display_name_override TEXT;
+    ALTER TABLE contacts ADD COLUMN hidden_at TEXT;
+  `,
 ];

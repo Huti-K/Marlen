@@ -16,6 +16,10 @@
       "title": "Start",
       "description": "Entwürfe, die auf Ihre Prüfung warten, und was der Assistent zuletzt getan hat."
     },
+    "email": {
+      "title": "Mails",
+      "description": "Ihre Postfächer: Unterhaltungen lesen, Entwürfe prüfen und schreiben."
+    },
     "automations": {
       "title": "Automatisierungen",
       "description": "Lässt den Assistenten nach einem festen Zeitplan mit einer festen Anweisung laufen."
@@ -287,6 +291,9 @@
     "finishConnecting": "Schließen Sie die Verbindung in dem gerade geöffneten Fenster ab, es schließt sich von selbst, sobald Sie fertig sind.",
     "healthy": "OK",
     "unhealthy": "Gestört",
+    "importing": "E-Mails werden importiert …",
+    "syncStale": "Sync gestört · {{when}}",
+    "syncNever": "Sync gestört",
     "disconnect": "Trennen",
     "disconnectConfirm": "Dieses Konto trennen?",
     "projectFooter": "Pipedream-Projekt <code>{{projectId}}</code> · {{environment}} · {{source}}",
@@ -298,12 +305,17 @@
     "advancedBuiltin": "Eingebautes Pipedream",
     "advancedCustom": "Eigenes Pipedream-Projekt",
     "editNote": "Notiz bearbeiten",
-    "notePlaceholder": "Wofür dieses Konto ist — der Assistent liest diese Notiz"
+    "notePlaceholder": "Wofür dieses Konto ist — der Assistent liest diese Notiz",
+    "learnVoiceTitle": "Schreibstil lernen?",
+    "learnVoiceBody": "Trailin kann die gesendeten E-Mails von {{name}} analysieren, um deinen Ton zu treffen und deine Signatur zu übernehmen, wenn Entwürfe für dich erstellt werden. Das läuft im Hintergrund, und du kannst das Gelernte in den Einstellungen ändern oder entfernen.",
+    "learnVoiceConfirm": "Meinen Stil lernen",
+    "learnVoiceStarted": "Dein Schreibstil von {{name}} wird gelernt – er erscheint in Kürze in den Einstellungen."
   },
   "home": {
     "setupBanner": "Trailin ist noch nicht fertig eingerichtet, der Assistent erreicht Ihre E-Mails noch nicht.",
     "setupBannerCta": "Einrichtung abschließen",
     "offlineBanner": "Ihr E-Mail-Anbieter ist gerade nicht erreichbar, prüfen Sie Ihre Verbindung.",
+    "importingBanner": "Ihre E-Mails werden importiert — diese Seite füllt sich, sobald der erste Abgleich ankommt.",
     "missedBanner_one": "1 Automatisierung lief nicht, während die App geschlossen war.",
     "missedBanner_other": "{{count}} Automatisierungen liefen nicht, während die App geschlossen war.",
     "missedRun": "Jetzt ausführen",
@@ -349,6 +361,75 @@
       "waiting_one": "{{count}} wartet auf Antwort",
       "waiting_other": "{{count}} warten auf Antwort",
       "nextRun": "Nächster Lauf {{when}}"
+    }
+  },
+  "email": {
+    "lanes": {
+      "inbox": "Posteingang",
+      "drafts": "Entwürfe"
+    },
+    "filters": {
+      "recent": "Aktuell",
+      "unread": "Ungelesen",
+      "needs_attention": "Braucht Aufmerksamkeit"
+    },
+    "allAccounts": "Alle Konten",
+    "accountFilterLabel": "Postfach",
+    "noSubject": "(kein Betreff)",
+    "emptyTitle": "Der Posteingang ist ruhig",
+    "emptyBody": "Unterhaltungen aus Ihren verbundenen Postfächern erscheinen hier, sobald sie synchronisiert sind.",
+    "emptyFiltered": "Keine Unterhaltungen entsprechen diesem Filter.",
+    "importingTitle": "Import läuft noch",
+    "importingBody": "Dieses Postfach wird zum ersten Mal synchronisiert — Unterhaltungen erscheinen hier, sobald der Import abgeschlossen ist.",
+    "syncError": "Die Synchronisierung für {{account}} schlägt fehl — angezeigt wird der letzte gespiegelte Stand.",
+    "triage": {
+      "needs_reply": "Antwort nötig",
+      "needs_action": "Handlung nötig",
+      "waiting_on": "Wartet",
+      "fyi": "Zur Info",
+      "done": "Erledigt"
+    },
+    "thread": {
+      "back": "Zurück",
+      "reply": "Antworten",
+      "replyUnavailable": "Entwürfe werden für dieses Postfach nicht unterstützt",
+      "askAgent": "Den Assistenten zu dieser Unterhaltung fragen",
+      "openInMailbox": "Im Postfach öffnen",
+      "messageCount_one": "{{count}} Nachricht",
+      "messageCount_other": "{{count}} Nachrichten"
+    },
+    "replyNoRecipient": "Aus dieser Unterhaltung ließ sich kein Empfänger ableiten.",
+    "replyStartedToast": "Antwortentwurf erstellt.",
+    "actions": {
+      "archive": "Archivieren",
+      "delete": "Löschen",
+      "move": "In Ordner verschieben",
+      "labels": "Labels",
+      "markUnread": "Als ungelesen markieren",
+      "forward": "Weiterleiten"
+    },
+    "comingSoon": "Diese Aktion ist in Trailin noch nicht angebunden — nutzen Sie vorerst „Im Postfach öffnen“. Der Button markiert, wo sie landen wird.",
+    "drafts": {
+      "emptyTitle": "Keine offenen Entwürfe",
+      "emptyBody": "Entwürfe von Ihnen oder dem Assistenten erscheinen hier zur Prüfung vor dem Senden."
+    },
+    "compose": {
+      "trigger": "Neuer Entwurf",
+      "title": "Neuer Entwurf",
+      "from": "Von",
+      "to": "An",
+      "cc": "Cc",
+      "bcc": "Bcc",
+      "showCcBcc": "Cc/Bcc",
+      "subject": "Betreff",
+      "subjectPlaceholder": "Betreff",
+      "bodyLabel": "Nachricht",
+      "bodyPlaceholder": "Schreiben Sie Ihre Nachricht…",
+      "recipientPlaceholder": "Empfänger hinzufügen…",
+      "removeRecipient": "{{address}} entfernen",
+      "saveDraft": "Entwurf speichern",
+      "savedToast": "Entwurf gespeichert.",
+      "noAccounts": "Kein verbundenes Postfach unterstützt bisher Entwürfe."
     }
   },
   "drafts": {
@@ -447,12 +528,27 @@
       "sent_one": "{{count}} gesendet",
       "sent_other": "{{count}} gesendet",
       "lastContact": "Letzter Kontakt {{when}}",
+      "nameLabel": "Name",
+      "namePlaceholder": "Vollständiger Name",
+      "nameHint": "Überschreibt den aus den E-Mails erkannten Namen.",
       "categoryLabel": "Kategorie",
       "categorySourceUser": "Manuell festgelegt",
       "categorySourceAuto": "Automatisch erkannt",
       "threadsTitle": "Letzte Konversationen",
       "noThreads": "Noch keine Konversationen.",
-      "loadError": "Dieser Kontakt konnte nicht geladen werden."
+      "loadError": "Dieser Kontakt konnte nicht geladen werden.",
+      "delete": "Kontakt löschen",
+      "deleteConfirmTitle": "{{name}} löschen?",
+      "deleteConfirmBody": "Entfernt {{name}} aus deinen Kontakten. Der E-Mail-Verlauf bleibt erhalten; der Kontakt erscheint nur wieder, wenn du ihn erneut hinzufügst."
+    },
+    "add": {
+      "trigger": "Kontakt hinzufügen",
+      "title": "Kontakt hinzufügen",
+      "addressLabel": "E-Mail-Adresse",
+      "addressPlaceholder": "name@beispiel.de",
+      "nameLabel": "Name",
+      "namePlaceholder": "Vollständiger Name (optional)",
+      "submit": "Kontakt hinzufügen"
     },
     "newsletters": {
       "searchPlaceholder": "Newsletter durchsuchen…",
@@ -534,11 +630,12 @@
     "aiDone": "Angemeldet, verwendet {{model}}.",
     "stepEmailTitle": "E-Mail-Konto verbinden",
     "stepEmailDescription": "Verbinden Sie Gmail oder Outlook, damit der Assistent Ihre Post sehen kann. Weitere Konten können Sie später hinzufügen.",
-    "pipedreamMissingBody": "Diese Version enthält keine eingebaute E-Mail-Brücke. Fügen Sie unter Einstellungen → E-Mail Ihr eigenes kostenloses Pipedream-Projekt hinzu, eine einmalige Einrichtung mit drei Feldern.",
-    "openSettings": "Einstellungen öffnen",
+    "pipedreamMissingBody": "Diese Version enthält keine eingebaute E-Mail-Brücke — Trailin verbindet sich stattdessen über Ihr eigenes kostenloses Pipedream-Projekt. Richten Sie es einmalig direkt hier ein und verbinden Sie dann Ihre Konten:",
     "advancedLink": "Erweitert: eigenes Pipedream-Projekt verwenden",
     "allSetTitle": "Alles bereit",
     "allSetBody": "Der Assistent kann jetzt Ihre Post lesen, Antworten entwerfen und Ihre Fragen beantworten.",
+    "allSetImporting": "Ihre E-Mails werden gerade importiert — die Startseite füllt sich in den nächsten Minuten.",
+    "allSetReadOnly": "Trailin startet schreibgeschützt: Der Assistent entwirft und antwortet, sendet oder ändert aber nichts, bis Sie es unter Einstellungen → Berechtigungen erlauben.",
     "openApp": "Trailin öffnen",
     "skip": "Später, ich sehe mich erst um",
     "offlineTitle": "Server nicht erreichbar",

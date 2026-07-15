@@ -139,6 +139,8 @@ export const contacts = sqliteTable("contacts", {
   /** Normalized (lowercased) email address — the contact's identity. */
   address: text("address").primaryKey(),
   displayName: text("display_name").notNull().default(""),
+  /** A user-set name that overrides the derived display_name and survives re-derivation; null when unset. */
+  displayNameOverride: text("display_name_override"),
   kind: text("kind", { enum: ["person", "bulk"] })
     .notNull()
     .default("person"),
@@ -167,6 +169,8 @@ export const contacts = sqliteTable("contacts", {
    * days to honor it; mail arriving after this stamp is expected.
    */
   unsubscribeRequestedAt: text("unsubscribe_requested_at"),
+  /** The People lane's soft delete: when set, the row is kept but filtered out of the lists. */
+  hiddenAt: text("hidden_at"),
   model: text("model"),
   error: text("error"),
   enrichedAt: text("enriched_at"),

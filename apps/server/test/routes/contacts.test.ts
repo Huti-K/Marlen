@@ -207,4 +207,96 @@ describe("PATCH /api/contacts/:address", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it("overrides the display name, persists it, and a blank clears back to the derived name", async () => {
+    const set = await app.inject({
+      method: "PATCH",
+      url: `/api/contacts/${address}`,
+      payload: { displayName: "Jamie A." },
+    });
+    expect(set.statusCode).toBe(200);
+    expect((set.json() as Contact).displayName).toBe("Jamie A.");
+
+    const get = await app.inject({ method: "GET", url: `/api/contacts/${address}` });
+    expect((get.json() as ContactDetail).displayName).toBe("Jamie A.");
+
+    const clear = await app.inject({
+      method: "PATCH",
+      url: `/api/contacts/${address}`,
+      payload: { displayName: "  " },
+    });
+    // Falls back to the fullest name seen in the mirror.
+    expect((clear.json() as Contact).displayName).toBe("Jamie Accountant");
+  });
+
+  it("400s when neither field is provided", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/contacts/${address}`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("POST /api/contacts", () => {
+  it("creates a manual contact that then shows up in the list", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/contacts",
+      payload: { address: "Manual@Example.com", displayName: "Manual Person" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      address: "manual@example.com",
+      displayName: "Manual Person",
+      messageCount: 0,
+    });
+
+    const list = await app.inject({ method: "GET", url: "/api/contacts?q=manual" });
+    expect((list.json() as Contact[]).map((c) => c.address)).toContain("manual@example.com");
+  });
+
+  it("400s on a duplicate address", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/contacts",
+      payload: { address: "manual@example.com" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("400s on an invalid address", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/contacts",
+      payload: { address: "not-an-email" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("DELETE /api/contacts/:address", () => {
+  it("soft-hides the contact: gone from the list, row survives, and re-derivation never resurrects it", async () => {
+    const del = await app.inject({ method: "DELETE", url: "/api/contacts/digest@example.com" });
+    expect(del.statusCode).toBe(200);
+    expect(del.json()).toEqual({ ok: true });
+
+    const list = await app.inject({ method: "GET", url: "/api/contacts" });
+    expect((list.json() as Contact[]).map((c) => c.address)).not.toContain("digest@example.com");
+
+    // The row itself is kept — the detail endpoint still resolves it.
+    const detail = await app.inject({ method: "GET", url: "/api/contacts/digest@example.com" });
+    expect(detail.statusCode).toBe(200);
+
+    // A fresh derivation over the same mirror must not bring it back to the list.
+    deriveContacts();
+    const after = await app.inject({ method: "GET", url: "/api/contacts" });
+    expect((after.json() as Contact[]).map((c) => c.address)).not.toContain("digest@example.com");
+  });
+
+  it("404s for an address with no contact row", async () => {
+    const res = await app.inject({ method: "DELETE", url: "/api/contacts/nobody@example.com" });
+    expect(res.statusCode).toBe(404);
+  });
 });

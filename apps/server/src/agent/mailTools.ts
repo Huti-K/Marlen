@@ -1,6 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { ConnectedAccount } from "@trailin/shared";
+import { isDemoAccount } from "../demo/accounts.js";
 import { getContactContexts, searchContacts } from "../email/contacts/contactsStore.js";
 import { listDraftsCached } from "../email/draftsService.js";
 import { normalizeAddressSet } from "../email/learn/addressSubject.js";
@@ -13,7 +14,10 @@ import {
   type ThreadFilter,
   type ThreadMessage,
 } from "../email/sync/mailQuery.js";
+import { applySyncPage, getSyncState } from "../email/sync/mailStore.js";
 import { syncAccount } from "../email/sync/syncEngine.js";
+import { getSyncProvider } from "../email/sync/syncProviders.js";
+import { emitServerEvent } from "../events.js";
 import { mapWithConcurrency } from "../jobs.js";
 import { errorMessage } from "../util.js";
 import { toCardAccount } from "./card/common.js";
@@ -48,14 +52,32 @@ function truncateBody(body: string): string {
  * The tool run's signal rides along so a cancelled chat turn or a timed-out
  * automation stops a sweep started on its behalf instead of letting it page
  * on server-side; failures stay best-effort — the mirror still answers.
+ *
+ * Returns a freshness warning naming every target whose attempt left its sync
+ * state in "error" (runSync records failures there rather than rejecting, so
+ * completion alone proves nothing), with the account's last successful sync
+ * time — the caller prepends it to the result text so stale data is flagged
+ * instead of presented as fresh. "" when every target refreshed.
  */
 async function refreshMirror(
   account: ConnectedAccount | undefined,
   all: ConnectedAccount[],
   signal?: AbortSignal,
-) {
+): Promise<string> {
   const targets = account ? [account] : all;
   await mapWithConcurrency(targets, 4, (a) => syncAccount(a, signal).catch(() => {}));
+  const stale = targets.flatMap((a) => {
+    const state = getSyncState(a.id);
+    return state?.status === "error" ? [{ account: a, lastSyncedAt: state.lastSyncedAt }] : [];
+  });
+  if (stale.length === 0) return "";
+  const parts = stale.map(({ account: a, lastSyncedAt }) =>
+    lastSyncedAt ? `${a.name} (mail current as of ${lastSyncedAt})` : `${a.name} (never synced)`,
+  );
+  return (
+    `[Freshness warning: could not refresh ${parts.join(", ")} — results may miss the newest ` +
+    `mail there. Say so when presenting mail from ${stale.length === 1 ? "that account" : "those accounts"}.]\n\n`
+  );
 }
 
 /** Contact-scoped memories quoted per participant in a read_thread block; keeps it compact. */
@@ -102,9 +124,9 @@ function buildSearchMailTool(visibleCards: boolean): AgentTool {
       `Keyword search over the local mail index (subject, body, sender) across ALL connected ` +
       `email accounts, or one account via the account parameter (its address or id). Returns ` +
       `matches with their threadId (use with read_thread, and as the create-draft reply ` +
-      `threadId) and messageId (use with save-attachment tools). The index mirrors roughly the ` +
-      `last month of mail and can trail live mail by a few minutes — set refresh true only when ` +
-      `the user asks about mail that may have just arrived.`,
+      `threadId) and messageId (use with save-attachment tools). The index mirrors the ` +
+      `configured Mail-history window (a year by default) and can trail live mail by a few ` +
+      `minutes — set refresh true only when the user asks about mail that may have just arrived.`,
     account: "optional",
     accountDescription: "Optional: search only this connected account (email address or id).",
     params: {
@@ -116,14 +138,15 @@ function buildSearchMailTool(visibleCards: boolean): AgentTool {
       { query, limit: limitRaw, refresh },
       { account, accounts, accountTag, signal },
     ) => {
-      if (refresh === true) await refreshMirror(account, accounts, signal);
+      const staleNote = refresh === true ? await refreshMirror(account, accounts, signal) : "";
 
       const limit = clampLimit(limitRaw, DEFAULT_LIMIT, MAX_LIMIT);
       const hits = searchMail(query, { accountId: account?.id, limit });
       if (hits.length === 0) {
         return textResult(
-          `No local mail matches "${query}"${account ? ` in ${account.name}` : ""}. ` +
-            `The index covers roughly the last month of synced mail.`,
+          staleNote +
+            `No local mail matches "${query}"${account ? ` in ${account.name}` : ""}. ` +
+            `The index covers the configured Mail-history window of synced mail.`,
         );
       }
 
@@ -154,9 +177,50 @@ function buildSearchMailTool(visibleCards: boolean): AgentTool {
         truncated: hits.length === limit ? true : undefined,
       });
       const note = visibleCards ? CARD_KINDS.email_hits.note : "";
-      return textResult(lines + note, card);
+      return textResult(staleNote + lines + note, card);
     },
   });
+}
+
+/**
+ * read_thread's fullHistory path: pull the thread's complete history from its
+ * provider and upsert it through the mirror's own write path — write-through,
+ * so the mirror stays the single read path and the fetched messages persist
+ * for every later read (and re-enrich the thread with its full context).
+ * Returns a bracketed note when the fetch was skipped or failed — "" when it
+ * worked, since the re-read result speaks for itself.
+ */
+async function completeThreadHistory(
+  owner: ConnectedAccount | undefined,
+  accountId: string,
+  providerThreadId: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!owner) {
+    return `[Full history unavailable: account ${accountId} is not connected right now.]\n\n`;
+  }
+  // Demo mail exists only in the mirror — what's there IS the full history.
+  if (isDemoAccount(owner.id)) return "";
+  const provider = getSyncProvider(owner.app);
+  if (!provider?.fetchThread) {
+    return (
+      `[Full history unavailable: ${owner.appName ?? owner.app} has no thread-history ` +
+      `fetch; showing the locally indexed messages.]\n\n`
+    );
+  }
+  try {
+    const messages = await provider.fetchThread(owner, providerThreadId, signal);
+    if (messages.length > 0) {
+      applySyncPage(owner.id, { upserts: messages, deletes: [], cursor: "", hasMore: false });
+      emitServerEvent("mail");
+    }
+    return "";
+  } catch (error) {
+    return (
+      `[Full history unavailable: fetching from ${owner.name} failed ` +
+      `(${errorMessage(error)}); showing the locally indexed messages.]\n\n`
+    );
+  }
 }
 
 function buildReadThreadTool(visibleCards: boolean): AgentTool {
@@ -167,19 +231,43 @@ function buildReadThreadTool(visibleCards: boolean): AgentTool {
       `Read one email thread in full from the local mail index, oldest message first — always ` +
       `use this before summarizing a thread or drafting a reply. threadId is the provider ` +
       `thread id from search_mail, list_threads or list_waiting_threads results; pass account ` +
-      `when you know which account the thread lives in.`,
+      `when you know which account the thread lives in. Pass fullHistory true when the ` +
+      `conversation likely reaches further back than the local index (a long-running ` +
+      `relationship, or the user asks about its early history) — it fetches the complete ` +
+      `thread from the provider (slower) and persists it locally.`,
     account: "optional",
     accountDescription: "Optional: the connected account (email address or id) the thread is in.",
     params: {
       threadId: Type.String({ description: "Provider thread id." }),
+      fullHistory: Type.Optional(
+        Type.Boolean({
+          description:
+            "Fetch the thread's complete history from the provider first (slower) — for " +
+            "conversations that reach further back than the local index.",
+        }),
+      ),
     },
-    execute: async ({ threadId }, { account, accounts }) => {
-      const detail = getThreadDetail(threadId, account?.id);
+    execute: async ({ threadId, fullHistory }, { account, accounts, signal }) => {
+      let detail = getThreadDetail(threadId, account?.id);
+      let historyNote = "";
+      if (fullHistory === true) {
+        // The owner comes from the mirror row when we have one; a thread
+        // entirely outside the sync window has no row, so the explicit
+        // account parameter is the only way to reach it live.
+        const ownerId = detail?.accountId ?? account?.id;
+        const owner = ownerId ? accounts.find((a) => a.id === ownerId) : undefined;
+        if (ownerId) {
+          historyNote = await completeThreadHistory(owner, ownerId, threadId, signal);
+          detail = getThreadDetail(threadId, ownerId) ?? detail;
+        }
+      }
       if (!detail) {
         return textResult(
-          `No thread ${threadId} in the local mail index` +
+          historyNote +
+            `No thread ${threadId} in the local mail index` +
             `${account ? ` for ${account.name}` : ""}. Check the id against a search_mail or ` +
-            `list_threads result; mail older than the sync window is not indexed.`,
+            `list_threads result; mail older than the sync window is not indexed` +
+            `${fullHistory === true && !account ? ` — pass the account parameter to fetch it live` : ""}.`,
         );
       }
 
@@ -210,7 +298,7 @@ function buildReadThreadTool(visibleCards: boolean): AgentTool {
       const participantContext = await buildParticipantContext(detail.messages);
       const note = visibleCards ? CARD_KINDS.email_thread.note : "";
       return textResult(
-        `${header}\n\n${blocks.join("\n\n---\n\n")}${participantContext}${note}`,
+        `${historyNote}${header}\n\n${blocks.join("\n\n---\n\n")}${participantContext}${note}`,
         card,
       );
     },
@@ -250,7 +338,7 @@ const listThreadsTool: AgentTool = tool({
     { filter, sinceDays, limit: limitRaw, refresh },
     { account, accounts, accountTag, signal },
   ) => {
-    if (refresh === true) await refreshMirror(account, accounts, signal);
+    const staleNote = refresh === true ? await refreshMirror(account, accounts, signal) : "";
 
     const effectiveFilter: ThreadFilter = filter ?? "recent";
     const threads = listThreadOverviews({
@@ -261,7 +349,8 @@ const listThreadsTool: AgentTool = tool({
     });
     if (threads.length === 0) {
       return textResult(
-        `No ${effectiveFilter === "recent" ? "" : `${effectiveFilter} `}threads in the local mail index` +
+        staleNote +
+          `No ${effectiveFilter === "recent" ? "" : `${effectiveFilter} `}threads in the local mail index` +
           `${account ? ` for ${account.name}` : ""}.`,
       );
     }
@@ -283,7 +372,7 @@ const listThreadsTool: AgentTool = tool({
         };
       }),
     );
-    return textResult(lines);
+    return textResult(staleNote + lines);
   },
 });
 

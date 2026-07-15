@@ -1,12 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
-import type {
-  AccountDrafts,
-  ConnectedAccount,
-  EmailDraft,
-  EmailThread,
-  EmailThreadMessage,
-} from "@trailin/shared";
+import type { AccountDrafts, ConnectedAccount, CreatedDraft, EmailDraft } from "@trailin/shared";
 import {
   appendDraftVersion,
   getDraftConversationLinks,
@@ -16,7 +10,6 @@ import {
 import "../email/registerProviders.js";
 import { listDraftsCached } from "../email/draftsService.js";
 import { type DraftProvider, getDraftProvider } from "../email/providers.js";
-import { getThreadDetail } from "../email/sync/mailQuery.js";
 import { AppError, badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
@@ -71,9 +64,15 @@ const draftPatchBody = Type.Object({
   body: Type.Optional(Type.String()),
   subject: Type.Optional(Type.String()),
 });
-const threadParams = Type.Object({ accountId: Type.String(), threadId: Type.String() });
-const threadQuery = Type.Object({ excludeMessageId: Type.Optional(Type.String()) });
-
+const draftComposeParams = Type.Object({ accountId: Type.String() });
+const draftComposeBody = Type.Object({
+  to: Type.Array(Type.String(), { minItems: 1 }),
+  cc: Type.Optional(Type.Array(Type.String())),
+  bcc: Type.Optional(Type.Array(Type.String())),
+  subject: Type.String(),
+  body: Type.String(),
+  threadId: Type.Optional(Type.String()),
+});
 export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
   /** Live drafts per connected account that has a DraftProvider (Gmail, Outlook, ...). */
   app.get(
@@ -110,6 +109,30 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
         }),
       );
       return attachConversationLinks(byAccount);
+    },
+  );
+
+  /**
+   * Create a draft with exactly the caller's content — no humanizer, no
+   * signature pass (those belong to the agent's create-draft tool; here the
+   * user typed every character of the compose form, signature included).
+   * Deliberately no agent_drafts snapshot either: snapshots feed the
+   * draft-vs-sent learning loop, which compares agent prose against what the
+   * user actually sent, and a fully user-authored draft carries no such
+   * signal. With `threadId` the provider attaches the draft to that
+   * conversation (a reply); without it, a standalone draft.
+   */
+  app.post(
+    "/api/drafts/:accountId",
+    { schema: { params: draftComposeParams, body: draftComposeBody } },
+    async (req): Promise<CreatedDraft> => {
+      try {
+        const found = await findDraftAccount(req.params.accountId);
+        if (!found) throw notFound("account not found");
+        return await found.provider.createDraft(found.account, req.body);
+      } catch (error) {
+        throw toProviderError(error, "thread not found");
+      }
     },
   );
 
@@ -230,36 +253,6 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
       } catch (error) {
         throw toProviderError(error, "draft not found");
       }
-    },
-  );
-
-  /**
-   * The full email thread a draft belongs to, for the in-app viewer — served
-   * from the local mailbox mirror, so it works for every synced account
-   * without a provider round-trip. 404 covers both a bad id and a thread
-   * older than the mirror's backfill window. `excludeMessageId` omits one
-   * message by provider id (drafts themselves are never mirrored, so the
-   * draft's own message can't appear, but the parameter is honored).
-   */
-  app.get(
-    "/api/threads/:accountId/:threadId",
-    { schema: { params: threadParams, querystring: threadQuery } },
-    async (req): Promise<EmailThread> => {
-      const exclude = req.query.excludeMessageId?.trim();
-      const detail = getThreadDetail(req.params.threadId, req.params.accountId);
-      if (!detail) throw notFound("thread not found");
-      const messages = detail.messages
-        .filter((m) => !exclude || m.providerMessageId !== exclude)
-        .map(
-          (m): EmailThreadMessage => ({
-            from: m.from,
-            to: m.to,
-            ...(m.cc.length > 0 ? { cc: m.cc } : {}),
-            date: m.date,
-            body: m.bodyText,
-          }),
-        );
-      return { messages };
     },
   );
 };

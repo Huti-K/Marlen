@@ -99,7 +99,7 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
   const projectPanel = custom && (
     <div className="animate-in-up" style={{ animationDelay: "25ms" }}>
       {!status.configured || editing ? (
-        <SetupWizard
+        <PipedreamWizard
           status={status}
           onSaved={afterChange}
           onClose={status.configured ? () => setEditing(false) : undefined}
@@ -175,7 +175,12 @@ const GUIDE_STEPS = [
   { key: "setupStep3", url: "https://pipedream.com/projects", labelKey: "openProjects" },
 ] as const;
 
-function SetupWizard({
+/**
+ * The one-time Pipedream project credentials form (guide links + three fields
+ * + "Save & verify"). Rendered here under Settings → Email → Advanced, and by
+ * the first-run SetupGate when the build has no built-in bridge.
+ */
+export function PipedreamWizard({
   status,
   onSaved,
   onClose,

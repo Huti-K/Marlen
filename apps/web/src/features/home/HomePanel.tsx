@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  Loader2,
   Mail,
   Newspaper,
   Wrench,
@@ -24,12 +25,11 @@ import { Button } from "@/components/ui/button";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner, LoadingRow, Notice } from "@/components/ui/feedback";
-import { IconChip } from "@/components/ui/icon-chip";
 import { Markdown } from "@/components/ui/markdown";
 import { Select } from "@/components/ui/select";
+import { DraftRow } from "@/features/email/DraftRow";
 import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
 import { CollapsibleSectionTitle } from "@/features/home/CollapsibleSectionTitle";
-import { DraftRow } from "@/features/home/DraftRow";
 import { GlanceStrip } from "@/features/home/GlanceStrip";
 import { OpenConversationsSection } from "@/features/home/OpenConversationsSection";
 import { api } from "@/lib/api";
@@ -99,11 +99,14 @@ const cache: {
 export function HomePanel({
   setupIncomplete,
   offline,
+  importing,
   onNavigate,
 }: {
   setupIncomplete: boolean;
   /** Pipedream is configured but the last account list couldn't be fetched. */
   offline: boolean;
+  /** At least one email account is still waiting for its first mirror sync. */
+  importing: boolean;
   onNavigate: (view: View) => void;
 }) {
   const { t } = useTranslation();
@@ -238,10 +241,15 @@ export function HomePanel({
             {t("home.setupBannerCta")}
           </Button>
         </Notice>
+      ) : offline ? (
+        <Notice tone="warning" className="flex items-center gap-3">
+          <p className="text-sm">{t("home.offlineBanner")}</p>
+        </Notice>
       ) : (
-        offline && (
-          <Notice tone="warning" className="flex items-center gap-3">
-            <p className="text-sm">{t("home.offlineBanner")}</p>
+        importing && (
+          <Notice tone="neutral" className="flex items-center gap-3">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+            <p className="text-sm">{t("home.importingBanner")}</p>
           </Notice>
         )
       )}
@@ -464,6 +472,8 @@ function ActivitySection({
   // Older runs stay collapsed behind this toggle; only today's ever show by
   // default so the section doesn't grow unbounded with automation history.
   const [showEarlier, setShowEarlier] = React.useState(false);
+  // The whole section folds away; open by default.
+  const [expanded, setExpanded] = React.useState(true);
 
   const dayLabel = (iso: string) => formatDayLabel(iso, i18n.language);
   const timeLabel = (iso: string) => formatTimeLabel(iso, i18n.language);
@@ -513,49 +523,50 @@ function ActivitySection({
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tight">
-          <IconChip>
-            <Wrench />
-          </IconChip>
-          {t("home.activityTitle")}
-        </h2>
-      </div>
+      <CollapsibleSectionTitle
+        icon={Wrench}
+        title={t("home.activityTitle")}
+        expanded={expanded}
+        onToggle={() => setExpanded((v) => !v)}
+      />
 
-      {!runs ? (
-        <LoadingRow />
-      ) : runs.length === 0 ? (
-        <EmptyState
-          icon={Newspaper}
-          title={t("home.activityEmptyTitle")}
-          description={hasAutomations ? t("home.activityNoRunsBody") : t("home.activityEmptyBody")}
-          action={
-            <Button size="sm" onClick={() => onNavigate("automations")}>
-              <CalendarClock />
-              {hasAutomations ? t("home.viewAutomations") : t("home.createAutomation")}
-            </Button>
-          }
-        />
-      ) : (
-        <div className="flex flex-col gap-4">
-          {todayRuns.length > 0 ? (
-            renderDayGroups(todayRuns)
-          ) : earlierRuns.length > 0 ? (
-            <p className="text-xs text-muted-foreground">{t("home.activityNothingToday")}</p>
-          ) : null}
+      {expanded &&
+        (!runs ? (
+          <LoadingRow />
+        ) : runs.length === 0 ? (
+          <EmptyState
+            icon={Newspaper}
+            title={t("home.activityEmptyTitle")}
+            description={
+              hasAutomations ? t("home.activityNoRunsBody") : t("home.activityEmptyBody")
+            }
+            action={
+              <Button size="sm" onClick={() => onNavigate("automations")}>
+                <CalendarClock />
+                {hasAutomations ? t("home.viewAutomations") : t("home.createAutomation")}
+              </Button>
+            }
+          />
+        ) : (
+          <div className="flex flex-col gap-4">
+            {todayRuns.length > 0 ? (
+              renderDayGroups(todayRuns)
+            ) : earlierRuns.length > 0 ? (
+              <p className="text-xs text-muted-foreground">{t("home.activityNothingToday")}</p>
+            ) : null}
 
-          {earlierRuns.length > 0 && (
-            <div className="flex flex-col gap-4">
-              {showEarlier && renderDayGroups(earlierRuns)}
-              <DisclosureToggle open={showEarlier} onToggle={() => setShowEarlier((v) => !v)}>
-                {showEarlier
-                  ? t("home.activityShowLess")
-                  : t("home.activityShowEarlier", { count: earlierRuns.length })}
-              </DisclosureToggle>
-            </div>
-          )}
-        </div>
-      )}
+            {earlierRuns.length > 0 && (
+              <div className="flex flex-col gap-4">
+                {showEarlier && renderDayGroups(earlierRuns)}
+                <DisclosureToggle open={showEarlier} onToggle={() => setShowEarlier((v) => !v)}>
+                  {showEarlier
+                    ? t("home.activityShowLess")
+                    : t("home.activityShowEarlier", { count: earlierRuns.length })}
+                </DisclosureToggle>
+              </div>
+            )}
+          </div>
+        ))}
     </section>
   );
 }

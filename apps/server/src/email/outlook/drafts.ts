@@ -1,10 +1,9 @@
-import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import type { ConnectedAccount, CreatedDraft, EmailDraft } from "@trailin/shared";
 import { moduleLogger } from "../../logger.js";
 import { proxyRequest } from "../../pipedream/connect.js";
 import { draftsMutated } from "../draftsService.js";
 import type {
   CreateDraftInput,
-  CreateDraftResult,
   DraftProvider,
   SendDraftResult,
   UpdateDraftPatch,
@@ -255,7 +254,7 @@ async function createOutlookReplyDraft(
 async function createOutlookDraft(
   account: ConnectedAccount,
   input: CreateDraftInput,
-): Promise<CreateDraftResult> {
+): Promise<CreatedDraft> {
   const res = input.threadId
     ? await createOutlookReplyDraft(account, input, input.threadId)
     : await createStandaloneOutlookDraft(account, input);

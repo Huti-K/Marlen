@@ -40,6 +40,7 @@ export function ChatPanel({
   setHistoryOpen,
   layout = "panel",
   onConversationChange,
+  pendingFocusAccountId,
 }: {
   historyOpen: boolean;
   setHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -47,6 +48,8 @@ export function ChatPanel({
   layout?: "panel" | "page";
   /** Lets the host mirror the active conversation (e.g. to highlight it in the Chat tab's history rail). */
   onConversationChange?: (id: string | undefined) => void;
+  /** Mailbox the header chip pre-selected before any conversation exists; sent with the first message. */
+  pendingFocusAccountId?: string | null;
 }) {
   const { t } = useTranslation();
   const [input, setInput] = React.useState("");
@@ -65,7 +68,11 @@ export function ChatPanel({
   const focusComposer = React.useCallback(() => {
     textareaRef.current?.focus();
   }, []);
-  const runs = useChatRuns({ setHistoryOpen, onFocusComposer: focusComposer });
+  const runs = useChatRuns({
+    setHistoryOpen,
+    onFocusComposer: focusComposer,
+    pendingFocusAccountId,
+  });
 
   React.useEffect(() => {
     let cancelled = false;
@@ -319,8 +326,10 @@ export function ChatPanel({
                   m.role === "user" ? "items-end" : "w-full items-start",
                 )}
               >
-                {/* Cards sit outside the bubble: they carry their own surface tone,
-                    and tool results deserve more room than a reply bubble allows. */}
+                {/* Cards sit on the chat canvas as their own outlined blocks
+                    (CardShell carries the hairline), not wrapped in a bubble —
+                    full-width, since tool results (threads, tables, briefings)
+                    need more room than a reply bubble allows. */}
                 {m.cards.length > 0 && (
                   <div className="flex w-full flex-col gap-2">
                     {m.cards.map((c) => (

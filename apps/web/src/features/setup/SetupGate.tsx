@@ -1,12 +1,18 @@
-import { type AppStatus, isSetupComplete, type LlmProviderInfo } from "@trailin/shared";
-import { Check } from "lucide-react";
+import {
+  type AppStatus,
+  isSetupComplete,
+  type LlmProviderInfo,
+  type PipedreamStatus,
+} from "@trailin/shared";
+import { Check, Loader2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Notice } from "@/components/ui/feedback";
+import { LoadingRow, Notice } from "@/components/ui/feedback";
 import { LinkButton } from "@/components/ui/link-button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Accounts } from "@/features/connections/Accounts";
+import { PipedreamWizard } from "@/features/connections/ConnectionsPanel";
 import { Providers } from "@/features/settings/Providers";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
@@ -55,6 +61,25 @@ export function SetupGate({
   const { t } = useTranslation();
   const [providers, setProviders] = React.useState<LlmProviderInfo[] | null>(null);
   const complete = status !== null && isSetupComplete(status);
+  const importing = (status?.emailAccountsImporting ?? 0) > 0;
+
+  // A build without a usable email bridge gets the Pipedream credentials
+  // wizard inline in step 2 — the guided flow must not dead-end in Settings.
+  const [pdStatus, setPdStatus] = React.useState<PipedreamStatus | null>(null);
+  const needsWizard = status !== null && !status.pipedreamConfigured;
+  React.useEffect(() => {
+    if (!needsWizard) return;
+    let cancelled = false;
+    api
+      .pipedreamStatus()
+      .then((s) => {
+        if (!cancelled) setPdStatus(s);
+      })
+      .catch((err) => toast.error(err));
+    return () => {
+      cancelled = true;
+    };
+  }, [needsWizard]);
 
   const refreshProviders = React.useCallback(async () => {
     try {
@@ -72,12 +97,14 @@ export function SetupGate({
   }, [refreshProviders]);
 
   // Sign-in and account linking both finish in other tabs; polling is the
-  // only reliable completion signal while the gate is up.
+  // only reliable completion signal while the gate is up. It also keeps
+  // running while the first mail import is underway, so the "importing"
+  // line in the completion notice clears itself.
   React.useEffect(() => {
-    if (complete) return;
+    if (complete && !importing) return;
     const timer = setInterval(onStatusChanged, 4000);
     return () => clearInterval(timer);
-  }, [complete, onStatusChanged]);
+  }, [complete, importing, onStatusChanged]);
 
   return (
     <div className="min-h-dvh overflow-y-auto scroll-stable px-5 py-12 sm:px-8">
@@ -124,12 +151,14 @@ export function SetupGate({
                   <LinkButton onClick={() => onFinish(true)}>{t("setup.advancedLink")}</LinkButton>
                 </div>
               ) : (
-                <Notice tone="neutral" className="flex flex-col items-start gap-3 p-4">
+                <div className="flex flex-col gap-3">
                   <p className="text-sm text-muted-foreground">{t("setup.pipedreamMissingBody")}</p>
-                  <Button variant="secondary" size="sm" onClick={() => onFinish(true)}>
-                    {t("setup.openSettings")}
-                  </Button>
-                </Notice>
+                  {pdStatus ? (
+                    <PipedreamWizard status={pdStatus} onSaved={async () => onStatusChanged()} />
+                  ) : (
+                    <LoadingRow />
+                  )}
+                </div>
               )}
             </Step>
           </>
@@ -139,6 +168,13 @@ export function SetupGate({
           <Notice tone="success" className="flex flex-col items-start gap-2 p-4">
             <p className="text-sm font-medium">{t("setup.allSetTitle")}</p>
             <p className="text-sm">{t("setup.allSetBody")}</p>
+            {importing && (
+              <p className="flex items-center gap-2 text-sm">
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                {t("setup.allSetImporting")}
+              </p>
+            )}
+            <p className="text-sm">{t("setup.allSetReadOnly")}</p>
             <Button className="mt-1" onClick={() => onFinish(false)}>
               {t("setup.openApp")}
             </Button>

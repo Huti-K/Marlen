@@ -33,6 +33,9 @@ const conversationPatchBody = Type.Object({
 
 const chatBody = Type.Object({
   conversationId: Type.Optional(Type.String()),
+  // A mailbox pre-selected in the header chip before this conversation existed;
+  // applied as the new conversation's focus so even the first turn respects it.
+  focusAccountId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   message: Type.String(),
   // Composer @-mentions: emails the user explicitly pinned to this message.
   // See agent/emailRefs.ts — these become an authoritative note appended to
@@ -271,6 +274,7 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
       const { text } = await turn.run({
         prompt: message,
         refs: req.body.refs,
+        focusAccountId: req.body.focusAccountId,
         session: "pooled",
         conversation: { type: "chat", title: message.slice(0, 80) },
         handlers: {

@@ -9,6 +9,7 @@ import { composeDraftBody } from "../agent/composition.js";
 import { defineTool, textResult } from "../agent/toolkit.js";
 import { appendDraftVersion, createDraftSnapshot, getDraftCardDetails } from "../db/draftStore.js";
 import { getAccountDescriptions, getWriteAccessAccounts } from "../db/settings.js";
+import { isDemoAccount } from "../demo/accounts.js";
 import "../email/registerProviders.js";
 import "../email/registerAttachmentProviders.js";
 import "../email/sync/registerSyncProviders.js";
@@ -518,6 +519,11 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
     log.warn({ err: error }, "listing Pipedream accounts failed");
     return EMPTY_TOOLSET;
   }
+  // Demo mailboxes have no Pipedream account behind them — never open an MCP
+  // session or build a provider write tool for one (it would only fail). The
+  // mirror read tools (agent/mailTools.ts) still cover demo mail, so the agent
+  // can triage and brief it; it just can't save real drafts against it.
+  accounts = accounts.filter((account) => !isDemoAccount(account.id));
   if (accounts.length === 0) return EMPTY_TOOLSET;
 
   // Empty when providerWrites is false: every account then falls through the

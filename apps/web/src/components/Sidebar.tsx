@@ -1,12 +1,5 @@
 import { type AppStatus, isSetupComplete } from "@trailin/shared";
-import {
-  ChevronLeft,
-  ChevronRight,
-  type LucideIcon,
-  Palette,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, type LucideIcon, TriangleAlert, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -140,18 +133,6 @@ export function Sidebar({ status, onClose, isCollapsed, onCollapsedChange }: Sid
             />
           );
         })}
-
-        {/* DEV showcase — delete this block with the /showcase route. */}
-        {import.meta.env.DEV && (
-          <SidebarNavLink
-            to="/showcase"
-            icon={Palette}
-            label="Showcase"
-            isCollapsed={isCollapsed}
-            onClick={onClose}
-            active={location.pathname.startsWith("/showcase")}
-          />
-        )}
       </nav>
 
       <div

@@ -73,14 +73,18 @@ export function SignatureEditor({
   };
 
   return (
-    <div className="rounded-lg border border-border bg-background p-3">
+    <div className="surface rounded-lg p-3">
       <p className="mb-2 text-xs font-medium">Email signature</p>
+      {/* onMouseDown preventDefault on every toolbar control keeps the caret in
+          the editor: a plain click would blur it first, collapsing the selection
+          so execCommand (bold/italic/emoji insert) had nothing to act on. */}
       <div className="mb-2 flex items-center gap-1">
         <Button
           type="button"
           variant="ghost"
           size="icon"
           title="Bold"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => command("bold")}
         >
           <Bold className="h-4 w-4" />
@@ -90,11 +94,19 @@ export function SignatureEditor({
           variant="ghost"
           size="icon"
           title="Italic"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => command("italic")}
         >
           <Italic className="h-4 w-4" />
         </Button>
-        <Button type="button" variant="ghost" size="icon" title="Create link" onClick={addLink}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          title="Create link"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={addLink}
+        >
           <Link className="h-4 w-4" />
         </Button>
         <div className="relative">
@@ -103,17 +115,19 @@ export function SignatureEditor({
             variant="ghost"
             size="icon"
             title="Emoji"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setEmojiOpen((v) => !v)}
           >
             <Smile className="h-4 w-4" />
           </Button>
           {emojiOpen && (
-            <div className="absolute left-0 top-full z-20 mt-1 grid grid-cols-4 gap-1 rounded-lg border border-border bg-background p-2 shadow-lg">
+            <div className="surface-pop absolute left-0 top-full z-20 mt-1 grid grid-cols-4 gap-1 rounded-lg p-2">
               {EMOJIS.map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
                   className="rounded p-1 hover:bg-surface-2"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     command("insertText", emoji);
                     setEmojiOpen(false);
@@ -130,7 +144,7 @@ export function SignatureEditor({
         ref={editor}
         contentEditable
         suppressContentEditableWarning
-        className="min-h-28 rounded-md border border-border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/40 [&_img]:max-w-full"
+        className="min-h-28 rounded-md bg-surface-2 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/40 [&_img]:max-w-full"
       />
       <p className="mt-1.5 text-[11px] text-muted-foreground">
         Paste an existing Gmail or Outlook signature here—formatting, links, and images are

@@ -25,6 +25,7 @@ import { onOfficeRoutes } from "./routes/onoffice.js";
 import { pipedreamRoutes } from "./routes/pipedream.js";
 import { searchRoutes } from "./routes/search.js";
 import { settingsRoutes } from "./routes/settings.js";
+import { threadRoutes } from "./routes/threads.js";
 import { waitingRoutes } from "./routes/waiting.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -81,6 +82,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(onOfficeRoutes);
   await app.register(settingsRoutes);
   await app.register(draftRoutes);
+  await app.register(threadRoutes);
   await app.register(waitingRoutes);
   await app.register(memoryRoutes);
   await app.register(newsletterRoutes);

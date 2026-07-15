@@ -110,6 +110,34 @@ export interface ConnectedAccount {
   createdAt: string;
 }
 
+/** Mailbox-mirror sync health for one connected account (email/sync/mailStore.ts's state row). */
+export interface AccountSyncHealth {
+  status: "idle" | "syncing" | "error";
+  /** Provider/transport failure from the most recent attempt; null when it succeeded. */
+  error: string | null;
+  /** When the last successful sync completed; null before the first success. */
+  lastSyncedAt: string | null;
+}
+
+/**
+ * Whether a mail account's first import is still on its way: no sync state at
+ * all (the engine hasn't picked the account up yet) or no successful pass so
+ * far. A failing first sync doesn't count — that's surfaced as an error, not
+ * as progress.
+ */
+export function isFirstSyncPending(sync: AccountSyncHealth | null | undefined): boolean {
+  return !sync || (sync.lastSyncedAt === null && sync.status !== "error");
+}
+
+/**
+ * GET /api/pipedream/accounts row: the account plus its mirror sync health,
+ * attached once the sync engine has a state row for it (mail apps only) — so
+ * the Connections screen can show "sync failing / last synced" per account.
+ */
+export interface ConnectedAccountWithSync extends ConnectedAccount {
+  sync?: AccountSyncHealth;
+}
+
 /** Persisted color assignment for a connected account. */
 export interface AccountColor {
   /** Pipedream account id. */
@@ -430,6 +458,12 @@ export interface AppStatus {
    * accounts failed — a transient outage, not a setup problem.
    */
   emailAccountsKnown: boolean;
+  /**
+   * How many of `emailAccounts` are still waiting for their first successful
+   * mirror sync (see isFirstSyncPending) — the UI shows import progress while
+   * this is above zero.
+   */
+  emailAccountsImporting: number;
   provider: string;
   model: string;
 }
@@ -592,6 +626,39 @@ export type ThreadTriage = (typeof THREAD_TRIAGES)[number];
 
 export const THREAD_URGENCIES = ["high", "normal", "low"] as const;
 export type ThreadUrgency = (typeof THREAD_URGENCIES)[number];
+
+/** Thread-list filters accepted by GET /api/threads. */
+export const MAIL_THREAD_FILTERS = ["recent", "unread", "needs_attention"] as const;
+export type MailThreadFilter = (typeof MAIL_THREAD_FILTERS)[number];
+
+/** One row of GET /api/threads — a mailbox-mirror thread overview. */
+export interface MailThreadOverview {
+  accountId: string;
+  /** Provider thread id. */
+  threadId: string;
+  subject: string;
+  participants: string[];
+  messageCount: number;
+  lastMessageAt: string;
+  hasUnread: boolean;
+  lastFromMe: boolean;
+  /** Enrichment gist; null until the pipeline has judged this thread. */
+  gist: string | null;
+  triage: ThreadTriage | null;
+  urgency: ThreadUrgency | null;
+  deadline: string | null;
+  /** Deep link to the thread in the provider's web UI; "" when unknown. */
+  webUrl: string;
+}
+
+/** Provider handles of a just-created draft (POST /api/drafts/:accountId). */
+export interface CreatedDraft {
+  draftId: string;
+  messageId: string;
+  threadId: string;
+  /** Deep link to review/send the draft in the provider's web UI. */
+  webUrl: string;
+}
 
 export type ServerEventTopic =
   | "runs" // automation run started/finished (activity feed, run history)

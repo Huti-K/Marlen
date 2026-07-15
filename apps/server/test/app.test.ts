@@ -37,5 +37,6 @@ describe("buildApp", () => {
     expect(typeof body.modelConfigured).toBe("boolean");
     expect(typeof body.emailAccounts).toBe("number");
     expect(typeof body.emailAccountsKnown).toBe("boolean");
+    expect(typeof body.emailAccountsImporting).toBe("number");
   });
 });

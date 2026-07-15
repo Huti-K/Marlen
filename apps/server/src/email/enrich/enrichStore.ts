@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ThreadTriage, ThreadUrgency } from "@trailin/shared";
 import { lazyStatement } from "../../db/index.js";
 import { upsertSql } from "../../db/sql.js";
+import { env } from "../../env.js";
 import { decodeStringArray } from "../sync/rows.js";
 
 /**
@@ -16,6 +17,14 @@ import { decodeStringArray } from "../sync/rows.js";
  * third branch re-surfaces threads left in `error` state once ERROR_BACKOFF_MS
  * has elapsed since the failing attempt, so a transient LLM/network failure
  * doesn't leave a quiet thread un-triaged forever.
+ *
+ * Every branch is bounded by the activity floor (env.enrich.windowDays):
+ * only threads whose last message falls inside that window are candidates at
+ * all. Triage exists for recency-driven surfaces (briefing: 1 day, waiting
+ * lanes: 14 days), so a deep Mail-history backfill must not queue years of
+ * dormant threads for the LLM — they stay searchable and readable, just
+ * untriaged. New mail moves last_message_at inside the floor and the thread
+ * becomes a candidate again on its own.
  *
  * The three conditions are expressed as separate UNIONed branches rather
  * than one LEFT JOIN with an OR across both tables' columns: an OR spanning
@@ -82,7 +91,8 @@ const selectStale = lazyStatement(`
     SELECT t.id AS threadId, t.account_id AS accountId, NULL AS lastError, NULL AS lastEnrichedAt,
            t.last_message_at AS lastMessageAt
     FROM mail_threads t
-    WHERE NOT EXISTS (SELECT 1 FROM mail_thread_state s WHERE s.thread_id = t.id)
+    WHERE t.last_message_at >= @activityFloor
+      AND NOT EXISTS (SELECT 1 FROM mail_thread_state s WHERE s.thread_id = t.id)
     ORDER BY t.last_message_at DESC
     LIMIT @limit
   )
@@ -92,7 +102,8 @@ const selectStale = lazyStatement(`
            s.enriched_at AS lastEnrichedAt, t.last_message_at AS lastMessageAt
     FROM mail_threads t
     JOIN mail_thread_state s ON s.thread_id = t.id
-    WHERE t.updated_at > s.enriched_at
+    WHERE t.last_message_at >= @activityFloor
+      AND t.updated_at > s.enriched_at
     ORDER BY t.last_message_at DESC
     LIMIT @limit
   )
@@ -102,7 +113,8 @@ const selectStale = lazyStatement(`
            s.enriched_at AS lastEnrichedAt, t.last_message_at AS lastMessageAt
     FROM mail_threads t
     JOIN mail_thread_state s ON s.thread_id = t.id
-    WHERE s.error IS NOT NULL AND s.enriched_at < @errorCutoff
+    WHERE t.last_message_at >= @activityFloor
+      AND s.error IS NOT NULL AND s.enriched_at < @errorCutoff
     ORDER BY t.last_message_at DESC
     LIMIT @limit
   )
@@ -112,9 +124,12 @@ const selectStale = lazyStatement(`
 
 export function findStaleCandidates(limit: number): StaleCandidate[] {
   // Recomputed per call rather than cached so a long-idle process doesn't
-  // retry against a stale cutoff.
+  // retry against a stale cutoff or floor.
   const errorCutoff = new Date(Date.now() - ERROR_BACKOFF_MS).toISOString();
-  return selectStale().all({ limit, errorCutoff }) as StaleCandidate[];
+  const activityFloor = new Date(
+    Date.now() - env.enrich.windowDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  return selectStale().all({ limit, errorCutoff, activityFloor }) as StaleCandidate[];
 }
 
 /** The prepared statement's own SQL text, for an EXPLAIN QUERY PLAN test. */

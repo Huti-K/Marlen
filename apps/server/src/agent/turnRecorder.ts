@@ -129,6 +129,13 @@ interface TurnRunOptions {
    * opening words of the user's message, runRecorder.ts uses "Run: <automation name>".
    */
   conversation: EnsureConversationInput;
+  /**
+   * A mailbox the user pre-selected in the chat header before this conversation
+   * existed. Applied as the conversation's focus once the row is ensured, so
+   * even this first turn defaults to that account. Only meaningful on a brand-new
+   * conversation; a later @-mention on the same turn still overrides it.
+   */
+  focusAccountId?: string | null;
   /** The caller's own streaming pass-through (chat's SSE handlers); a run passes none. */
   handlers?: RunHandlers;
   signal?: AbortSignal;
@@ -209,6 +216,16 @@ export function beginTurn(conversationId: string): Turn {
           refs: serializeRefs(opts.refs),
           createdAt: new Date().toISOString(),
         });
+
+        // A mailbox pre-selected in the header chip before this (new)
+        // conversation existed: apply it now that the row does, so this first
+        // turn's focus note already reflects it. Written before the @-mention
+        // focus below, which is more specific and wins as the last writer.
+        if (opts.focusAccountId) {
+          await applyConversationFocus(conversationId, {
+            accountId: opts.focusAccountId,
+          }).catch(() => {});
+        }
 
         // Focus follows an @-mention (last one wins), and the standing focus
         // is read back AFTER that write so this turn's note reflects it. The

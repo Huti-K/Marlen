@@ -334,6 +334,28 @@ async function fetchHistoryPage(
   };
 }
 
+interface GmailThreadResponse {
+  messages?: GmailMessageFull[];
+}
+
+/**
+ * Complete history of one conversation — threads.get returns every message
+ * in the thread regardless of age, which is what lets read_thread's
+ * fullHistory path reach past the mirror's backfill window. Same exclusions
+ * as the sync pages: drafts/trash/spam are filtered by label.
+ */
+async function fetchGmailThread(
+  account: ConnectedAccount,
+  providerThreadId: string,
+  signal?: AbortSignal,
+): Promise<SyncMessage[]> {
+  const res = (await proxyRequest(account.id, "get", `${GMAIL_API}/threads/${providerThreadId}`, {
+    params: { format: "full" },
+    signal,
+  })) as GmailThreadResponse;
+  return (res.messages ?? []).filter((m) => !isExcludedLabel(m.labelIds)).map(toSyncMessage);
+}
+
 /**
  * Lazy per-message header fetch. Gmail's own sync captures List-Unsubscribe
  * on every message it downloads, but rows mirrored BEFORE that capture
@@ -361,6 +383,7 @@ async function fetchGmailMessageHeaders(
 /** This module's SyncProvider — registered by ./sync/registerSyncProviders.ts. */
 export const gmailSyncProvider: SyncProvider = {
   fetchMessageHeaders: fetchGmailMessageHeaders,
+  fetchThread: fetchGmailThread,
   fetchChanges(
     account: ConnectedAccount,
     cursor: string | null,

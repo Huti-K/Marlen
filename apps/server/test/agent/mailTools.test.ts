@@ -20,8 +20,36 @@ vi.mock("../../src/pipedream/connect.js", () => ({
   listAccounts: () => listAccountsMock(),
 }));
 
+// refreshMirror judges freshness by the sync-state row AFTER the attempt (a
+// failed runSync records "error" there rather than rejecting), so the attempt
+// itself is stubbed to a no-op and each test writes the post-attempt state it
+// wants via markSyncStatus.
+vi.mock("../../src/email/sync/syncEngine.js", () => ({
+  syncAccount: vi.fn(async () => {}),
+}));
+
+// read_thread's fullHistory path resolves its provider through
+// getSyncProvider; steered here per app slug so the capability, its absence,
+// and its failure are all exercisable without real providers (registering a
+// fake is reserved for register*.ts files by the conventions check).
+const fetchThreadMock = vi.fn<() => Promise<SyncMessage[]>>();
+vi.mock("../../src/email/sync/syncProviders.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../src/email/sync/syncProviders.js")>();
+  const unused = async () => {
+    throw new Error("fetchChanges is not under test");
+  };
+  return {
+    ...original,
+    getSyncProvider: (app: string) => {
+      if (app === "gmail") return { fetchChanges: unused, fetchThread: () => fetchThreadMock() };
+      if (app === "microsoft_outlook") return { fetchChanges: unused };
+      return null;
+    },
+  };
+});
+
 const { db, schema, sqlite } = await import("../../src/db/index.js");
-const { applySyncPage } = await import("../../src/email/sync/mailStore.js");
+const { applySyncPage, markSyncStatus } = await import("../../src/email/sync/mailStore.js");
 const { createMemory } = await import("../../src/db/memories.js");
 const { buildMailReadTools } = await import("../../src/agent/mailTools.js");
 
@@ -84,7 +112,10 @@ function seed(accountId: string, upserts: SyncMessage[]): void {
 const tools = buildMailReadTools();
 const readThread = tools.find((t) => t.name === "read_thread");
 const lookupContact = tools.find((t) => t.name === "lookup_contact");
-if (!readThread || !lookupContact) throw new Error("read_thread/lookup_contact not registered");
+const searchMailTool = tools.find((t) => t.name === "search_mail");
+if (!readThread || !lookupContact || !searchMailTool) {
+  throw new Error("read_thread/lookup_contact/search_mail not registered");
+}
 
 function textOf(result: { content: { type: string; text?: string }[] }): string {
   return result.content.map((c) => c.text ?? "").join("");
@@ -217,5 +248,142 @@ describe("lookup_contact", () => {
   it("requires a non-empty query", async () => {
     const result = await lookupContact.execute("call-9", { query: "  " } as never);
     expect(textOf(result)).toContain("Provide an email address or name");
+  });
+});
+
+describe("read_thread — fullHistory", () => {
+  const acct = "acct-history";
+
+  // Only the recent tail of a years-long conversation is in the mirror.
+  seed(acct, [
+    message({
+      providerMessageId: "m-hist-recent",
+      providerThreadId: "t-hist",
+      from: "old-client@example.com",
+      to: ["work@example.com"],
+      subject: "Projekt Alpha",
+      bodyText: "Latest reply in a long conversation",
+      date: "2026-07-10T00:00:00.000Z",
+    }),
+  ]);
+
+  it("fetches the complete history, persists it, and serves the merged thread", async () => {
+    listAccountsMock.mockResolvedValue([account(acct, "work@example.com")]);
+    fetchThreadMock.mockResolvedValueOnce([
+      message({
+        providerMessageId: "m-hist-old",
+        providerThreadId: "t-hist",
+        from: "old-client@example.com",
+        to: ["work@example.com"],
+        subject: "Projekt Alpha",
+        bodyText: "Original agreement from years ago",
+        date: "2023-03-01T00:00:00.000Z",
+      }),
+    ]);
+
+    const result = await readThread.execute("call-h1", {
+      threadId: "t-hist",
+      fullHistory: true,
+    } as never);
+    const text = textOf(result);
+    expect(text).toContain("Original agreement from years ago");
+    expect(text).toContain("Latest reply in a long conversation");
+    expect(text).toContain("2 message(s)");
+    expect(text).not.toContain("Full history unavailable");
+
+    // Write-through persisted: a later plain read serves both messages.
+    const again = await readThread.execute("call-h2", { threadId: "t-hist" } as never);
+    expect(textOf(again)).toContain("2 message(s)");
+  });
+
+  it("notes the missing capability and still serves the mirrored messages", async () => {
+    const outlookAcct = "acct-history-outlook";
+    listAccountsMock.mockResolvedValue([
+      { ...account(outlookAcct, "work@o365.example"), app: "microsoft_outlook" },
+    ]);
+    seed(outlookAcct, [
+      message({
+        providerMessageId: "m-hist-o1",
+        providerThreadId: "t-hist-o",
+        bodyText: "Mirrored Outlook message",
+      }),
+    ]);
+
+    const result = await readThread.execute("call-h3", {
+      threadId: "t-hist-o",
+      fullHistory: true,
+    } as never);
+    const text = textOf(result);
+    expect(text).toContain("Full history unavailable");
+    expect(text).toContain("no thread-history fetch");
+    expect(text).toContain("Mirrored Outlook message");
+  });
+
+  it("notes a failed live fetch and still serves the mirrored messages", async () => {
+    listAccountsMock.mockResolvedValue([account(acct, "work@example.com")]);
+    fetchThreadMock.mockRejectedValueOnce(new Error("proxy down"));
+
+    const result = await readThread.execute("call-h4", {
+      threadId: "t-hist",
+      fullHistory: true,
+    } as never);
+    const text = textOf(result);
+    expect(text).toContain("Full history unavailable");
+    expect(text).toContain("proxy down");
+    expect(text).toContain("Latest reply in a long conversation");
+  });
+});
+
+describe("search_mail — freshness warning on failed refresh", () => {
+  const acct = "acct-freshness";
+
+  seed(acct, [
+    message({
+      providerMessageId: "m-fresh-1",
+      providerThreadId: "t-fresh-1",
+      subject: "Freshness probe",
+      bodyText: "zx-freshness-probe details",
+      to: ["owner@fresh.example"],
+    }),
+  ]);
+
+  it("prepends a warning naming the account and its last successful sync", async () => {
+    listAccountsMock.mockResolvedValue([account(acct, "owner@fresh.example")]);
+    // A prior good sync stamps last_synced_at; the failed attempt keeps it
+    // (markSyncStatus COALESCEs it on error) and flips status to "error".
+    markSyncStatus(acct, "idle");
+    markSyncStatus(acct, "error", "Gmail API 401");
+
+    const result = await searchMailTool.execute("call-f1", {
+      query: "zx-freshness-probe",
+      refresh: true,
+    } as never);
+    const text = textOf(result);
+    expect(text).toContain("Freshness warning");
+    expect(text).toContain("owner@fresh.example");
+    expect(text).toContain("mail current as of");
+    // The hits themselves still follow the warning.
+    expect(text).toContain("Freshness probe");
+  });
+
+  it("adds nothing when the refresh leaves the account idle", async () => {
+    listAccountsMock.mockResolvedValue([account(acct, "owner@fresh.example")]);
+    markSyncStatus(acct, "idle");
+
+    const result = await searchMailTool.execute("call-f2", {
+      query: "zx-freshness-probe",
+      refresh: true,
+    } as never);
+    expect(textOf(result)).not.toContain("Freshness warning");
+  });
+
+  it("adds nothing without the refresh flag even while the account is in error", async () => {
+    listAccountsMock.mockResolvedValue([account(acct, "owner@fresh.example")]);
+    markSyncStatus(acct, "error", "Gmail API 401");
+
+    const result = await searchMailTool.execute("call-f3", {
+      query: "zx-freshness-probe",
+    } as never);
+    expect(textOf(result)).not.toContain("Freshness warning");
   });
 });

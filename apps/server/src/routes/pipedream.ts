@@ -1,8 +1,11 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
+import { type ConnectedAccountWithSync, EMAIL_APPS } from "@trailin/shared";
 import "../email/registerProviders.js";
 import { resetSessions } from "../agent/emailAgent.js";
+import { startVoiceLearnOnConnect } from "../agent/voiceLearnService.js";
 import { invalidateDraftsCache } from "../email/draftsService.js";
+import { getSyncState } from "../email/sync/mailStore.js";
 import { env } from "../env.js";
 import { badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
 import {
@@ -95,13 +98,26 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
   /** ---- connected accounts (any app, any number per app) ---- */
 
-  app.get("/api/pipedream/accounts", async () => {
+  app.get("/api/pipedream/accounts", async (): Promise<ConnectedAccountWithSync[]> => {
     try {
       // This is the Settings/Connections screen, which refetches right after
       // the user finishes linking a new account in the Connect popup — it
       // must see that account immediately, and a forced refresh here
       // repopulates the shared cache for everyone else's next default-path call too.
-      return await listAccounts({ refresh: true });
+      const accounts = await listAccounts({ refresh: true });
+      // Attach the mirror's sync health where the engine has a state row
+      // (mail apps that have been swept at least once), so the screen can
+      // flag an account whose sync keeps failing — the one signal that a
+      // briefing/search may be running on stale mail.
+      return accounts.map((account) => {
+        const state = getSyncState(account.id);
+        return state
+          ? {
+              ...account,
+              sync: { status: state.status, error: state.error, lastSyncedAt: state.lastSyncedAt },
+            }
+          : account;
+      });
     } catch (error) {
       throw upstreamError(errorMessage(error), error);
     }
@@ -130,6 +146,26 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
       } catch (error) {
         throw upstreamError(errorMessage(error), error);
       }
+    },
+  );
+
+  /**
+   * Learn the account's writing voice from its own sent mail, offered right
+   * after an email account is linked (the user accepts the prompt). Runs in
+   * the background — it first waits for the fresh account's sent mail to
+   * backfill into the mirror — so this returns as soon as the job is launched.
+   */
+  app.post(
+    "/api/pipedream/accounts/:id/learn-voice",
+    { schema: { params: accountIdParams } },
+    async (req) => {
+      const account = (await listAccounts()).find((a) => a.id === req.params.id);
+      if (!account) throw notFound("account not found");
+      if (!(EMAIL_APPS as readonly string[]).includes(account.app)) {
+        throw badRequest("voice learning needs an email account");
+      }
+      startVoiceLearnOnConnect(account.id);
+      return { ok: true };
     },
   );
 

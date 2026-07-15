@@ -30,9 +30,22 @@ const NO_FOCUS: Focus = { focusAccountId: null, focusThreadId: null, focusThread
  * Picks apply optimistically and PATCH the server; the server is also the
  * source of truth when the agent moves focus mid-turn, so this subscribes to
  * the same "conversations" server event the history rail reconciles from.
- * Disabled before a conversation has an id (a brand-new, unsent chat).
+ *
+ * Before a conversation exists (a brand-new, unsent chat) there is no row to
+ * PATCH, so a pick is held in the caller's `pendingFocusAccountId` instead; the
+ * first message carries it to the server (ChatPanel → useChatRuns → /api/chat),
+ * which opens the new conversation already focused on that mailbox.
  */
-export function FocusChip({ conversationId }: { conversationId: string | undefined }) {
+export function FocusChip({
+  conversationId,
+  pendingFocusAccountId,
+  onPendingFocusChange,
+}: {
+  conversationId: string | undefined;
+  /** The pre-conversation pick; used for display and selection while `conversationId` is undefined. */
+  pendingFocusAccountId?: string | null;
+  onPendingFocusChange?: (accountId: string | null) => void;
+}) {
   const { t } = useTranslation();
   const [accounts, setAccounts] = React.useState<ConnectedAccount[]>([]);
   const [colors, setColors] = React.useState<AccountColor[]>([]);
@@ -83,8 +96,12 @@ export function FocusChip({ conversationId }: { conversationId: string | undefin
   useServerEvents(["conversations"], loadFocus);
 
   const pick = async (accountId: string | null) => {
-    if (!conversationId) return;
     setOpen(false);
+    // No conversation yet: hold the pick locally; the first message carries it.
+    if (!conversationId) {
+      onPendingFocusChange?.(accountId);
+      return;
+    }
     if (accountId === focus.focusAccountId) return;
     const previous = focus;
     setFocus(
@@ -100,20 +117,21 @@ export function FocusChip({ conversationId }: { conversationId: string | undefin
     }
   };
 
-  const focusedAccount = accounts.find((a) => a.id === focus.focusAccountId);
-  const focusedColor = colors.find((c) => c.accountId === focus.focusAccountId)?.hex;
-  const hasFocus = Boolean(focus.focusAccountId);
+  // With a conversation, focus is the row's own; before one exists it's the
+  // caller's pending pick. A thread part only ever exists on a real conversation.
+  const focusAccountId = conversationId ? focus.focusAccountId : (pendingFocusAccountId ?? null);
+  const focusThreadSubject = conversationId ? focus.focusThreadSubject : null;
+  const focusedAccount = accounts.find((a) => a.id === focusAccountId);
+  const focusedColor = colors.find((c) => c.accountId === focusAccountId)?.hex;
+  const hasFocus = Boolean(focusAccountId);
   const label = hasFocus
-    ? [focusedAccount?.name ?? focus.focusAccountId, focus.focusThreadSubject]
-        .filter(Boolean)
-        .join(" · ")
+    ? [focusedAccount?.name ?? focusAccountId, focusThreadSubject].filter(Boolean).join(" · ")
     : t("chat.focus.allAccounts");
 
   return (
     <span ref={triggerRef} className="inline-flex min-w-0">
       <Chip
         active={hasFocus}
-        disabled={!conversationId}
         aria-expanded={open}
         title={label}
         onClick={(e) => {
@@ -162,7 +180,7 @@ export function FocusChip({ conversationId }: { conversationId: string | undefin
               accounts.map((account) => (
                 <FocusOption
                   key={account.id}
-                  selected={account.id === focus.focusAccountId}
+                  selected={account.id === focusAccountId}
                   color={colors.find((c) => c.accountId === account.id)?.hex}
                   label={account.name}
                   onClick={() => void pick(account.id)}

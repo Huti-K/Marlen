@@ -111,6 +111,21 @@ export interface SyncProvider {
     account: ConnectedAccount,
     providerMessageId: string,
   ): Promise<{ listUnsubscribe?: string; listUnsubscribePost?: boolean }>;
+
+  /**
+   * Optional capability: fetch ONE thread's complete message history, however
+   * far back it reaches — deliberately unbounded by opts.backfillDays, unlike
+   * fetchChanges. read_thread's fullHistory path is the only caller: it
+   * upserts the result through applySyncPage (write-through, so the mirror
+   * stays the single read path) and re-reads the thread from the mirror.
+   * Same exclusions as fetchChanges: drafts, spam and trash are not mail.
+   * Absent means the mirror's backfill window is all this app can show.
+   */
+  fetchThread?(
+    account: ConnectedAccount,
+    providerThreadId: string,
+    signal?: AbortSignal,
+  ): Promise<SyncMessage[]>;
 }
 
 /**

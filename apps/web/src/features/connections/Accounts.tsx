@@ -1,14 +1,15 @@
 import {
   type AccountColor,
-  type AccountDescription,
   type AccountVoice,
   type ConnectedAccount,
+  type ConnectedAccountWithSync,
   EMAIL_APP_LABELS,
   EMAIL_APPS,
   type EmailApp,
+  isFirstSyncPending,
   type PipedreamApp,
 } from "@trailin/shared";
-import { Inbox, Loader2, Mail, Pencil, PenLine, Plus, Trash2 } from "lucide-react";
+import { Inbox, Loader2, Mail, PenLine, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +29,8 @@ import {
   useOnOfficeStatus,
 } from "@/features/settings/OnOffice";
 import { api } from "@/lib/api";
+import { relativeTime } from "@/lib/dates";
+import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { cn, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
 
@@ -100,6 +103,8 @@ function PickerSection({
   );
 }
 
+const isEmailApp = (slug: string) => (EMAIL_APPS as readonly string[]).includes(slug);
+
 function appLabel(account: ConnectedAccount): string {
   if (account.appName) return account.appName;
   const known = EMAIL_APP_LABELS[account.app as EmailApp];
@@ -133,8 +138,8 @@ function generateTonalHex(index: number): string {
  * Shared between the first-run setup and Settings → Email.
  */
 export function Accounts({ onChanged }: { onChanged?: () => void }) {
-  const { t } = useTranslation();
-  const [accounts, setAccounts] = React.useState<ConnectedAccount[] | null>(null);
+  const { t, i18n } = useTranslation();
+  const [accounts, setAccounts] = React.useState<ConnectedAccountWithSync[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [connecting, setConnecting] = React.useState(false);
   const [pickerOpen, setPickerOpen] = React.useState(false);
@@ -142,13 +147,13 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const [results, setResults] = React.useState<PipedreamApp[] | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [removing, setRemoving] = React.useState(false);
+  // The just-linked email account awaiting the "learn your writing style?"
+  // accept/decline, and whether that accept is being launched.
+  const [learnPrompt, setLearnPrompt] = React.useState<ConnectedAccount | null>(null);
+  const [learnStarting, setLearnStarting] = React.useState(false);
   const [colors, setColors] = React.useState<AccountColor[]>([]);
-  const [descriptions, setDescriptions] = React.useState<AccountDescription[]>([]);
   const [voices, setVoices] = React.useState<AccountVoice[]>([]);
   const [signatureAccountId, setSignatureAccountId] = React.useState<string | null>(null);
-  const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = React.useState("");
-  const noteHandled = React.useRef(false);
   // onOffice is a native (non-Pipedream) CRM connection surfaced in the same
   // picker and accounts list; it authenticates with a token + secret, so its
   // picker entry opens the credential form instead of the Connect popup.
@@ -196,16 +201,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     }
   }, []);
 
-  const loadDescriptions = React.useCallback(async () => {
-    try {
-      const { descriptions: saved } = await api.accountDescriptions();
-      setDescriptions(saved);
-      return saved;
-    } catch {
-      return [] as AccountDescription[];
-    }
-  }, []);
-
   // Auto-assign nice tonal colors for accounts that don't have one yet.
   const ensureColors = React.useCallback(
     async (accts: ConnectedAccount[], existing: AccountColor[]) => {
@@ -242,13 +237,25 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
 
   React.useEffect(() => {
     void loadVoices();
-    void Promise.all([load(), loadColors(), loadDescriptions()]).then(([accts, saved]) => {
+    void Promise.all([load(), loadColors()]).then(([accts, saved]) => {
       if (accts && saved) void ensureColors(accts, saved);
     });
-  }, [load, loadColors, loadDescriptions, loadVoices, ensureColors]);
+  }, [load, loadColors, loadVoices, ensureColors]);
+
+  // While a fresh account's first import is underway, reload the list on
+  // mirror changes so the "Importing mail" badge clears itself the moment the
+  // first sync lands. Gated on `importing` so steady-state mail traffic never
+  // triggers the (Pipedream-refreshing) account fetch.
+  const importing = accounts?.some((a) => isEmailApp(a.app) && isFirstSyncPending(a.sync)) ?? false;
+  useServerEvents(["mail"], () => {
+    if (importing) void load();
+  });
 
   const connect = async (app: string) => {
     setBusy(app);
+    // Account ids present before this link, so onSuccess can single out the
+    // one that was just added and offer to learn its writing style.
+    const priorIds = new Set((accounts ?? []).map((a) => a.id));
     try {
       // Lazy-loaded: the Connect SDK is only needed when linking an account,
       // so it stays out of the initial bundle.
@@ -273,7 +280,12 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
           // The new account has no color yet — assign one against the latest
           // saved colors rather than waiting for a remount to pick it up.
           void load().then((next) => {
-            if (next) void loadColors().then((saved) => ensureColors(next, saved));
+            if (next) {
+              void loadColors().then((saved) => ensureColors(next, saved));
+              // Offer voice learning for a freshly linked email account.
+              const added = next.find((a) => !priorIds.has(a.id) && isEmailApp(a.app));
+              if (added) setLearnPrompt(added);
+            }
             onChanged?.();
           });
         },
@@ -287,6 +299,22 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
       toast.error(err);
     } finally {
       setBusy(null);
+    }
+  };
+
+  // Accept the post-connect prompt: kick off background voice learning. The
+  // server waits for the fresh account's sent mail to sync before analyzing,
+  // so results land in Settings a little later — the toast sets that expectation.
+  const startLearn = async (account: ConnectedAccount) => {
+    setLearnStarting(true);
+    try {
+      await api.learnAccountVoice(account.id);
+      toast.success(t("connections.learnVoiceStarted", { name: account.name }));
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setLearnStarting(false);
+      setLearnPrompt(null);
     }
   };
 
@@ -349,34 +377,8 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const colorFor = (accountId: string): AccountColor | undefined =>
     colors.find((c) => c.accountId === accountId);
 
-  const noteFor = (accountId: string) =>
-    descriptions.find((d) => d.accountId === accountId)?.text ?? "";
-
-  const startEditingNote = (accountId: string) => {
-    // Enter/Escape set this true and unmount the input without firing blur
-    // (browsers don't dispatch focusout for a removed element), so a stale
-    // true would swallow the next edit's blur-commit. Clear it up front.
-    noteHandled.current = false;
-    setNoteDraft(noteFor(accountId));
-    setEditingId(accountId);
-  };
-
-  const commitNote = async (accountId: string) => {
-    setEditingId(null);
-    const text = noteDraft.trim();
-    const next = descriptions.filter((d) => d.accountId !== accountId);
-    if (text) next.push({ accountId, text });
-    setDescriptions(next);
-    try {
-      await api.setAccountDescriptions(next);
-    } catch (err) {
-      toast.error(err);
-    }
-  };
-
   // Split the pre-search suggestions into "email apps" and "everything else",
   // so the picker shows email providers plus a taste of the wider catalog.
-  const isEmailApp = (slug: string) => (EMAIL_APPS as readonly string[]).includes(slug);
   const emailResults = (results ?? []).filter((a) => isEmailApp(a.slug));
   const moreResults = (results ?? []).filter((a) => !isEmailApp(a.slug));
 
@@ -526,52 +528,31 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{account.name}</p>
                       <p className="text-xs text-muted-foreground">{appLabel(account)}</p>
-                      {editingId === account.id ? (
-                        <Input
-                          autoFocus
-                          value={noteDraft}
-                          onChange={(e) => setNoteDraft(e.target.value)}
-                          onFocus={(e) => e.currentTarget.select()}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              noteHandled.current = true;
-                              void commitNote(account.id);
-                            } else if (e.key === "Escape") {
-                              noteHandled.current = true;
-                              setEditingId(null);
-                            }
-                          }}
-                          onBlur={() => {
-                            if (noteHandled.current) {
-                              noteHandled.current = false;
-                              return;
-                            }
-                            void commitNote(account.id);
-                          }}
-                          placeholder={t("connections.notePlaceholder")}
-                          className="mt-0.5 h-6 w-full min-w-0 px-1.5 py-0 text-xs"
-                        />
-                      ) : (
-                        noteFor(account.id) && (
-                          <p className="mt-0.5 truncate text-xs italic text-muted-foreground">
-                            {noteFor(account.id)}
-                          </p>
-                        )
-                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* First import in progress — the one moment sync progress is
+                        shown positively, so a fresh account doesn't look stuck. */}
+                    {isEmailApp(account.app) && isFirstSyncPending(account.sync) && (
+                      <Badge variant="muted">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {t("connections.importing")}
+                      </Badge>
+                    )}
+                    {/* Mirror sync health — shown only when it's failing (the healthy
+                        case stays quiet; the OAuth badge below already covers it). */}
+                    {account.sync?.status === "error" && (
+                      <Badge variant="warning" title={account.sync.error ?? undefined}>
+                        {account.sync.lastSyncedAt
+                          ? t("connections.syncStale", {
+                              when: relativeTime(account.sync.lastSyncedAt, i18n.language),
+                            })
+                          : t("connections.syncNever")}
+                      </Badge>
+                    )}
                     <Badge variant={account.healthy ? "success" : "destructive"}>
                       {account.healthy ? t("connections.healthy") : t("connections.unhealthy")}
                     </Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => startEditingNote(account.id)}
-                      title={t("connections.editNote")}
-                    >
-                      <Pencil />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -622,6 +603,16 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
         confirmLabel={t("connections.disconnect")}
         busy={removing}
         onConfirm={() => confirmId && void remove(confirmId)}
+      />
+      <ConfirmDialog
+        open={learnPrompt !== null}
+        onOpenChange={(next) => !next && setLearnPrompt(null)}
+        title={t("connections.learnVoiceTitle")}
+        description={t("connections.learnVoiceBody", { name: learnPrompt?.name ?? "" })}
+        confirmLabel={t("connections.learnVoiceConfirm")}
+        variant="default"
+        busy={learnStarting}
+        onConfirm={() => learnPrompt && void startLearn(learnPrompt)}
       />
     </div>
   );

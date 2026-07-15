@@ -23,7 +23,7 @@ import { IconChip } from "@/components/ui/icon-chip";
 import { Kbd } from "@/components/ui/kbd";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
-import { NAV_ITEMS, type NavItem } from "@/lib/nav";
+import { NAV_ITEMS, SHOWCASE_NAV } from "@/lib/nav";
 import { setPendingDraftFocus, setPendingKnowledgeFocus } from "@/lib/paletteFocus";
 import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 import { cn, MOD_LABEL, openExternal } from "@/lib/utils";
@@ -133,8 +133,18 @@ function rememberRecent(query: string): string[] {
   return next;
 }
 
+/** A page the palette can jump to, its copy already resolved to display strings. */
+interface PageItem {
+  /** Untranslated match key, so e.g. "settings" hits in any UI language. */
+  id: string;
+  path: string;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}
+
 type Entry =
-  | { kind: "nav"; key: string; nav: NavItem }
+  | { kind: "nav"; key: string; nav: PageItem }
   | { kind: "hit"; key: string; hit: SearchResult }
   | { kind: "recent"; key: string; query: string };
 
@@ -253,7 +263,27 @@ export function SearchPalette() {
     );
   }, [hits]);
 
-  const navTitle = React.useCallback((nav: NavItem) => t(`views.${nav.id}.title`), [t]);
+  const pages = React.useMemo<PageItem[]>(
+    () =>
+      NAV_ITEMS.map((nav) => ({
+        id: nav.id,
+        path: nav.path,
+        icon: nav.icon,
+        title: t(`views.${nav.id}.title`),
+        description: t(`views.${nav.id}.description`),
+      })),
+    [t],
+  );
+
+  /**
+   * DEV showcase — findable by typing a query, but absent from the empty-query
+   * shortcut list, so it never shows up in a nav listing. Delete with the
+   * /showcase route.
+   */
+  const searchablePages = React.useMemo<PageItem[]>(
+    () => (import.meta.env.DEV ? [...pages, SHOWCASE_NAV] : pages),
+    [pages],
+  );
 
   /**
    * Everything the list renders, in one pass, with a stable flat index per row.
@@ -278,16 +308,18 @@ export function SearchPalette() {
       built.push({
         key: "nav",
         label: t("search.shortcuts"),
-        rows: NAV_ITEMS.map((nav) => row({ kind: "nav", key: `nav:${nav.id}`, nav })),
+        rows: pages.map((nav) => row({ kind: "nav", key: `nav:${nav.id}`, nav })),
       });
       return built;
     }
 
     const lower = trimmed.toLowerCase();
-    const navMatches = NAV_ITEMS.map((nav) => ({
-      nav,
-      score: Math.max(matchScore(navTitle(nav), lower), matchScore(nav.id, lower)),
-    })).filter((candidate) => candidate.score > 0);
+    const navMatches = searchablePages
+      .map((nav) => ({
+        nav,
+        score: Math.max(matchScore(nav.title, lower), matchScore(nav.id, lower)),
+      }))
+      .filter((candidate) => candidate.score > 0);
 
     // Narrowed to one type: the scope *is* the intent, so no top hit and no pages.
     let topHitKey: string | null = null;
@@ -334,7 +366,7 @@ export function SearchPalette() {
       if (rows.length > 0) built.push({ key: type, label: t(`search.groups.${type}`), rows });
     }
     return built;
-  }, [trimmed, hits, scope, recents, navTitle, t]);
+  }, [trimmed, hits, scope, recents, pages, searchablePages, t]);
 
   const rows = React.useMemo(() => sections.flatMap((section) => section.rows), [sections]);
   const activeRow = rows[activeIndex];
@@ -558,7 +590,6 @@ export function SearchPalette() {
                         index={index}
                         active={index === activeIndex}
                         query={hitQuery}
-                        navTitle={navTitle}
                         colorFor={colorFor}
                         language={i18n.language}
                         onPointerMove={() => index !== activeIndex && setActiveIndex(index)}
@@ -575,7 +606,6 @@ export function SearchPalette() {
               <PalettePreview
                 entry={activeRow?.entry}
                 query={hitQuery}
-                navTitle={navTitle}
                 accountName={accountName}
                 colorFor={colorFor}
                 language={i18n.language}
@@ -620,7 +650,6 @@ interface RowProps {
   active: boolean;
   query: string;
   language: string;
-  navTitle: (nav: NavItem) => string;
   colorFor: (accountId?: string) => string | undefined;
   onPointerMove: () => void;
   onSelect: () => void;
@@ -632,7 +661,6 @@ function PaletteRow({
   active,
   query,
   language,
-  navTitle,
   colorFor,
   onPointerMove,
   onSelect,
@@ -645,7 +673,7 @@ function PaletteRow({
         : GROUP_ICON[entry.hit.type];
   const title =
     entry.kind === "nav"
-      ? navTitle(entry.nav)
+      ? entry.nav.title
       : entry.kind === "recent"
         ? entry.query
         : entry.hit.title;
@@ -697,7 +725,6 @@ interface PreviewProps {
   entry: Entry | undefined;
   query: string;
   language: string;
-  navTitle: (nav: NavItem) => string;
   accountName: (accountId?: string) => string;
   colorFor: (accountId?: string) => string | undefined;
 }
@@ -745,7 +772,7 @@ function PreviewShell({
   );
 }
 
-function PalettePreview({ entry, query, language, navTitle, accountName, colorFor }: PreviewProps) {
+function PalettePreview({ entry, query, language, accountName, colorFor }: PreviewProps) {
   const { t } = useTranslation();
 
   if (!entry) {
@@ -775,8 +802,8 @@ function PalettePreview({ entry, query, language, navTitle, accountName, colorFo
       <PreviewShell
         icon={entry.nav.icon}
         label={t("search.shortcuts")}
-        title={navTitle(entry.nav)}
-        body={t(`views.${entry.nav.id}.description`)}
+        title={entry.nav.title}
+        body={entry.nav.description}
         action={t("search.actionPage")}
       />
     );

@@ -21,7 +21,13 @@ import { threadWebUrl } from "./webLinks.js";
  *
  * "Waiting on you" — inbound threads enrichment triaged needs_reply, newest
  * message not from the owner, excluding ones the user dismissed (until a new
- * inbound message revives them — see enrichStore.ts's dismissed_hash).
+ * inbound message revives them — see enrichStore.ts's dismissed_hash) and
+ * excluding bulk/automated mail: enrichment sometimes triages a notification
+ * ("X wants to connect", "you have new messages") as needs_reply, but no
+ * person is actually waiting on your reply. A newest message carrying a
+ * List-Unsubscribe header (all bulk mail does) is dropped in SQL; a
+ * no-reply/notification sender address is caught by NO_REPLY_RE, the same
+ * guard the "waiting on others" lane already applies to its counterpart.
  *
  * "Waiting on others" — sent threads enrichment judged still awaiting a
  * counterpart reply (mail_thread_state.awaiting_reply), within a 14-day
@@ -30,7 +36,7 @@ import { threadWebUrl } from "./webLinks.js";
  * "hasn't had time to reply yet" filter here.
  */
 
-/** A counterpart address matching this looks automated, not a person waiting to reply. */
+/** A sender/counterpart address matching this looks automated, not a person waiting to reply. Both lanes use it. */
 const NO_REPLY_RE = /no-?reply|noreply|newsletter|notification|mailer-daemon/i;
 
 /** How far back a sent-and-unanswered thread still counts as "waiting". */
@@ -67,6 +73,16 @@ const selectWaitingOnYou = lazyStatement(`
     AND t.last_from_me = 0
     AND s.triage = 'needs_reply'
     AND (s.dismissed_hash IS NULL OR s.dismissed_hash != s.input_hash)
+    -- Drop bulk mail (newsletters, notifications) the triage over-eagerly
+    -- flagged: a List-Unsubscribe header on the newest message is bulk mail's
+    -- own tell. Filtered here, before LIMIT, so it never crowds out real
+    -- reply-needed threads. The sender-address guard runs in JS (NO_REPLY_RE).
+    AND (
+      SELECT m.list_unsubscribe FROM mail_messages m
+      WHERE m.thread_id = t.id
+      ORDER BY m.date DESC
+      LIMIT 1
+    ) IS NULL
   ORDER BY CASE WHEN s.urgency = 'high' THEN 0 ELSE 1 END, t.last_message_at DESC
   LIMIT @limit
 `);
@@ -109,16 +125,22 @@ function waitingOnYou(account: ConnectedAccount): WaitingOnYouThread[] {
     fromAddr: string | null;
   }>;
 
-  return rows.map(
-    (row): WaitingOnYouThread => ({
-      threadId: row.providerThreadId,
-      accountId: account.id,
-      subject: row.subject,
-      counterpart: row.fromAddr ?? "",
-      gist: row.gist,
-      urgency: row.urgency,
-      webUrl: threadWebUrl(account, row.providerThreadId),
-    }),
+  return (
+    rows
+      .map(
+        (row): WaitingOnYouThread => ({
+          threadId: row.providerThreadId,
+          accountId: account.id,
+          subject: row.subject,
+          counterpart: row.fromAddr ?? "",
+          gist: row.gist,
+          urgency: row.urgency,
+          webUrl: threadWebUrl(account, row.providerThreadId),
+        }),
+      )
+      // Second guard for bulk mail whose sender address gives it away even when
+      // the message carried no List-Unsubscribe header (e.g. invitations@…).
+      .filter((item) => !NO_REPLY_RE.test(item.counterpart))
   );
 }
 

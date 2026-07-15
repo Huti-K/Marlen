@@ -1,5 +1,6 @@
 import type { ConnectedAccount } from "@trailin/shared";
 import { getSyncBackfillDaysSetting } from "../../db/settings.js";
+import { isDemoAccount } from "../../demo/accounts.js";
 import { env } from "../../env.js";
 import { emitServerEvent } from "../../events.js";
 import { JobLoop, KeyedJobs, mapWithConcurrency } from "../../jobs.js";
@@ -141,6 +142,10 @@ async function runSync(account: ConnectedAccount, signal?: AbortSignal): Promise
  * else started would be wrong from a joiner.
  */
 export function syncAccount(account: ConnectedAccount, signal?: AbortSignal): Promise<void> {
+  // Demo mailboxes live only in the local mirror — there is no provider behind
+  // them, so a fetch would only error. Every sync path (the sweep, list_threads
+  // refresh, waiting refresh) funnels through here, so this one skip covers all.
+  if (isDemoAccount(account.id)) return Promise.resolve();
   return accountJobs.join(account.id, () => runSync(account, signal));
 }
 

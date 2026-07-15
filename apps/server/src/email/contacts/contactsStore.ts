@@ -16,6 +16,11 @@ import { isEmailLike, parseAddressEntry } from "./addressMatch.js";
  * deleted sync page) keeps its row rather than being pruned, so an
  * enrichment or a user's category override is never silently lost.
  *
+ * The manual overrides — category_source="user", display_name_override, and
+ * the hidden_at soft delete — are written only by the explicit CRUD helpers
+ * below (PATCH/POST/DELETE); derivation never sets or clears them, so a user's
+ * edits and hides survive every re-derivation.
+ *
  * getContactContexts and searchContacts also join the agent-domain memories
  * table (contact-scoped facts, memories.contact_id = contacts.address) —
  * they're the only reads that know about it, so a caller never has to query
@@ -213,8 +218,15 @@ interface ContactRow {
   updatedAt: string;
 }
 
+/**
+ * The effective display name: a user's manual override wins over the derived
+ * name, so reads surface the edited name everywhere (list, lookup, drafting
+ * context) while deriveContacts keeps refreshing the underlying derived column.
+ */
+const DISPLAY_NAME_EXPR = "COALESCE(NULLIF(display_name_override, ''), display_name)";
+
 const CONTACT_COLUMNS = `
-  address, display_name AS displayName, kind, category, category_source AS categorySource,
+  address, ${DISPLAY_NAME_EXPR} AS displayName, kind, category, category_source AS categorySource,
   gist, accounts, message_count AS messageCount, sent_count AS sentCount,
   last_contact_at AS lastContactAt, model, error, enriched_at AS enrichedAt,
   created_at AS createdAt, updated_at AS updatedAt
@@ -287,9 +299,13 @@ export interface ListContactsFilter {
   q?: string;
 }
 
-/** GET /api/contacts: every filter is optional and ANDed; newest contact first. */
+/**
+ * GET /api/contacts: every filter is optional and ANDed; newest contact first.
+ * Soft-hidden contacts are always excluded — the row survives for its
+ * enrichment and overrides, but the lists never surface it again.
+ */
 export function listContacts(filter: ListContactsFilter): Contact[] {
-  const clauses: string[] = [];
+  const clauses: string[] = ["hidden_at IS NULL"];
   const params: Record<string, unknown> = {};
   if (filter.kind) {
     clauses.push("kind = @kind");
@@ -300,12 +316,13 @@ export function listContacts(filter: ListContactsFilter): Contact[] {
     params.category = filter.category;
   }
   if (filter.q) {
-    clauses.push("(display_name LIKE @q ESCAPE '\\' OR address LIKE @q ESCAPE '\\')");
+    clauses.push(`(${DISPLAY_NAME_EXPR} LIKE @q ESCAPE '\\' OR address LIKE @q ESCAPE '\\')`);
     params.q = likeContains(filter.q);
   }
-  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
   const rows = sqlite
-    .prepare(`SELECT ${CONTACT_COLUMNS} FROM contacts ${where} ORDER BY last_contact_at DESC`)
+    .prepare(
+      `SELECT ${CONTACT_COLUMNS} FROM contacts WHERE ${clauses.join(" AND ")} ORDER BY last_contact_at DESC`,
+    )
     .all(params) as ContactRow[];
   return rows.map(toContact);
 }
@@ -325,8 +342,9 @@ export function searchContacts(query: string, limit: number): ContactMatch[] {
   const needle = likeContains(query.toLowerCase());
   const rows = sqlite
     .prepare(
-      `SELECT ${CONTACT_COLUMNS} FROM contacts WHERE address LIKE ? ESCAPE '\\' ` +
-        `OR display_name LIKE ? ESCAPE '\\' ORDER BY last_contact_at DESC LIMIT ?`,
+      `SELECT ${CONTACT_COLUMNS} FROM contacts WHERE hidden_at IS NULL AND ` +
+        `(address LIKE ? ESCAPE '\\' OR ${DISPLAY_NAME_EXPR} LIKE ? ESCAPE '\\') ` +
+        `ORDER BY last_contact_at DESC LIMIT ?`,
     )
     .all(needle, needle, limit) as ContactRow[];
   const sorted = [...rows].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "person" ? -1 : 1));
@@ -353,4 +371,62 @@ export function setContactCategory(address: string, category: ContactCategory): 
   });
   if (result.changes === 0) return null;
   return getContact(address);
+}
+
+const setNameStmt = lazyStatement(`
+  UPDATE contacts SET display_name_override = @displayName, updated_at = @updatedAt
+  WHERE address = @address
+`);
+
+/**
+ * PATCH /api/contacts/:address's name write: stores a manual override that
+ * wins over the derived name (see DISPLAY_NAME_EXPR) and is never touched by
+ * deriveContacts. A blank name clears the override, falling back to derived.
+ * Returns null (route 404s) when the address has no contact row.
+ */
+export function setContactName(address: string, displayName: string): Contact | null {
+  const trimmed = displayName.trim();
+  const result = setNameStmt().run({
+    address,
+    displayName: trimmed === "" ? null : trimmed,
+    updatedAt: new Date().toISOString(),
+  });
+  if (result.changes === 0) return null;
+  return getContact(address);
+}
+
+const hideStmt = lazyStatement(`
+  UPDATE contacts SET hidden_at = @hiddenAt, updated_at = @updatedAt WHERE address = @address
+`);
+
+/**
+ * DELETE /api/contacts/:address's soft delete: stamps hidden_at so the lists
+ * stop surfacing the contact while its row, enrichment, and any category/name
+ * override survive — a re-derivation never resurrects it. Returns false (route
+ * 404s) when the address has no contact row.
+ */
+export function hideContact(address: string): boolean {
+  const now = new Date().toISOString();
+  return hideStmt().run({ address, hiddenAt: now, updatedAt: now }).changes > 0;
+}
+
+const insertContactStmt = lazyStatement(`
+  INSERT INTO contacts (address, display_name_override, created_at, updated_at)
+  VALUES (@address, @displayName, @now, @now)
+`);
+
+/**
+ * POST /api/contacts's manual create: a contact for an address the mirror
+ * hasn't seen yet (aggregates stay at zero until mail arrives). The name is
+ * stored as an override so a later derivation for the same address augments
+ * the aggregates without clobbering the user's chosen name. The caller
+ * guarantees the address is new.
+ */
+export function createContact(address: string, displayName: string): Contact {
+  const trimmed = displayName.trim();
+  const now = new Date().toISOString();
+  insertContactStmt().run({ address, displayName: trimmed === "" ? null : trimmed, now });
+  const contact = getContact(address);
+  if (!contact) throw new Error(`createContact: row missing after insert for ${address}`);
+  return contact;
 }

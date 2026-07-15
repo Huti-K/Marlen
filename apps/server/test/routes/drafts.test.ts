@@ -1,9 +1,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EmailThread } from "@trailin/shared";
+import type { ConnectedAccount, CreatedDraft } from "@trailin/shared";
 import type { FastifyInstance } from "fastify";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { CreateDraftInput } from "../../src/email/providers.js";
 
 // db/index.ts (pulled in transitively by app.ts) runs its DDL as an
 // import-time side effect and resolves its path through env.ts's
@@ -15,9 +16,19 @@ const tempDir = mkdtempSync(join(tmpdir(), "trailin-drafts-route-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(tempDir, "test.db");
 
+// The compose tests resolve their account through findDraftAccount →
+// listAccounts; the mock keeps that local. Everything else on the module
+// stays real — buildApp() registers routes that import far more than
+// listAccounts.
+const listAccountsMock = vi.fn<() => Promise<ConnectedAccount[]>>();
+vi.mock("../../src/pipedream/connect.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/pipedream/connect.js")>();
+  return { ...actual, listAccounts: () => listAccountsMock() };
+});
+
 const { buildApp } = await import("../../src/app.js");
-const { applySyncPage } = await import("../../src/email/sync/mailStore.js");
 const { createDraftSnapshot, markDraftStatus } = await import("../../src/db/draftStore.js");
+const { registerDraftProvider } = await import("../../src/email/providers.js");
 
 let app: FastifyInstance;
 
@@ -34,113 +45,92 @@ afterAll(async () => {
   else process.env.DATABASE_PATH = originalDatabasePath;
 });
 
-describe("GET /api/threads/:accountId/:threadId — served from the mailbox mirror", () => {
-  const accountId = "acct-thread-route";
-  const providerThreadId = "thread-route-1";
+describe("POST /api/drafts/:accountId — user-authored compose", () => {
+  const accountId = "acct-compose-route";
+  const createDraftMock =
+    vi.fn<(account: ConnectedAccount, input: CreateDraftInput) => Promise<CreatedDraft>>();
 
   beforeAll(() => {
-    applySyncPage(accountId, {
-      upserts: [
-        {
-          providerMessageId: "msg-route-1",
-          providerThreadId,
-          subject: "Route thread",
-          from: "alice@example.com",
-          to: ["bob@example.com"],
-          cc: [],
-          date: "2026-05-01T00:00:00.000Z",
-          snippet: "First message snippet",
-          bodyText: "First message body.",
-          isFromMe: false,
-          isUnread: false,
-          labels: [],
-        },
-        {
-          providerMessageId: "msg-route-2",
-          providerThreadId,
-          subject: "Route thread",
-          from: "bob@example.com",
-          to: ["alice@example.com"],
-          cc: ["carol@example.com"],
-          date: "2026-05-02T00:00:00.000Z",
-          snippet: "Second message snippet",
-          bodyText: "Second message body.",
-          isFromMe: true,
-          isUnread: false,
-          labels: [],
-        },
-      ],
-      deletes: [],
-      cursor: "seed",
-      hasMore: false,
+    registerDraftProvider("test_mail", {
+      listDrafts: async () => [],
+      getDraftDetail: async () => ({ body: "", cc: "", bcc: "" }),
+      createDraft: createDraftMock,
+      deleteDraft: async () => {},
     });
+    listAccountsMock.mockResolvedValue([
+      {
+        id: accountId,
+        app: "test_mail",
+        name: "compose@example.com",
+        healthy: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "acct-no-driver",
+        app: "some_app_without_provider",
+        name: "other@example.com",
+        healthy: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
   });
 
-  it("404s for a thread id the mirror has never seen", async () => {
-    const res = await app.inject({
-      method: "GET",
-      url: `/api/threads/${accountId}/no-such-thread`,
-    });
-    expect(res.statusCode).toBe(404);
-    const body = res.json() as { error: string; requestId: string };
-    expect(typeof body.error).toBe("string");
-    expect(typeof body.requestId).toBe("string");
-  });
+  it("passes the compose fields to the provider verbatim and returns its handles", async () => {
+    const handles: CreatedDraft = {
+      draftId: "d-compose-1",
+      messageId: "m-compose-1",
+      threadId: "t-compose-1",
+      webUrl: "https://mail.example.com/d-compose-1",
+    };
+    createDraftMock.mockResolvedValueOnce(handles);
 
-  it("404s when the thread exists but under a different account", async () => {
     const res = await app.inject({
-      method: "GET",
-      url: `/api/threads/some-other-account/${providerThreadId}`,
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("maps every message's from/to/cc/date/body, oldest first, cc omitted when empty", async () => {
-    const res = await app.inject({
-      method: "GET",
-      url: `/api/threads/${accountId}/${providerThreadId}`,
+      method: "POST",
+      url: `/api/drafts/${accountId}`,
+      payload: {
+        to: ["anna@example.com"],
+        cc: ["max@example.com"],
+        subject: "Hello",
+        body: "Hi Anna,\n\nBest\nMe",
+        threadId: "t-compose-1",
+      },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as EmailThread;
-    expect(body.messages).toHaveLength(2);
-
-    const [first, second] = body.messages;
-    expect(first).toEqual({
-      from: "alice@example.com",
-      to: ["bob@example.com"],
-      date: "2026-05-01T00:00:00.000Z",
-      body: "First message body.",
-    });
-    expect(first && "cc" in first).toBe(false);
-
-    expect(second).toEqual({
-      from: "bob@example.com",
-      to: ["alice@example.com"],
-      cc: ["carol@example.com"],
-      date: "2026-05-02T00:00:00.000Z",
-      body: "Second message body.",
+    expect(res.json()).toEqual(handles);
+    expect(createDraftMock).toHaveBeenCalledWith(expect.objectContaining({ id: accountId }), {
+      to: ["anna@example.com"],
+      cc: ["max@example.com"],
+      subject: "Hello",
+      body: "Hi Anna,\n\nBest\nMe",
+      threadId: "t-compose-1",
     });
   });
 
-  it("excludeMessageId drops just that one message by provider message id", async () => {
-    const res = await app.inject({
-      method: "GET",
-      url: `/api/threads/${accountId}/${providerThreadId}?excludeMessageId=msg-route-1`,
+  it("404s for an unknown account and for one whose app has no draft provider", async () => {
+    const payload = { to: ["anna@example.com"], subject: "S", body: "B" };
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/api/drafts/acct-does-not-exist",
+      payload,
     });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as EmailThread;
-    expect(body.messages).toHaveLength(1);
-    expect(body.messages[0]).toMatchObject({ from: "bob@example.com" });
+    expect(unknown.statusCode).toBe(404);
+
+    const noDriver = await app.inject({
+      method: "POST",
+      url: "/api/drafts/acct-no-driver",
+      payload,
+    });
+    expect(noDriver.statusCode).toBe(404);
   });
 
-  it("leaves the thread untouched when excludeMessageId matches nothing", async () => {
+  it("400s when `to` is empty", async () => {
     const res = await app.inject({
-      method: "GET",
-      url: `/api/threads/${accountId}/${providerThreadId}?excludeMessageId=not-a-real-message-id`,
+      method: "POST",
+      url: `/api/drafts/${accountId}`,
+      payload: { to: [], subject: "S", body: "B" },
     });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as EmailThread;
-    expect(body.messages).toHaveLength(2);
+    expect(res.statusCode).toBe(400);
+    expect(createDraftMock).toHaveBeenCalledTimes(1);
   });
 });
 

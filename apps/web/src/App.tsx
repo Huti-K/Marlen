@@ -29,6 +29,7 @@ import { ChatPanel } from "@/features/chat/ChatPanel";
 import { FocusChip } from "@/features/chat/FocusChip";
 import { HistoryList } from "@/features/chat/HistoryList";
 import { ContactsPanel } from "@/features/contacts/ContactsPanel";
+import { EmailPanel } from "@/features/email/EmailPanel";
 import { HomePanel } from "@/features/home/HomePanel";
 import { KnowledgePanel } from "@/features/knowledge/KnowledgePanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
@@ -36,7 +37,8 @@ import { SetupGate } from "@/features/setup/SetupGate";
 import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showcase — delete with its route
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
-import { NAV_VIEWS, type View } from "@/lib/nav";
+import { NAV_VIEWS, SHOWCASE_NAV, type View } from "@/lib/nav";
+import { useServerEvents } from "@/lib/serverEvents";
 import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useTheme } from "@/lib/useTheme";
@@ -138,6 +140,14 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = React.useState(false);
   // Mirrors the ChatPanel's open conversation so the Chat tab's history rail can highlight it.
   const [activeConversationId, setActiveConversationId] = React.useState<string | undefined>();
+  // A mailbox picked in the header chip before any conversation exists. The first
+  // message carries it to the server (which opens the conversation focused on it),
+  // after which the conversation owns its focus. Reset whenever there's no active
+  // conversation again (a new chat), so a fresh chat starts on "All accounts".
+  const [pendingFocusAccountId, setPendingFocusAccountId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!activeConversationId) setPendingFocusAccountId(null);
+  }, [activeConversationId]);
   const [historyCollapsed, setHistoryCollapsed] = React.useState(
     () =>
       typeof window !== "undefined" &&
@@ -171,6 +181,14 @@ export default function App() {
         setGate((g) => (g === "pending" ? "closed" : g));
       });
   }, []);
+
+  // While a fresh account's first import runs, follow the mirror's progress so
+  // the Home banner clears itself when the import lands. Gated on `importing`
+  // so steady-state mail traffic doesn't refetch status forever.
+  const importing = (status?.emailAccountsImporting ?? 0) > 0;
+  useServerEvents(["mail"], () => {
+    if (importing) refreshStatus();
+  });
 
   // Mount + whenever the tab regains focus (sign-in and account linking
   // happen in other tabs, and status must not go stale).
@@ -284,7 +302,7 @@ export default function App() {
 
   const meta =
     import.meta.env.DEV && currentPath === "showcase" // DEV showcase — remove this branch with the route
-      ? { title: "UI Showcase", description: "Component gallery & theme lab (dev only)" }
+      ? { title: SHOWCASE_NAV.title, description: SHOWCASE_NAV.description }
       : {
           title: t(`views.${view}.title`),
           description: t(`views.${view}.description`),
@@ -396,6 +414,7 @@ export default function App() {
               <Route path="/chat" element={null} />
               <Route path="/settings" element={<SettingsPanel onStatusChanged={refreshStatus} />} />
               <Route path="/automations" element={<AutomationsPanel />} />
+              <Route path="/email" element={<EmailPanel />} />
               <Route path="/contacts" element={<ContactsPanel />} />
               <Route path="/knowledge" element={<KnowledgePanel />} />
               {/* DEV showcase / theme lab — delete this line and the ShowcasePanel file to remove. */}
@@ -406,6 +425,7 @@ export default function App() {
                   <HomePanel
                     setupIncomplete={status !== null && !isSetupComplete(status)}
                     offline={Boolean(status?.pipedreamConfigured) && !status?.emailAccountsKnown}
+                    importing={importing}
                     onNavigate={select}
                   />
                 }
@@ -563,7 +583,11 @@ export default function App() {
               <p className="shrink-0 text-sm font-semibold tracking-tight">
                 {t("views.chat.title")}
               </p>
-              <FocusChip conversationId={activeConversationId} />
+              <FocusChip
+                conversationId={activeConversationId}
+                pendingFocusAccountId={pendingFocusAccountId}
+                onPendingFocusChange={setPendingFocusAccountId}
+              />
               {onChatRoute && (
                 <HeaderIconButton
                   label={theme === "dark" ? t("sidebar.lightMode") : t("sidebar.darkMode")}
@@ -612,6 +636,7 @@ export default function App() {
                 setHistoryOpen={setHistoryOpen}
                 layout={onChatRoute ? "page" : "panel"}
                 onConversationChange={setActiveConversationId}
+                pendingFocusAccountId={pendingFocusAccountId}
               />
             </div>
           </div>

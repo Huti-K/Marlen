@@ -9,13 +9,14 @@ import type {
   AutomationRun,
   ChatMessage,
   ChatStreamEvent,
-  ConnectedAccount,
+  ConnectedAccountWithSync,
   ConnectTokenResponse,
   Contact,
   ContactCategory,
   ContactDetail,
   ContactKind,
   Conversation,
+  CreatedDraft,
   EmailRef,
   EmailThread,
   Language,
@@ -24,6 +25,8 @@ import type {
   LlmProviderInfo,
   LoginFlowStatus,
   MailSuggestion,
+  MailThreadFilter,
+  MailThreadOverview,
   MemoryEntry,
   MissedAutomation,
   ModelSettings,
@@ -190,13 +193,15 @@ export const api = {
   clearPipedream: () => http<PipedreamStatus>("DELETE", "/api/pipedream"),
   setPipedreamMode: (useCustom: boolean) =>
     http<PipedreamStatus>("PUT", "/api/pipedream/mode", { useCustom }),
-  pipedreamAccounts: () => get<ConnectedAccount[]>("/api/pipedream/accounts"),
+  pipedreamAccounts: () => get<ConnectedAccountWithSync[]>("/api/pipedream/accounts"),
   pipedreamApps: (q: string) =>
     get<PipedreamApp[]>(`/api/pipedream/apps?q=${encodeURIComponent(q)}`),
   pipedreamConnectToken: (app: string) =>
     http<ConnectTokenResponse>("POST", "/api/pipedream/accounts/connect-token", { app }),
   deletePipedreamAccount: (id: string) =>
     http<{ ok: boolean }>("DELETE", `/api/pipedream/accounts/${encodeURIComponent(id)}`),
+  learnAccountVoice: (id: string) =>
+    http<{ ok: boolean }>("POST", `/api/pipedream/accounts/${encodeURIComponent(id)}/learn-voice`),
 
   onOfficeStatus: () => get<OnOfficeStatus>("/api/onoffice"),
   saveOnOffice: (body: OnOfficeConfigInput) => http<OnOfficeStatus>("PUT", "/api/onoffice", body),
@@ -252,8 +257,38 @@ export const api = {
     get<DraftStatusResult>(
       `/api/drafts/${encodeURIComponent(accountId)}/${encodeURIComponent(draftId)}/status`,
     ),
+  // Create a draft with exactly the given content (no humanizer/signature
+  // pass); `threadId` attaches it to that conversation as a reply.
+  composeDraft: (
+    accountId: string,
+    body: {
+      to: string[];
+      cc?: string[];
+      bcc?: string[];
+      subject: string;
+      body: string;
+      threadId?: string;
+    },
+  ) => http<CreatedDraft>("POST", `/api/drafts/${encodeURIComponent(accountId)}`, body),
+  /** Mailbox-mirror thread overviews for the Email page's inbox list, newest first. */
+  mailThreads: (
+    params: {
+      accountId?: string;
+      filter?: MailThreadFilter;
+      sinceDays?: number;
+      limit?: number;
+    } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.accountId) qs.set("accountId", params.accountId);
+    if (params.filter) qs.set("filter", params.filter);
+    if (params.sinceDays !== undefined) qs.set("sinceDays", String(params.sinceDays));
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{ items: MailThreadOverview[] }>(`/api/threads${suffix}`);
+  },
   /** `excludeMessageId` drops the draft's own message — Gmail counts it as part of the thread. */
-  draftThread: (accountId: string, threadId: string, excludeMessageId?: string) =>
+  mailThread: (accountId: string, threadId: string, excludeMessageId?: string) =>
     get<EmailThread>(
       `/api/threads/${encodeURIComponent(accountId)}/${encodeURIComponent(threadId)}${
         excludeMessageId ? `?excludeMessageId=${encodeURIComponent(excludeMessageId)}` : ""
@@ -352,10 +387,19 @@ export const api = {
   },
   contactDetail: (address: string) =>
     get<ContactDetail>(`/api/contacts/${encodeURIComponent(address)}`),
-  // The one manual override the Contacts page can make — pins category_source
-  // to "user" server-side so a later enrichment pass never reverts it.
+  // The manual overrides the Contacts page can make — each pins server-side so
+  // a later enrichment/derivation pass never reverts it. Category pins
+  // category_source to "user"; a name override wins over the derived name.
   setContactCategory: (address: string, category: ContactCategory) =>
     http<Contact>("PATCH", `/api/contacts/${encodeURIComponent(address)}`, { category }),
+  setContactName: (address: string, displayName: string) =>
+    http<Contact>("PATCH", `/api/contacts/${encodeURIComponent(address)}`, { displayName }),
+  // Manual add for an address the mailbox hasn't produced a contact for yet.
+  createContact: (address: string, displayName: string) =>
+    http<Contact>("POST", "/api/contacts", { address, displayName }),
+  // Soft delete: hides the contact from the lists; the row survives server-side.
+  deleteContact: (address: string) =>
+    http<{ ok: boolean }>("DELETE", `/api/contacts/${encodeURIComponent(address)}`),
 
   /** Bulk/newsletter senders (contacts rows with kind="bulk") and their unsubscribe state. */
   newsletters: () => get<NewsletterSender[]>("/api/newsletters"),
@@ -409,7 +453,13 @@ export const api = {
  * resolves when the stream closes.
  */
 export async function streamChat(
-  body: { conversationId?: string; message: string; refs?: EmailRef[] },
+  body: {
+    conversationId?: string;
+    message: string;
+    refs?: EmailRef[];
+    /** Header-chip mailbox pick applied when this starts a new conversation. */
+    focusAccountId?: string | null;
+  },
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {

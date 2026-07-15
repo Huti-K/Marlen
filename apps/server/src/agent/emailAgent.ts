@@ -30,8 +30,9 @@ connected accounts — email and possibly other apps.
 
 Guidelines:
 - READING mail: search_mail, list_threads, read_thread and list_sent_messages serve from a local
-  index of every connected account's mail (roughly the last month, refreshed every few minutes —
-  pass refresh: true only when the user asks about mail that may have just arrived). They cover
+  index of every connected account's mail (the configured Mail-history window, a year by default,
+  refreshed every few minutes — pass refresh: true only when the user asks about mail that may
+  have just arrived). They cover
   all accounts in one call, or one account via their account parameter. list_drafts shows the
   unsent drafts sitting in each account's Drafts folder.
 - ACTING on mail (drafts, sending, labels) goes through per-account tools. Each one's description

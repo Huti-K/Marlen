@@ -18,7 +18,7 @@ import { LoadingRow } from "@/components/ui/feedback";
 import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
 import { Textarea } from "@/components/ui/textarea";
-import { ThreadHistory } from "@/features/home/ThreadHistory";
+import { ThreadHistory } from "@/features/email/ThreadHistory";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { dispatchTrailin } from "@/lib/trailinEvents";
@@ -77,7 +77,7 @@ export function DraftRow({
     // Kick off both requests before awaiting either — a slow/failed thread
     // fetch must never delay or break the draft body.
     const threadPromise = draft.threadId
-      ? api.draftThread(accountId, draft.threadId, draft.messageId).catch(() => {
+      ? api.mailThread(accountId, draft.threadId, draft.messageId).catch(() => {
           setThreadFailed(true);
           return null;
         })

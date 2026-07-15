@@ -55,7 +55,7 @@ describe("GET/PUT /api/settings/sync-backfill-days", () => {
   it("defaults to the env window", async () => {
     const res = await app.inject({ method: "GET", url: "/api/settings/sync-backfill-days" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ days: 30 });
+    expect(res.json()).toEqual({ days: 365 });
   });
 
   it("persists a new window (Pipedream being unconfigured must not fail the backfill restart)", async () => {

@@ -1,12 +1,15 @@
 import { CONTACT_CATEGORIES, type Contact, type ContactCategory } from "@trailin/shared";
-import { SearchX, Users } from "lucide-react";
+import { Loader2, SearchX, UserPlus, Users } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
+import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RetryableError } from "@/components/ui/feedback";
+import { FormField } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
 import { SearchField } from "@/components/ui/search-field";
 import { ShowMoreButton } from "@/components/ui/show-more-button";
 import {
@@ -20,6 +23,7 @@ import {
 import { api } from "@/lib/api";
 import { relativeTime } from "@/lib/dates";
 import { useServerEvents } from "@/lib/serverEvents";
+import { toast } from "@/lib/toast";
 import { usePagedVisible } from "@/lib/usePagedVisible";
 import { errorMessage } from "@/lib/utils";
 
@@ -37,6 +41,7 @@ export function PeopleLane({ onOpen }: { onOpen: (address: string) => void }) {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [category, setCategory] = React.useState<CategoryFilter>("all");
+  const [addOpen, setAddOpen] = React.useState(false);
   const { visible, showMore } = usePagedVisible(
     LANE_INITIAL_VISIBLE,
     LANE_VISIBLE_STEP,
@@ -90,11 +95,26 @@ export function PeopleLane({ onOpen }: { onOpen: (address: string) => void }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <SearchField
-        value={query}
-        onChange={setQuery}
-        placeholder={t("contacts.searchPlaceholder")}
-      />
+      <div className="flex items-center gap-2">
+        <SearchField
+          value={query}
+          onChange={setQuery}
+          placeholder={t("contacts.searchPlaceholder")}
+          className="flex-1"
+        />
+        <Button
+          variant="secondary"
+          size="icon"
+          className="shrink-0"
+          onClick={() => setAddOpen(true)}
+          title={t("contacts.add.trigger")}
+          aria-label={t("contacts.add.trigger")}
+        >
+          <UserPlus className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <CreateContactDialog open={addOpen} onOpenChange={setAddOpen} onCreated={onOpen} />
 
       <div className="flex flex-wrap gap-1.5">
         <Chip active={category === "all"} onClick={() => setCategory("all")}>
@@ -173,5 +193,91 @@ function PersonRow({ contact, onOpen }: { contact: Contact; onOpen: () => void }
         {relativeTime(contact.lastContactAt, i18n.language)}
       </span>
     </button>
+  );
+}
+
+/**
+ * Manual add for an address the mailbox hasn't produced a contact for yet.
+ * On success it opens the new contact's detail so the user lands where they
+ * can keep editing it.
+ */
+function CreateContactDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (address: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [address, setAddress] = React.useState("");
+  const [name, setName] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) {
+      setAddress("");
+      setName("");
+      setSubmitting(false);
+    }
+  }, [open]);
+
+  const canSubmit = address.trim().includes("@") && !submitting;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      const contact = await api.createContact(address.trim().toLowerCase(), name.trim());
+      onOpenChange(false);
+      onCreated(contact.address);
+    } catch (err) {
+      toast.error(err);
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("contacts.add.title")}
+      footer={
+        <Button onClick={() => void submit()} disabled={!canSubmit}>
+          {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+          {t("contacts.add.submit")}
+        </Button>
+      }
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <FormField id="new-contact-address" label={t("contacts.add.addressLabel")}>
+          <Input
+            id="new-contact-address"
+            type="email"
+            autoFocus
+            value={address}
+            placeholder={t("contacts.add.addressPlaceholder")}
+            onChange={(e) => setAddress(e.target.value)}
+          />
+        </FormField>
+        <FormField id="new-contact-name" label={t("contacts.add.nameLabel")}>
+          <Input
+            id="new-contact-name"
+            value={name}
+            placeholder={t("contacts.add.namePlaceholder")}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </FormField>
+        {/* Lets Enter submit; the visible action lives in the dialog footer. */}
+        <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
+      </form>
+    </Dialog>
   );
 }

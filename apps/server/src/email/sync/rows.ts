@@ -14,6 +14,7 @@
 /** Raw shape of one mail_messages row, aliased to camelCase in the SELECT (see MAIL_MESSAGE_ROW_COLUMNS). */
 export interface MailMessageRow {
   providerMessageId: string;
+  subject: string;
   fromAddr: string;
   toAddrs: string;
   ccAddrs: string;
@@ -26,6 +27,7 @@ export interface MailMessageRow {
 /** SELECT column list/aliases producing MailMessageRow — splice into a query's SQL. */
 export const MAIL_MESSAGE_ROW_COLUMNS = `
   provider_message_id AS providerMessageId,
+  subject,
   from_addr AS fromAddr,
   to_addrs AS toAddrs,
   cc_addrs AS ccAddrs,
@@ -43,6 +45,7 @@ export function decodeStringArray(json: string): string[] {
 /** One mail_messages row in provider-neutral form. */
 export interface MailMessage {
   providerMessageId: string;
+  subject: string;
   from: string;
   to: string[];
   cc: string[];
@@ -56,6 +59,7 @@ export interface MailMessage {
 export function toMailMessage(row: MailMessageRow): MailMessage {
   return {
     providerMessageId: row.providerMessageId,
+    subject: row.subject,
     from: row.fromAddr,
     to: decodeStringArray(row.toAddrs),
     cc: decodeStringArray(row.ccAddrs),

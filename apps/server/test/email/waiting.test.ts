@@ -188,6 +188,63 @@ describe("listOpenConversations — waiting on you", () => {
   });
 });
 
+describe("listOpenConversations — waiting on you excludes bulk/notification mail", () => {
+  const account = accountFixture("acct-oc-bulk");
+
+  // Inbound, needs_reply, a real person — the control that must appear.
+  seedThread(account.id, [
+    message({
+      providerMessageId: "m-bulk-person",
+      providerThreadId: "t-bulk-person",
+      from: "grace@example.com",
+      date: daysAgo(1),
+    }),
+  ]);
+  enrich(account.id, "t-bulk-person", "hash-bulk-person", {
+    triage: "needs_reply",
+    awaitingReply: false,
+  });
+
+  // needs_reply, but the newest message carries a List-Unsubscribe header —
+  // bulk mail the triage over-flagged. Excluded in SQL before LIMIT.
+  seedThread(account.id, [
+    message({
+      providerMessageId: "m-bulk-unsub",
+      providerThreadId: "t-bulk-unsub",
+      from: "invitations@linkedin.com",
+      date: daysAgo(1),
+      listUnsubscribe: "<https://www.linkedin.com/e/unsub>",
+    }),
+  ]);
+  enrich(account.id, "t-bulk-unsub", "hash-bulk-unsub", {
+    triage: "needs_reply",
+    awaitingReply: false,
+  });
+
+  // needs_reply, no List-Unsubscribe header, but the sender address gives it
+  // away — excluded by the NO_REPLY_RE guard in JS.
+  seedThread(account.id, [
+    message({
+      providerMessageId: "m-bulk-noreply",
+      providerThreadId: "t-bulk-noreply",
+      from: "notifications-noreply@linkedin.com",
+      date: daysAgo(1),
+    }),
+  ]);
+  enrich(account.id, "t-bulk-noreply", "hash-bulk-noreply", {
+    triage: "needs_reply",
+    awaitingReply: false,
+  });
+
+  it("keeps a real person's needs_reply thread but drops notification/bulk senders", async () => {
+    const { waitingOnYou } = await listOpenConversations(account);
+    const ids = waitingOnYou.map((t) => t.threadId);
+    expect(ids).toContain("t-bulk-person");
+    expect(ids).not.toContain("t-bulk-unsub");
+    expect(ids).not.toContain("t-bulk-noreply");
+  });
+});
+
 describe("listOpenConversations — dismissal", () => {
   const account = accountFixture("acct-oc-dismiss");
 

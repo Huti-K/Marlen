@@ -10,12 +10,17 @@ These rules are binding. If a change would break one, change the rule here first
 
 1. **No borders, outlines, or strokes.** Nothing has a visible edge line at rest — no
    `border`, no `divide-*`, no outlined buttons, no ring at rest, no hairline dividers.
-   Separation is achieved with surface tone and whitespace. (Two exceptions: the keyboard
+   Separation is achieved with surface tone and whitespace. (Four exceptions: the keyboard
    `:focus-visible` ring, which exists only for accessibility and only appears during
-   keyboard navigation; and the `--border` hairline (`border-border`), allowed only as a
-   divider *inside* dense content — thread rails, markdown tables/blockquotes/hr, an
-   expanded row's meta section. Always use it plain, never with an opacity modifier, so
-   every line in the app is the same tone. It never outlines a shape.)
+   keyboard navigation; the `--border` hairline (`border-border`) as a divider *inside*
+   dense content — thread rails, markdown tables/blockquotes/hr, an expanded row's meta
+   section; the agent card shell (`CardShell`), outlined so the agent's work products read
+   as discrete blocks against the white chat rail and each other without a heavier grey
+   wrapper; and anchored floating panels (`.surface-pop`), outlined because they float
+   scrimless over content that can share their tone — in light mode panel and page are
+   both white, so without an edge the panel dissolves into what it covers. Always use the
+   hairline plain, never with an opacity modifier, so every line in the app is the same
+   tone. Beyond those two shapes it outlines nothing.)
 2. **No card-in-card.** A surface is never nested inside another surface. Group content
    with a section heading + whitespace. If you need one elevated panel, it holds plain
    rows — not more panels.
@@ -68,9 +73,11 @@ Never hand-pick a grey to make a control read; if contrast is short, the fix bel
 the fill variables in `index.css`.
 
 **Anchored floating panels use `.surface-pop`, not `.surface`.** Select menus and the
-color picker float over content with no scrim, and elevation is tone-only: `.surface-pop`
-steps the panel itself one tone brighter than a card in dark mode (in light it is already
-the brightest tone). Dialogs keep `.surface` — the scrim separates them.
+color picker float over content with no scrim: `.surface-pop` steps the panel itself one
+tone brighter than a card in dark mode and carries the `--border` hairline (a documented
+exception above), because in light mode the panel is the same white as the surfaces it
+floats over and tone alone gives it no edge. Dialogs keep `.surface` — the scrim
+separates them.
 
 ## Color
 
@@ -118,7 +125,8 @@ the brightest tone). Dialogs keep `.surface` — the scrim separates them.
 
 Elements that float *over* content (dialogs, the Cmd+K palette, select menus) separate
 without shadows: everything modal shares the `.scrim` backdrop — a light dim plus a
-**2px** backdrop blur — and scrimless anchored panels rely on `.surface-pop`'s tone.
+**2px** backdrop blur — and scrimless anchored panels rely on `.surface-pop`'s tone and
+hairline outline.
 Backdrop blur is welcome on floating chrome and scrims; just keep it turned down. The
 page underneath should stay readable through it, never frost over. Everything else
 about floating panels still follows the rules above:
