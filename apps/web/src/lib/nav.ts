@@ -3,21 +3,12 @@ import {
   CalendarClock,
   Inbox,
   type LucideIcon,
-  Mail,
   MessagesSquare,
   Palette,
   Settings2,
-  Users,
 } from "lucide-react";
 
-export type View =
-  | "home"
-  | "chat"
-  | "email"
-  | "automations"
-  | "contacts"
-  | "knowledge"
-  | "settings";
+export type View = "home" | "chat" | "automations" | "knowledge" | "settings";
 
 export interface NavItem {
   id: View;
@@ -33,9 +24,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { id: "home", path: "/", icon: Inbox },
   { id: "chat", path: "/chat", icon: MessagesSquare },
-  { id: "email", path: "/email", icon: Mail },
   { id: "automations", path: "/automations", icon: CalendarClock },
-  { id: "contacts", path: "/contacts", icon: Users },
   { id: "knowledge", path: "/knowledge", icon: BookOpen },
   { id: "settings", path: "/settings", icon: Settings2 },
 ];

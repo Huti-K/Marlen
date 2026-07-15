@@ -14,8 +14,11 @@ const defaultLog = moduleLogger("compaction");
  * Keeps a long-running chat session inside its model's context window. pi's
  * Agent has no built-in compaction — a conversation left to grow forever
  * eventually overflows the provider's context and the turn fails outright.
- * runPrompt calls maybeCompact before every agent.prompt(...) so the
- * transcript is trimmed in advance instead of after the fact.
+ * Three seams share the same core (compactedMessages): runPrompt trims the
+ * transcript before every agent.prompt(...), emailAgent's between-turns hook
+ * trims mid-run when a tool-heavy run outgrows the window between LLM calls,
+ * and run.ts force-compacts once when the provider reports a context
+ * overflow the estimate missed.
  */
 
 /** Fraction of the model's context window that triggers compaction. */
@@ -105,40 +108,68 @@ function isCoreMessage(message: AgentMessage): message is Message {
 /**
  * One-shot, tool-less summary of the messages about to be dropped from
  * context. Returns "" on an empty model result; throws on any other failure,
- * which maybeCompact treats as fail-open.
+ * which compactedMessages treats as fail-open.
  */
-async function summarizePrefix(prefix: AgentMessage[]): Promise<string> {
+async function summarizePrefix(prefix: AgentMessage[], signal?: AbortSignal): Promise<string> {
   let serialized = serializeConversation(prefix.filter(isCoreMessage));
   if (serialized.length > MAX_SERIALIZED_CHARS) {
     serialized = `${DROPPED_NOTE}\n\n${serialized.slice(serialized.length - MAX_SERIALIZED_CHARS)}`;
   }
 
-  const raw = await runOneShot({ systemPrompt: SYSTEM_PROMPT, prompt: serialized });
+  const raw = await runOneShot({ systemPrompt: SYSTEM_PROMPT, prompt: serialized, signal });
   return raw.trim();
 }
 
-/** Compacts agent.state.messages in place when the estimated context nears the model's window. Returns true when a compaction happened. Never throws (fail-open: on any error the messages are left untouched and false is returned). */
-export async function maybeCompact(
-  agent: Agent,
+export interface CompactOptions {
+  /**
+   * Compact even when the estimate sits under the trigger fraction. For
+   * recovery after a provider context-overflow error, where the provider has
+   * already proven the estimate wrong — the transcript must actually shrink
+   * before a retry can succeed.
+   */
+  force?: boolean;
+  /** Aborts the summarizer's model call when the surrounding run is cancelled. */
+  signal?: AbortSignal;
+}
+
+/** The transcript snapshot compactedMessages works over — agent.state satisfies it, and so does the loop context a between-turns hook receives (paired with the agent's model). */
+export interface CompactionState {
+  systemPrompt: string;
+  model: { contextWindow: number };
+  messages: AgentMessage[];
+}
+
+/**
+ * Computes the compacted replacement for a transcript when its estimated
+ * tokens near the model's context window: older turns summarized into one
+ * brief, the recent ~KEEP_RECENT_TOKENS kept verbatim. Returns null when
+ * nothing needs (or can) be compacted. Never throws (fail-open: on any error
+ * the answer is null and the caller keeps its messages untouched).
+ */
+export async function compactedMessages(
+  state: CompactionState,
   log: CompactionLogger = defaultLog,
-): Promise<boolean> {
+  options: CompactOptions = {},
+): Promise<AgentMessage[] | null> {
   try {
-    const { systemPrompt, model, messages } = agent.state;
+    const { systemPrompt, model, messages } = state;
     const estimatedTokens = estimateStateTokens(systemPrompt, messages);
-    if (estimatedTokens <= COMPACT_TRIGGER_FRACTION * model.contextWindow) return false;
+    if (!options.force && estimatedTokens <= COMPACT_TRIGGER_FRACTION * model.contextWindow) {
+      return null;
+    }
 
     const cutIndex = findCutIndex(messages);
     const prefix = messages.slice(0, cutIndex);
-    if (prefix.length < MIN_PREFIX_MESSAGES) return false;
+    if (prefix.length < MIN_PREFIX_MESSAGES) return null;
     const kept = messages.slice(cutIndex);
 
-    const summary = await summarizePrefix(prefix);
+    const summary = await summarizePrefix(prefix, options.signal);
     if (!summary) {
       log.warn(
         { prefixMessages: prefix.length },
         "compaction summary was empty, leaving messages untouched",
       );
-      return false;
+      return null;
     }
 
     const summaryMessage: AgentMessage = {
@@ -147,16 +178,26 @@ export async function maybeCompact(
       timestamp: kept[0]?.timestamp ?? Date.now(),
     };
 
-    const beforeMessages = messages.length;
     const newMessages = [summaryMessage, ...kept];
-    agent.state.messages = newMessages;
     log.info(
-      { beforeMessages, afterMessages: newMessages.length, estimatedTokens },
+      { beforeMessages: messages.length, afterMessages: newMessages.length, estimatedTokens },
       "compacted conversation history",
     );
-    return true;
+    return newMessages;
   } catch (error) {
     log.warn({ err: error }, "compaction failed, leaving messages untouched");
-    return false;
+    return null;
   }
+}
+
+/** Compacts agent.state.messages in place when the estimated context nears the model's window. Returns true when a compaction happened. Never throws — see compactedMessages. */
+export async function maybeCompact(
+  agent: Agent,
+  log: CompactionLogger = defaultLog,
+  options: CompactOptions = {},
+): Promise<boolean> {
+  const next = await compactedMessages(agent.state, log, options);
+  if (!next) return false;
+  agent.state.messages = next;
+  return true;
 }

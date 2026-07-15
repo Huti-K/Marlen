@@ -6,7 +6,12 @@ import { db, schema, sqlite } from "../db/index.js";
 import { emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
 import { errorMessage } from "../util.js";
-import { type AgentSession, createEphemeralSession, getOrCreateSession } from "./emailAgent.js";
+import {
+  type AgentSession,
+  buildTurnTimeNote,
+  createEphemeralSession,
+  getOrCreateSession,
+} from "./emailAgent.js";
 import { decoratePrompt, serializeRefs } from "./emailRefs.js";
 import {
   applyConversationFocus,
@@ -235,6 +240,10 @@ export function beginTurn(conversationId: string): Turn {
           await applyConversationFocus(conversationId, refFocus).catch(() => {});
         }
         const focusNote = await conversationFocusNote(conversationId).catch(() => "");
+        // The clock rides the turn prompt, not the system prompt, so the model
+        // knows "now" without invalidating the cached system-prompt prefix
+        // (see buildSystemPrompt's cache invariant in emailAgent.ts).
+        const timeNote = await buildTurnTimeNote().catch(() => "");
 
         // Collects this turn's cards for the outcome row below (and links
         // any created draft back to this conversation — collectTurnCards'
@@ -271,7 +280,7 @@ export function beginTurn(conversationId: string): Turn {
           // runTurn. The prompt is decorated with any attached-email notes
           // right before it reaches the model.
           text = await session.runTurn(
-            decoratePrompt(opts.prompt, opts.refs) + focusNote,
+            decoratePrompt(opts.prompt, opts.refs) + timeNote + focusNote,
             handlers,
             opts.signal,
             opts.log,

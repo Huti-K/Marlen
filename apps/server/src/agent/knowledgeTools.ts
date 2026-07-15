@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import { formatFileSize, type MemoryEntry } from "@trailin/shared";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { likeContains, likePattern } from "../db/like.js";
 import {
@@ -27,18 +27,9 @@ import { clampLimit, textResult, tool } from "./toolkit.js";
 /** Chunks per library_read part; ≈ 15k characters. Search hits cite these parts. */
 const PART_CHUNKS = 8;
 
-/** Lowercased, trimmed — matches how contacts.address and memories.contactId are normalized. */
+/** Lowercased, trimmed — matches how memories.contactId is normalized. */
 function normalizeContactAddress(raw: string): string {
   return raw.trim().toLowerCase();
-}
-
-/** "Anna Becker <anna@firm.de>" when the contacts table has a display name, else the bare address. */
-async function contactLabel(address: string): Promise<string> {
-  const [row] = await db
-    .select({ displayName: schema.contacts.displayName })
-    .from(schema.contacts)
-    .where(eq(schema.contacts.address, address));
-  return row?.displayName ? `${row.displayName} <${address}>` : address;
 }
 
 const memorySave: AgentTool = tool({
@@ -95,7 +86,7 @@ const memorySave: AgentTool = tool({
       scopeLabel = resolved.account?.name ?? "general";
     } else if (contactRaw) {
       contactId = normalizeContactAddress(contactRaw);
-      scopeLabel = await contactLabel(contactId);
+      scopeLabel = contactId;
     }
 
     const { entry, created } = await createMemory(content, "agent", accountId, contactId);
@@ -508,17 +499,9 @@ export async function buildKnowledgeContext(): Promise<string> {
 
     if (contactScoped.length > 0) {
       const byContact = groupBy(contactScoped, (m) => m.contactId as string);
-      const addresses = [...byContact.keys()];
-      const contactRows = await db
-        .select({ address: schema.contacts.address, displayName: schema.contacts.displayName })
-        .from(schema.contacts)
-        .where(inArray(schema.contacts.address, addresses));
-      const namesByAddress = new Map(contactRows.map((r) => [r.address, r.displayName]));
       for (const [address, entries] of byContact) {
-        const name = namesByAddress.get(address);
-        const label = name ? `${name} <${address}>` : address;
         sections.push(
-          `Memory about ${label} (applies only when corresponding with them):\n${format(entries)}`,
+          `Memory about ${address} (applies only when corresponding with them):\n${format(entries)}`,
         );
       }
     }

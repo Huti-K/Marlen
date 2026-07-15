@@ -1,7 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { ChoiceOption, ConnectedAccount, EmailRef } from "@trailin/shared";
-import { getThreadDetail } from "../email/sync/mailQuery.js";
 import { listAccounts } from "../pipedream/connect.js";
 import { isNonEmptyString } from "../util.js";
 import { findAccount } from "./accounts.js";
@@ -22,37 +21,17 @@ const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 6;
 
 /**
- * Builds the option's EmailRef when it names a thread. Prefers the local
- * mirror (getThreadDetail) for accountId/subject/from/date; when the thread
- * isn't mirrored, still attaches a bare ref if the account param resolved, so
- * the option is at least actionable by account. Returns undefined rather
- * than a half-built ref when neither source has enough to work with.
+ * Builds the option's EmailRef when it names a thread: a bare, actionable
+ * ref (thread + account) — display fields ride on the option's own
+ * label/detail, which the model fills from what it just read. Returns
+ * undefined rather than a half-built ref when the account didn't resolve.
  */
 function buildRef(
   threadId: string | undefined,
   resolvedAccount: ConnectedAccount | undefined,
-  accounts: ConnectedAccount[],
 ): EmailRef | undefined {
-  if (!threadId) return undefined;
-
-  const detail = getThreadDetail(threadId, resolvedAccount?.id);
-  if (detail) {
-    const accountMatch = accounts.find((a) => a.id === detail.accountId);
-    const newest = detail.messages.at(-1);
-    return {
-      threadId: detail.providerThreadId,
-      accountId: detail.accountId,
-      ...(accountMatch ? { accountName: accountMatch.name } : {}),
-      ...(detail.subject ? { subject: detail.subject } : {}),
-      ...(newest?.from ? { from: newest.from } : {}),
-      ...(newest?.date ? { date: newest.date } : {}),
-    };
-  }
-
-  if (resolvedAccount) {
-    return { threadId, accountId: resolvedAccount.id, accountName: resolvedAccount.name };
-  }
-  return undefined;
+  if (!threadId || !resolvedAccount) return undefined;
+  return { threadId, accountId: resolvedAccount.id, accountName: resolvedAccount.name };
 }
 
 export const presentChoicesTool: AgentTool = tool({
@@ -126,7 +105,7 @@ export const presentChoicesTool: AgentTool = tool({
           ? findAccount(accounts, raw.account)
           : undefined;
         const threadId = isNonEmptyString(raw.threadId) ? raw.threadId : undefined;
-        const ref = buildRef(threadId, resolvedAccount, accounts);
+        const ref = buildRef(threadId, resolvedAccount);
         return coerceChoiceOption(raw, ref);
       })
       .filter((o): o is ChoiceOption => o !== undefined);

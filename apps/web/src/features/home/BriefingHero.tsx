@@ -88,13 +88,29 @@ export function BriefingHero({
     setError(null);
     setRefreshing(true);
     try {
+      // Fire-and-forget on the server (202): the run itself takes minutes.
+      // `refreshing` stays true past this await — the effect below hands the
+      // spinner over once the runs feed reflects the running row, so there is
+      // no dead moment between "queued" and "visibly running".
       await api.runAutomation(run.automationId);
     } catch (err) {
       setError(errorMessage(err));
-    } finally {
       setRefreshing(false);
     }
   };
+
+  // Hand-off (plus a stuck-spinner backstop): once the feed shows the run,
+  // feedRunning owns the spinner; if it never does — dropped event stream,
+  // failed run start — give up after a beat rather than spin forever.
+  React.useEffect(() => {
+    if (!refreshing) return;
+    if (feedRunning) {
+      setRefreshing(false);
+      return;
+    }
+    const timer = setTimeout(() => setRefreshing(false), 15_000);
+    return () => clearTimeout(timer);
+  }, [refreshing, feedRunning]);
 
   const openInChat = (e: React.MouseEvent) => {
     e.stopPropagation();

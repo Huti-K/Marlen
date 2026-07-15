@@ -278,4 +278,18 @@ export const SCHEMA_STEPS: readonly string[] = [
     ALTER TABLE contacts ADD COLUMN display_name_override TEXT;
     ALTER TABLE contacts ADD COLUMN hidden_at TEXT;
   `,
+  // 10: drop the mailbox mirror and the contacts directory — mail is read
+  // live from the providers, so nothing populates or reads these tables.
+  // Indexes go with their tables; dropping the FTS5 table removes its shadow
+  // tables. The two settings rows configured them. memories.contact_id stays:
+  // contact-scoped memories key on the normalized address itself.
+  `
+    DROP TABLE IF EXISTS mail_fts;
+    DROP TABLE IF EXISTS mail_messages;
+    DROP TABLE IF EXISTS mail_threads;
+    DROP TABLE IF EXISTS mail_thread_state;
+    DROP TABLE IF EXISTS mail_sync_state;
+    DROP TABLE IF EXISTS contacts;
+    DELETE FROM settings WHERE key IN ('sync.backfillDays', 'contacts.recentThreadsLimit');
+  `,
 ];

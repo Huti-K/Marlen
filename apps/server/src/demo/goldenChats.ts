@@ -20,7 +20,7 @@ import {
  * built with the same builders the live tools use (agent/card/kinds.ts), so a
  * seeded card is byte-for-byte what a real turn would have produced. Their
  * ids reference the demo mailbox (mailFixtures.ts), so a card's "open thread"
- * / "review draft" actions land on real mirror rows.
+ * / "review draft" actions carry consistent demo ids.
  *
  * These are for visual/UI coverage — design review and render-regression
  * catching. Evaluating how the agent actually handles a use case is the live

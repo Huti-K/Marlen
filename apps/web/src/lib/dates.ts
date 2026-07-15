@@ -1,8 +1,12 @@
 /**
  * Shared date/time formatters. Everything here just wraps `Intl` with the
  * project's chosen shapes, so a chat card, the library grid, and the Home
- * feed all render the same timestamp the same way.
+ * feed all render the same timestamp the same way. Times are always 24h
+ * ("14:32"), whatever the language's locale default would be.
  */
+
+/** 24h clock in every language — "h23" so midnight renders 00:32, never 24:32. */
+const HOUR_CYCLE: Intl.DateTimeFormatOptions = { hourCycle: "h23" };
 
 const rtfCache = new Map<string, Intl.RelativeTimeFormat>();
 
@@ -36,6 +40,7 @@ export function dateTimeLabel(iso: string, lang: string): string {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    ...HOUR_CYCLE,
   });
 }
 
@@ -50,7 +55,11 @@ export function dayLabel(iso: string, lang: string): string {
 
 /** "14:32"-style time-only label, paired with `dayLabel` in the Home activity feed. */
 export function timeLabel(iso: string, lang: string): string {
-  return new Date(iso).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(lang, {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...HOUR_CYCLE,
+  });
 }
 
 /**
@@ -63,7 +72,11 @@ export function timeLabel(iso: string, lang: string): string {
  */
 export function dayTimeLabel(iso: string, lang: string, style: "short" | "long" = "short"): string {
   const date = new Date(iso);
-  const time = date.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+  const time = date.toLocaleTimeString(lang, {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...HOUR_CYCLE,
+  });
   if (date.toDateString() === new Date().toDateString()) return time;
   const day =
     style === "long"

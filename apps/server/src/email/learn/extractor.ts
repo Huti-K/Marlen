@@ -1,3 +1,4 @@
+import type { ConnectedAccount } from "@trailin/shared";
 import { fetchAccountNameMap } from "../../agent/accounts.js";
 import {
   getLatestAgentDraftBody,
@@ -7,10 +8,13 @@ import {
 import { createMemory } from "../../db/memories.js";
 import { resolveCheapModel } from "../../llm/registry.js";
 import { moduleLogger } from "../../logger.js";
+import { listAccounts } from "../../pipedream/connect.js";
 import { collapseWhitespace } from "../../search/snippets.js";
 import { errorMessage } from "../../util.js";
+import { getMailReadProvider, type MailReadProvider } from "../read/readProviders.js";
+// Side-effect import: populates the MailReadProvider registry.
+import "../read/registerReadProviders.js";
 import { extractLessons } from "./extractLLM.js";
-import { findSentMessageBody } from "./learnStore.js";
 
 const log = moduleLogger("learn-extract");
 
@@ -51,28 +55,56 @@ async function defaultExtract(input: {
   return extractLessons(input.pairs, input.accountName, model);
 }
 
+/** Injectable seams: the lesson-extraction model call and the live account/read lookups. */
+export interface ExtractSweepDeps {
+  extract?: ExtractFn;
+  listAccounts?: () => Promise<ConnectedAccount[]>;
+  readerFor?: (app: string) => MailReadProvider | null;
+}
+
 /**
  * One sweep's worth of the nightly extraction pass: every sent-but-unlearned
- * agent_drafts snapshot whose sent message the mirror can resolve is diffed
- * against its own latest agent-authored version, signature stripped from
- * both sides. A pair identical after stripping needed no lesson and is
+ * agent_drafts snapshot whose sent message the provider can still serve is
+ * diffed against its own latest agent-authored version, signature stripped
+ * from both sides. The sent body comes live from the account's
+ * MailReadProvider. A pair identical after stripping needed no lesson and is
  * stamped learned_at directly; every other pair is batched per account (at
  * most MAX_PAIRS_PER_CALL) into one LLM call whose reported directives
- * become account-scoped memories. Unresolvable pairs (mirror hasn't synced
- * the sent message yet) and any account whose LLM call fails are left
- * unstamped for a later night — dropping a lesson is fine, learning the
- * wrong one is not.
+ * become account-scoped memories. Unresolvable pairs (account disconnected,
+ * no read driver, fetch failed) and any account whose LLM call fails are
+ * left unstamped for a later night — dropping a lesson is fine, learning
+ * the wrong one is not.
  */
-export async function runExtractionSweep(extract: ExtractFn = defaultExtract): Promise<void> {
+export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<void> {
+  const extract = deps.extract ?? defaultExtract;
+  const readerFor = deps.readerFor ?? getMailReadProvider;
+
   const sentDrafts = await listUnlearnedSentDrafts();
   if (sentDrafts.length === 0) return;
+
+  const accounts = await (deps.listAccounts ?? listAccounts)();
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
 
   const pendingByAccount = new Map<string, PendingPair[]>();
   let identical = 0;
 
   for (const draft of sentDrafts) {
-    const sentBody = findSentMessageBody(draft.accountId, draft.sentMessageId);
-    if (sentBody === null) continue; // not yet mirrored — wait for a later night
+    const account = accountById.get(draft.accountId);
+    if (!account) continue; // disconnected — stays pending, recovers on reconnect
+    const provider = readerFor(account.app);
+    if (!provider) continue; // no read driver for this app — stays pending
+
+    let sentBody: string | null;
+    try {
+      sentBody = await provider.getMessageBody(account, draft.sentMessageId);
+    } catch (error) {
+      log.warn(
+        { err: errorMessage(error), accountId: draft.accountId },
+        "sent-body fetch failed — pair stays pending for the next sweep",
+      );
+      continue;
+    }
+    if (sentBody === null) continue; // message gone at the provider — wait for a later night
 
     const draftBody = await getLatestAgentDraftBody(draft.accountId, draft.providerDraftId);
     if (draftBody === null) continue; // snapshot vanished or has no agent-authored version

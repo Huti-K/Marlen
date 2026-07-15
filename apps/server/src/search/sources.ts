@@ -1,4 +1,4 @@
-import type { ConnectedAccount, SearchResult } from "@trailin/shared";
+import type { SearchResult } from "@trailin/shared";
 import { and, desc, eq, ne, or } from "drizzle-orm";
 import { db, lazyStatement, schema } from "../db/index.js";
 import { likePattern } from "../db/like.js";
@@ -7,8 +7,6 @@ import { buildFtsMatch } from "../db/sql.js";
 import "../email/registerProviders.js";
 import { listDraftsCached } from "../email/draftsService.js";
 import { getDraftProvider } from "../email/providers.js";
-import { searchMail } from "../email/sync/mailQuery.js";
-import { threadWebUrl } from "../email/webLinks.js";
 import { listDocuments, searchChunks } from "../library/store.js";
 import { moduleLogger } from "../logger.js";
 import { listAccounts } from "../pipedream/connect.js";
@@ -177,36 +175,6 @@ export async function searchDrafts(query: string): Promise<SearchResult[]> {
     }
   }
   return results;
-}
-
-/**
- * Mail from the local mailbox mirror (mail_fts, BM25-ranked over subject,
- * body and sender). The account list is only consulted to build each hit's
- * webmail deep link, so it's resolved separately from the search itself —
- * a Pipedream outage drops the link on a hit, not the hit.
- */
-export async function searchMailHits(query: string): Promise<SearchResult[]> {
-  const hits = searchMail(query, { limit: PER_TYPE_LIMIT });
-  if (hits.length === 0) return [];
-
-  const accounts = await listAccounts().catch((err: unknown) => {
-    log.warn({ err }, "search mail: account lookup failed, hits keep no web link");
-    return [] as ConnectedAccount[];
-  });
-  const byId = new Map(accounts.map((account) => [account.id, account]));
-
-  return hits.map((hit) => {
-    const account = byId.get(hit.accountId);
-    return {
-      type: "mail",
-      id: hit.providerMessageId,
-      title: hit.subject || "(no subject)",
-      snippet: buildSnippet(hit.snippet, query),
-      date: hit.date,
-      accountId: hit.accountId,
-      webUrl: account ? threadWebUrl(account, hit.providerThreadId) || undefined : undefined,
-    };
-  });
 }
 
 /** Library documents: content matches via the existing FTS5 chunk search, then title-only matches. */

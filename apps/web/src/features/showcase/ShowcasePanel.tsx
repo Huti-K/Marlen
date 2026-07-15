@@ -16,13 +16,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import type {
-  AccountColor,
-  AccountDrafts,
-  Automation,
-  EmailThreadMessage,
-  OpenConversations,
-} from "@trailin/shared";
+import type { AccountColor, AccountDrafts, Automation } from "@trailin/shared";
 import {
   Bell,
   Check,
@@ -65,9 +59,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentCardView } from "@/features/chat/cards";
 import { SHOWCASE_TURNS, type ShowcaseTurn } from "@/features/chat/cards/samples";
-import { ThreadHistory } from "@/features/email/ThreadHistory";
 import { GlanceStrip } from "@/features/home/GlanceStrip";
-import { OpenConversationsSection } from "@/features/home/OpenConversationsSection";
 import { ApiError } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -338,54 +330,6 @@ const DEMO_DRAFTS: AccountDrafts[] = [
   },
 ];
 
-const DEMO_WAITING: OpenConversations = {
-  waitingOnYou: [
-    {
-      account: "selin@nordwind-studio.de",
-      accountId: "demo-work",
-      items: [
-        {
-          threadId: "thread-onboarding-elif",
-          accountId: "demo-work",
-          subject: "Re: Onboarding-Termin nächste Woche",
-          counterpart: "Elif Aydın",
-          gist: "Fragt nach einem Termin für das Onboarding-Gespräch am Donnerstag.",
-          urgency: "high",
-          webUrl: "#",
-        },
-      ],
-    },
-  ],
-  waitingOnOthers: [
-    {
-      account: "selin@nordwind-studio.de",
-      accountId: "demo-work",
-      items: [
-        {
-          threadId: "thread-rebrand-elif",
-          subject: "Angebot Rebranding – Rückfragen",
-          counterpart: "Elif Aydın",
-          lastSentAt: hoursAgo(72),
-          webUrl: "#",
-        },
-      ],
-    },
-    {
-      account: "selin.kaya.mail@gmail.com",
-      accountId: "demo-personal",
-      items: [
-        {
-          threadId: "thread-seeblick-august",
-          subject: "Ferienwohnung Seeblick – Buchung im August",
-          counterpart: "Sabine Möller",
-          lastSentAt: hoursAgo(30),
-          webUrl: "#",
-        },
-      ],
-    },
-  ],
-};
-
 const DEMO_AUTOMATIONS: Automation[] = [
   {
     id: "auto-briefing",
@@ -397,27 +341,6 @@ const DEMO_AUTOMATIONS: Automation[] = [
     pinned: true,
     createdAt: hoursAgo(720),
     nextRunAt: new Date(Date.now() + 5 * 3_600_000).toISOString(),
-  },
-];
-
-const DEMO_THREAD: EmailThreadMessage[] = [
-  {
-    from: "Sabine Möller <sabine.moeller@seeblick-ferien.de>",
-    to: ["selin.kaya.mail@gmail.com"],
-    date: hoursAgo(52),
-    body: "Die Wohnung ist vom 8. bis 15. August noch frei — 95 € pro Nacht inkl. Endreinigung.",
-  },
-  {
-    from: "Selin Kaya <selin.kaya.mail@gmail.com>",
-    to: ["sabine.moeller@seeblick-ferien.de"],
-    date: hoursAgo(48),
-    body: "Das klingt gut, wir würden gerne für die ganze Woche buchen. Ist eine Anzahlung nötig?",
-  },
-  {
-    from: "Sabine Möller <sabine.moeller@seeblick-ferien.de>",
-    to: ["selin.kaya.mail@gmail.com"],
-    date: hoursAgo(30),
-    body: "Sehr gerne — 30 % Anzahlung reicht, der Rest ist bei Anreise fällig.",
   },
 ];
 
@@ -1128,18 +1051,9 @@ export function ShowcasePanel() {
       {/* ── Home widgets ──────────────────────────────────────────── */}
       <Section
         title="Home widgets"
-        description="The at-a-glance strip, the open-conversations lanes, and a collapsed thread. Fed static fixtures here — the real ones read the server."
+        description="The at-a-glance strip. Fed static fixtures here — the real one reads the server."
       >
-        <GlanceStrip
-          drafts={DEMO_DRAFTS}
-          heroRun={null}
-          waiting={DEMO_WAITING}
-          automations={DEMO_AUTOMATIONS}
-        />
-        <OpenConversationsSection waiting={DEMO_WAITING} colors={DEMO_COLORS} />
-        <Card tone="flat">
-          <ThreadHistory messages={DEMO_THREAD} />
-        </Card>
+        <GlanceStrip drafts={DEMO_DRAFTS} heroRun={null} automations={DEMO_AUTOMATIONS} />
       </Section>
 
       {/* ── Typography ────────────────────────────────────────────── */}

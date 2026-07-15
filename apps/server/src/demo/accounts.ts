@@ -3,15 +3,9 @@ import type { CardAccount, ConnectedAccount } from "@trailin/shared";
 /**
  * The demo persona and its two synthetic mailboxes. One consistent voice —
  * Selin Kaya, co-founder of Nordwind Studio — juggling a work inbox
- * (nordwind-studio.de) and a personal Gmail. Every demo fixture (mail,
- * enrichment, golden chats) references these two account ids, so the mailbox
- * mirror, the account chips on cards, and thread drill-downs all agree.
- *
- * These ids double as the mirror's account-key prefix: a message with
- * providerMessageId "acme-2291-2" under WORK lands at "demo-work:acme-2291-2".
- * The card's own `accountId`/`threadId` stay the bare provider ids
- * (agent/card/kinds.ts builds them that way), which is exactly what
- * getThreadDetail(providerThreadId, accountId) resolves back to the mirror.
+ * (nordwind-studio.de) and a personal Gmail. Every golden-chat fixture
+ * references these two account ids, so the account chips on cards agree
+ * across the demo conversations.
  */
 
 export const DEMO_WORK_ACCOUNT_ID = "demo-work";
@@ -20,11 +14,9 @@ export const DEMO_PERSONAL_ACCOUNT_ID = "demo-personal";
 export const DEMO_ACCOUNT_IDS = [DEMO_WORK_ACCOUNT_ID, DEMO_PERSONAL_ACCOUNT_ID] as const;
 
 /**
- * True for the synthetic demo mailboxes. They exist only in the local mirror
- * (the seed writes their mail directly), so the sync engine must never try to
- * pull them from a provider — there is no real Pipedream account behind these
- * ids, and a fetch would just error and back off. Read paths (mirror queries,
- * enrichment, the digest) treat them like any other account.
+ * True for the synthetic demo mailboxes. There is no real Pipedream account
+ * behind these ids, so no MCP session or provider tool may ever be built for
+ * one — a fetch would just error and back off.
  */
 export function isDemoAccount(accountId: string): boolean {
   return (DEMO_ACCOUNT_IDS as readonly string[]).includes(accountId);
@@ -33,8 +25,6 @@ export function isDemoAccount(accountId: string): boolean {
 /** Owner addresses — a message whose `from` is one of these is `isFromMe`. */
 export const DEMO_WORK_ADDRESS = "selin@nordwind-studio.de";
 export const DEMO_PERSONAL_ADDRESS = "selin.kaya.mail@gmail.com";
-export const DEMO_WORK_FROM = `Selin Kaya <${DEMO_WORK_ADDRESS}>`;
-export const DEMO_PERSONAL_FROM = `Selin Kaya <${DEMO_PERSONAL_ADDRESS}>`;
 
 /** Fixed so re-seeding is idempotent and demo accounts sort before live ones. */
 const DEMO_CREATED_AT = "2020-01-01T00:00:00.000Z";

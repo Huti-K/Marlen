@@ -2,11 +2,9 @@ import {
   type AccountColor,
   type AccountVoice,
   type ConnectedAccount,
-  type ConnectedAccountWithSync,
   EMAIL_APP_LABELS,
   EMAIL_APPS,
   type EmailApp,
-  isFirstSyncPending,
   type PipedreamApp,
 } from "@trailin/shared";
 import { Inbox, Loader2, Mail, PenLine, Plus, Trash2 } from "lucide-react";
@@ -29,8 +27,6 @@ import {
   useOnOfficeStatus,
 } from "@/features/settings/OnOffice";
 import { api } from "@/lib/api";
-import { relativeTime } from "@/lib/dates";
-import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { cn, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
 
@@ -138,8 +134,8 @@ function generateTonalHex(index: number): string {
  * Shared between the first-run setup and Settings → Email.
  */
 export function Accounts({ onChanged }: { onChanged?: () => void }) {
-  const { t, i18n } = useTranslation();
-  const [accounts, setAccounts] = React.useState<ConnectedAccountWithSync[] | null>(null);
+  const { t } = useTranslation();
+  const [accounts, setAccounts] = React.useState<ConnectedAccount[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [connecting, setConnecting] = React.useState(false);
   const [pickerOpen, setPickerOpen] = React.useState(false);
@@ -241,15 +237,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
       if (accts && saved) void ensureColors(accts, saved);
     });
   }, [load, loadColors, loadVoices, ensureColors]);
-
-  // While a fresh account's first import is underway, reload the list on
-  // mirror changes so the "Importing mail" badge clears itself the moment the
-  // first sync lands. Gated on `importing` so steady-state mail traffic never
-  // triggers the (Pipedream-refreshing) account fetch.
-  const importing = accounts?.some((a) => isEmailApp(a.app) && isFirstSyncPending(a.sync)) ?? false;
-  useServerEvents(["mail"], () => {
-    if (importing) void load();
-  });
 
   const connect = async (app: string) => {
     setBusy(app);
@@ -531,25 +518,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* First import in progress — the one moment sync progress is
-                        shown positively, so a fresh account doesn't look stuck. */}
-                    {isEmailApp(account.app) && isFirstSyncPending(account.sync) && (
-                      <Badge variant="muted">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        {t("connections.importing")}
-                      </Badge>
-                    )}
-                    {/* Mirror sync health — shown only when it's failing (the healthy
-                        case stays quiet; the OAuth badge below already covers it). */}
-                    {account.sync?.status === "error" && (
-                      <Badge variant="warning" title={account.sync.error ?? undefined}>
-                        {account.sync.lastSyncedAt
-                          ? t("connections.syncStale", {
-                              when: relativeTime(account.sync.lastSyncedAt, i18n.language),
-                            })
-                          : t("connections.syncNever")}
-                      </Badge>
-                    )}
                     <Badge variant={account.healthy ? "success" : "destructive"}>
                       {account.healthy ? t("connections.healthy") : t("connections.unhealthy")}
                     </Badge>

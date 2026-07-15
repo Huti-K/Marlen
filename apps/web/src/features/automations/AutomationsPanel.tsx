@@ -35,6 +35,7 @@ import {
   weekdayShortName,
 } from "@/features/automations/schedule";
 import { api } from "@/lib/api";
+import { dateTimeLabel } from "@/lib/dates";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { cn, toggleRowProps } from "@/lib/utils";
@@ -659,7 +660,7 @@ function RunItem({ run }: { run: AutomationRun }) {
         <RunStatusBadge status={run.status} />
         <div className="ml-auto flex items-center gap-2">
           <time dateTime={run.startedAt} className="text-xs text-muted-foreground">
-            {new Date(run.startedAt).toLocaleString(i18n.language)}
+            {dateTimeLabel(run.startedAt, i18n.language)}
           </time>
           <OpenRunInChatButton runId={run.id} onNavigateToChat={() => navigate("/chat")} />
         </div>

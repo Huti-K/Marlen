@@ -3,13 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentCard, ChoiceOption, ConnectedAccount } from "@trailin/shared";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import type { SyncMessage } from "../../src/email/sync/syncProviders.js";
 
-// getThreadDetail (called by choicesTool.ts to resolve a ref from the local
-// mailbox mirror) goes through db/index.ts, which runs its DDL as an
-// import-time side effect resolved via env.ts's DATABASE_PATH read — same as
-// test/email/sync/mailQuery.test.ts, point DATABASE_PATH at a fresh temp file
-// before anything pulls db/index.ts in, then import everything dynamically.
+// Importing choicesTool.ts pulls db/index.ts in transitively, which runs its
+// DDL as an import-time side effect resolved via env.ts's DATABASE_PATH read —
+// point DATABASE_PATH at a fresh temp file before anything pulls it in.
 const tempDir = mkdtempSync(join(tmpdir(), "trailin-choices-tool-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(tempDir, "test.db");
@@ -23,7 +20,6 @@ vi.mock("../../src/pipedream/connect.js", () => ({
 }));
 
 const { sqlite } = await import("../../src/db/index.js");
-const { applySyncPage } = await import("../../src/email/sync/mailStore.js");
 const { presentChoicesTool } = await import("../../src/agent/choicesTool.js");
 
 afterAll(() => {
@@ -39,46 +35,6 @@ function account(id: string, name: string): ConnectedAccount {
 
 const work = account("acc-work", "work@example.com");
 const personal = account("acc-personal", "personal@example.com");
-
-function message(
-  overrides: Partial<SyncMessage> & Pick<SyncMessage, "providerMessageId" | "providerThreadId">,
-): SyncMessage {
-  return {
-    subject: "",
-    from: "sender@example.com",
-    to: ["recipient@example.com"],
-    cc: [],
-    date: "2026-01-01T00:00:00.000Z",
-    snippet: "",
-    bodyText: "",
-    isFromMe: false,
-    isUnread: false,
-    labels: [],
-    ...overrides,
-  };
-}
-
-/** Seeds through the real write path (applySyncPage), like the sync engine does. */
-function seed(accountId: string, upserts: SyncMessage[]): void {
-  applySyncPage(accountId, { upserts, deletes: [], cursor: "seed", hasMore: false });
-}
-
-seed(work.id, [
-  message({
-    providerMessageId: "m-mirrored-1",
-    providerThreadId: "t-mirrored",
-    subject: "Contract renewal",
-    from: "Ayşe Kaya <ayse@example.com>",
-    date: "2026-05-01T00:00:00.000Z",
-  }),
-  message({
-    providerMessageId: "m-mirrored-2",
-    providerThreadId: "t-mirrored",
-    subject: "Contract renewal",
-    from: "Ayşe Kaya <ayse@example.com>",
-    date: "2026-05-02T00:00:00.000Z",
-  }),
-]);
 
 function callChoices(params: unknown) {
   return presentChoicesTool.execute("call-1", params as never);
@@ -177,74 +133,45 @@ describe("present_choices — card and text output", () => {
 });
 
 describe("present_choices — building refs", () => {
-  it("builds a full ref from the local mirror when threadId matches a synced thread", async () => {
+  it("attaches a bare ref (threadId + accountId + accountName) when the account resolves", async () => {
     listAccountsMock.mockResolvedValue([work, personal]);
     const result = await callChoices({
       question: "Which thread?",
       options: [
-        { label: "Contract renewal", threadId: "t-mirrored", account: "work@example.com" },
+        { label: "Contract renewal", threadId: "t-1", account: "work@example.com" },
         { label: "Something else" },
       ],
     });
     const card = cardOf(result) as { kind: "choices"; options: ChoiceOption[] };
     expect(card.options[0]?.ref).toEqual({
-      threadId: "t-mirrored",
+      threadId: "t-1",
       accountId: "acc-work",
       accountName: "work@example.com",
-      subject: "Contract renewal",
-      from: "Ayşe Kaya <ayse@example.com>",
-      date: "2026-05-02T00:00:00.000Z",
     });
+    expect(card.options[1]?.ref).toBeUndefined();
   });
 
-  it("finds the mirrored thread even without an account hint", async () => {
-    listAccountsMock.mockResolvedValue([work, personal]);
+  it("keeps the option with no ref when its account doesn't resolve", async () => {
+    listAccountsMock.mockResolvedValue([]);
     const result = await callChoices({
       question: "Which thread?",
-      options: [{ label: "Contract renewal", threadId: "t-mirrored" }, { label: "Other" }],
+      options: [{ label: "Some thread", threadId: "t-1" }, { label: "Other" }],
     });
     const card = cardOf(result) as { kind: "choices"; options: ChoiceOption[] };
-    expect(card.options[0]?.ref?.accountId).toBe("acc-work");
+    expect(card.options[0]?.label).toBe("Some thread");
+    expect(card.options[0]?.ref).toBeUndefined();
   });
 
-  it("attaches a bare ref (threadId + accountId + accountName) when the thread isn't mirrored but the account resolves", async () => {
-    listAccountsMock.mockResolvedValue([work, personal]);
+  it("keeps the option with no ref when it names an account that isn't connected", async () => {
+    listAccountsMock.mockResolvedValue([work]);
     const result = await callChoices({
       question: "Which thread?",
       options: [
-        { label: "Unsynced thread", threadId: "no-such-thread", account: "personal@example.com" },
+        { label: "Elsewhere", threadId: "t-2", account: "gone@example.com" },
         { label: "Other" },
       ],
     });
     const card = cardOf(result) as { kind: "choices"; options: ChoiceOption[] };
-    expect(card.options[0]?.ref).toEqual({
-      threadId: "no-such-thread",
-      accountId: "acc-personal",
-      accountName: "personal@example.com",
-    });
-  });
-
-  it("keeps the option with no ref when the thread isn't mirrored and no account resolves", async () => {
-    listAccountsMock.mockResolvedValue([]);
-    const result = await callChoices({
-      question: "Which thread?",
-      options: [{ label: "Unsynced thread", threadId: "no-such-thread" }, { label: "Other" }],
-    });
-    const card = cardOf(result) as { kind: "choices"; options: ChoiceOption[] };
-    expect(card.options[0]?.label).toBe("Unsynced thread");
     expect(card.options[0]?.ref).toBeUndefined();
-  });
-
-  it("keeps the option with no ref when no accounts are connected at all", async () => {
-    listAccountsMock.mockResolvedValue([]);
-    const result = await callChoices({
-      question: "Which thread?",
-      options: [{ label: "Some thread", threadId: "t-mirrored" }, { label: "Other" }],
-    });
-    const card = cardOf(result) as { kind: "choices"; options: ChoiceOption[] };
-    // The mirror still resolves it (no account hint needed to look it up)...
-    expect(card.options[0]?.ref?.accountId).toBe("acc-work");
-    // ...but with no connected accounts, there's no display name to attach.
-    expect(card.options[0]?.ref?.accountName).toBeUndefined();
   });
 });

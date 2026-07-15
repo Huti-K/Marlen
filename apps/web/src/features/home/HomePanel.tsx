@@ -3,7 +3,6 @@ import type {
   AccountDrafts,
   Automation,
   MissedAutomation,
-  OpenConversations,
   RunFeedItem,
 } from "@trailin/shared";
 import {
@@ -11,7 +10,6 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  Loader2,
   Mail,
   Newspaper,
   Wrench,
@@ -27,11 +25,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner, LoadingRow, Notice } from "@/components/ui/feedback";
 import { Markdown } from "@/components/ui/markdown";
 import { Select } from "@/components/ui/select";
-import { DraftRow } from "@/features/email/DraftRow";
+import { AgentCardView } from "@/features/chat/cards";
+import { DraftRow } from "@/features/drafts/DraftRow";
 import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
 import { CollapsibleSectionTitle } from "@/features/home/CollapsibleSectionTitle";
 import { GlanceStrip } from "@/features/home/GlanceStrip";
-import { OpenConversationsSection } from "@/features/home/OpenConversationsSection";
 import { api } from "@/lib/api";
 import {
   dateTimeLabel,
@@ -79,7 +77,6 @@ const cache: {
   runs: RunFeedItem[] | null;
   automations: Automation[] | null;
   colors: AccountColor[];
-  waiting: OpenConversations | null;
   pinned: PinnedRun | null;
   missed: MissedAutomation[];
 } = {
@@ -87,7 +84,6 @@ const cache: {
   runs: null,
   automations: null,
   colors: [],
-  waiting: null,
   pinned: null,
   missed: [],
 };
@@ -99,14 +95,11 @@ const cache: {
 export function HomePanel({
   setupIncomplete,
   offline,
-  importing,
   onNavigate,
 }: {
   setupIncomplete: boolean;
   /** Pipedream is configured but the last account list couldn't be fetched. */
   offline: boolean;
-  /** At least one email account is still waiting for its first mirror sync. */
-  importing: boolean;
   onNavigate: (view: View) => void;
 }) {
   const { t } = useTranslation();
@@ -114,7 +107,6 @@ export function HomePanel({
   const [runs, setRuns] = React.useState<RunFeedItem[] | null>(cache.runs);
   const [automations, setAutomations] = React.useState<Automation[] | null>(cache.automations);
   const [colors, setColors] = React.useState<AccountColor[]>(cache.colors);
-  const [waiting, setWaiting] = React.useState<OpenConversations | null>(cache.waiting);
   const [pinned, setPinned] = React.useState<PinnedRun | null>(cache.pinned);
   const [missed, setMissed] = React.useState<MissedAutomation[]>(cache.missed);
   const [error, setError] = React.useState<string | null>(null);
@@ -158,10 +150,6 @@ export function HomePanel({
       apply(api.accountColors(), (v) => {
         cache.colors = v.colors;
         setColors(v.colors);
-      }),
-      apply(api.waiting(), (v) => {
-        cache.waiting = v;
-        setWaiting(v);
       }),
       apply(api.pinnedRun(), (v) => {
         cache.pinned = v;
@@ -245,18 +233,11 @@ export function HomePanel({
         <Notice tone="warning" className="flex items-center gap-3">
           <p className="text-sm">{t("home.offlineBanner")}</p>
         </Notice>
-      ) : (
-        importing && (
-          <Notice tone="neutral" className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-            <p className="text-sm">{t("home.importingBanner")}</p>
-          </Notice>
-        )
-      )}
+      ) : null}
 
       {missed.length > 0 && <MissedRunsBanner missed={missed} />}
 
-      <GlanceStrip drafts={drafts} heroRun={heroRun} waiting={waiting} automations={automations} />
+      <GlanceStrip drafts={drafts} heroRun={heroRun} automations={automations} />
 
       {heroRun && (
         <BriefingHero
@@ -277,10 +258,10 @@ export function HomePanel({
         onChanged={() => void load()}
         focusDraft={focusDraft}
       />
-      <OpenConversationsSection waiting={waiting} colors={colors} />
       <ActivitySection
         runs={activityRuns}
         automations={automations}
+        colors={colors}
         onNavigate={onNavigate}
         hasHero={!!heroRun}
       />
@@ -459,11 +440,13 @@ function ReviewSection({
 function ActivitySection({
   runs,
   automations,
+  colors,
   onNavigate,
   hasHero,
 }: {
   runs: RunFeedItem[] | null;
   automations: Automation[] | null;
+  colors: AccountColor[];
   onNavigate: (view: View) => void;
   /** The latest digest already leads the page as the BriefingHero — don't also auto-expand it here. */
   hasHero: boolean;
@@ -510,6 +493,7 @@ function ActivitySection({
                 key={run.id}
                 run={run}
                 index={i}
+                colors={colors}
                 timeLabel={timeLabel}
                 defaultExpanded={!hasHero && run.id === firstRunId}
                 onNavigate={onNavigate}
@@ -574,53 +558,64 @@ function ActivitySection({
 function ActivityRunCard({
   run,
   index,
+  colors,
   timeLabel,
   defaultExpanded = false,
   onNavigate,
 }: {
   run: RunFeedItem;
   index: number;
+  colors: AccountColor[];
   timeLabel: (iso: string) => string;
   defaultExpanded?: boolean;
   onNavigate: (view: View) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = React.useState(defaultExpanded);
+  const cards = run.cards ?? [];
   const hasResult = !!run.result;
+  const expandable = hasResult || cards.length > 0;
   const toggleExpanded = () => setExpanded(!expanded);
 
   return (
-    <article
-      className="surface animate-in-up flex flex-col gap-3 rounded-lg p-4"
+    <div
+      className="animate-in-up flex flex-col gap-3"
       style={{ animationDelay: `${index * 45}ms` }}
     >
-      <div
-        className={cn("flex items-center justify-between gap-3", hasResult && "cursor-pointer")}
-        {...(hasResult ? toggleRowProps(expanded, toggleExpanded) : {})}
-      >
-        <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
-          <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="truncate">{run.automationName ?? t("home.deletedAutomation")}</span>
-          {hasResult &&
-            (expanded ? (
-              <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-            ))}
-        </p>
-        <div className="flex shrink-0 items-center gap-2">
-          <OpenRunInChatButton runId={run.id} onNavigateToChat={() => onNavigate("chat")} />
-          <RunStatusBadge status={run.status} />
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {timeLabel(run.startedAt)}
-          </span>
+      <article className="surface flex flex-col gap-3 rounded-lg p-4">
+        <div
+          className={cn("flex items-center justify-between gap-3", expandable && "cursor-pointer")}
+          {...(expandable ? toggleRowProps(expanded, toggleExpanded) : {})}
+        >
+          <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
+            <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{run.automationName ?? t("home.deletedAutomation")}</span>
+            {expandable &&
+              (expanded ? (
+                <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+              ))}
+          </p>
+          <div className="flex shrink-0 items-center gap-2">
+            <OpenRunInChatButton runId={run.id} onNavigateToChat={() => onNavigate("chat")} />
+            <RunStatusBadge status={run.status} />
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {timeLabel(run.startedAt)}
+            </span>
+          </div>
         </div>
-      </div>
-      {expanded && hasResult && (
-        <div className="mt-1 pt-3 border-t border-border">
-          <Markdown content={run.result} className="text-sm text-foreground/90" />
-        </div>
-      )}
-    </article>
+        {expanded && hasResult && (
+          <div className="mt-1 border-t border-border pt-3">
+            <Markdown content={run.result} className="text-sm text-foreground/90" />
+          </div>
+        )}
+      </article>
+      {/* Sibling blocks, never nested in the row's surface (DESIGN.md: no card-in-card). */}
+      {expanded &&
+        cards.map(({ toolCallId, card }) => (
+          <AgentCardView key={toolCallId} card={card} colors={colors} />
+        ))}
+    </div>
   );
 }

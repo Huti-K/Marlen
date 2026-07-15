@@ -3,11 +3,8 @@ import { recoverInterruptedTurns } from "./agent/turnRecorder.js";
 import { buildApp } from "./app.js";
 import { seedDefaultAutomations } from "./automations/defaults.js";
 import { startScheduler, stopScheduler } from "./automations/scheduler.js";
-import { startContacts, stopContacts } from "./email/contacts/contactsService.js";
-import { startEnrichment, stopEnrichment } from "./email/enrich/enrichService.js";
 import { startNightlyLearning, stopNightlyLearning } from "./email/learn/extractService.js";
 import { startDraftMatching, stopDraftMatching } from "./email/learn/matchService.js";
-import { startSyncEngine, stopSyncEngine } from "./email/sync/syncEngine.js";
 import { env } from "./env.js";
 import { getLibraryDir, startLibrary, stopLibrary } from "./library/ingest.js";
 import { activeModelConfigured } from "./llm/registry.js";
@@ -24,16 +21,9 @@ async function main(): Promise<void> {
   // Close out any chat/automation turn left dangling by a mid-turn restart.
   await recoverInterruptedTurns();
 
-  // Mirror every connected mailbox into SQLite (email/sync/) — the local
-  // state summaries/triage/drafts read from. Enrichment rides the mirror's
-  // "mail" events to keep per-thread summaries/triage fresh. The contacts
-  // core (email/contacts/) rides the same events to keep its per-address
-  // aggregates and kind/category/gist judgments fresh. The draft-vs-sent
-  // learning loop (email/learn/) rides the same events to match agent drafts
-  // against the mail they became, then extracts style lessons nightly.
-  startSyncEngine();
-  startEnrichment();
-  startContacts();
+  // The draft-vs-sent learning loop (email/learn/): the matcher polls each
+  // account's sent mail live to find what an agent draft became, and the
+  // nightly extraction diffs draft vs. sent to learn style lessons.
   startDraftMatching();
   await startNightlyLearning();
 
@@ -41,15 +31,12 @@ async function main(): Promise<void> {
   await startLibrary((message) => app.log.info(message));
   app.log.info(`Document library folder: ${getLibraryDir()}`);
 
-  // Everything started above is torn down by close(): cron tasks, the sync
-  // and enrichment timers, the folder watcher, and each cached agent
-  // session's MCP toolset — so app.close() is the one complete teardown
-  // path, for signals and anything else that closes the instance.
+  // Everything started above is torn down by close(): cron tasks, the learn
+  // loops, the folder watcher, and each cached agent session's MCP toolset —
+  // so app.close() is the one complete teardown path, for signals and
+  // anything else that closes the instance.
   app.addHook("onClose", async () => {
     stopScheduler();
-    stopSyncEngine();
-    stopEnrichment();
-    stopContacts();
     stopDraftMatching();
     stopNightlyLearning();
     stopLibrary();

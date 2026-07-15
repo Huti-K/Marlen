@@ -48,7 +48,7 @@ afterEach(() => {
  * Agent builds against the modelRegistry singleton and can't run in tests.
  */
 class FakeAgent {
-  state: { errorMessage?: string } = {};
+  state: { errorMessage?: string; tools: { name: string; label: string }[] } = { tools: [] };
   aborted = false;
   prompts: string[] = [];
 
@@ -93,7 +93,7 @@ class FakeAgent {
 function fakeSession(agent: FakeAgent): AgentSession {
   const session: AgentSession = {
     agent: agent as unknown as Agent,
-    toolset: { tools: [], close: async () => {} },
+    toolset: { tools: [], readTools: [], close: async () => {} },
     inFlight: 0,
     lastUsed: Date.now(),
     async runTurn(prompt: string, handlers?: RunHandlers, signal?: AbortSignal, log?: TurnLogger) {

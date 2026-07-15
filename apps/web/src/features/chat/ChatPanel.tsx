@@ -1,4 +1,4 @@
-import type { AccountColor, ChatToolCall, EmailRef, MailSuggestion } from "@trailin/shared";
+import type { AccountColor, ChatToolCall, EmailRef } from "@trailin/shared";
 import type { ParseKeys } from "i18next";
 import { Check, Copy, Loader2, MessagesSquare, Search, Send, X } from "lucide-react";
 import * as React from "react";
@@ -10,10 +10,8 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Markdown } from "@/components/ui/markdown";
 import { AgentCardView } from "@/features/chat/cards";
 import { SHOWCASE_TURNS } from "@/features/chat/cards/samples";
-import { MentionPopover, type MentionPopoverHandle } from "@/features/chat/composer/MentionPopover";
 import { RefChips, RefChipsReadOnly } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
-import { spliceMentionPick, useMentionQuery } from "@/features/chat/composer/useMentionQuery";
 import { HistoryList } from "@/features/chat/HistoryList";
 import type { DisplayMessage } from "@/features/chat/runState";
 import { useChatRuns } from "@/features/chat/useChatRuns";
@@ -58,13 +56,11 @@ export function ChatPanel({
   const [pendingSend, setPendingSend] = React.useState<PendingSend | null>(null);
   // Tints each card's account chip. Cosmetic, so a failed load is not surfaced.
   const [accountColors, setAccountColors] = React.useState<AccountColor[]>([]);
-  // Emails pinned to the message about to be sent (composer @-mentions, or a
+  // Emails pinned to the message about to be sent (a
   // card's "add to chat" action) — cleared once the turn is sent.
   const composerRefs = useComposerRefs();
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-  const mentionPopoverRef = React.useRef<MentionPopoverHandle>(null);
-  const mention = useMentionQuery(textareaRef);
   const focusComposer = React.useCallback(() => {
     textareaRef.current?.focus();
   }, []);
@@ -198,31 +194,6 @@ export function ChatPanel({
     await runs.send(message, sendRefs);
   };
 
-  const pickMention = React.useCallback(
-    (item: MailSuggestion) => {
-      const range = mention.range;
-      if (!range) return;
-      const { value: nextValue, caret } = spliceMentionPick(input, range);
-      setInput(nextValue);
-      mention.clear();
-      composerRefs.add({
-        threadId: item.threadId,
-        accountId: item.accountId,
-        messageId: item.messageId,
-        subject: item.subject,
-        from: item.from,
-        date: item.date,
-      });
-      requestAnimationFrame(() => {
-        const el = textareaRef.current;
-        if (!el) return;
-        el.focus();
-        el.setSelectionRange(caret, caret);
-      });
-    },
-    [input, mention, composerRefs.add],
-  );
-
   const send = async () => {
     const message = input.trim();
     if (!message || runs.busy) return;
@@ -273,7 +244,7 @@ export function ChatPanel({
       if (!detail?.text) return;
       setPendingSend({ text: detail.text, refs: detail.refs, newConversation: false });
     };
-    // A card's "add to chat" action (or a picked @-mention) pinning an email
+    // A card's "add to chat" action pinning an email
     // to the composer's next message — never resets the conversation.
     const handleAddChatRef = (detail: { ref: EmailRef }) => {
       const ref = detail?.ref;
@@ -389,14 +360,6 @@ export function ChatPanel({
           isPage && "mx-auto w-full max-w-4xl",
         )}
       >
-        {mention.active && (
-          <MentionPopover
-            ref={mentionPopoverRef}
-            query={mention.query}
-            colors={accountColors}
-            onPick={pickMention}
-          />
-        )}
         {composerRefs.refs.length > 0 && (
           <RefChips
             refs={composerRefs.refs}
@@ -408,41 +371,8 @@ export function ChatPanel({
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              mention.recompute();
-            }}
-            onClick={() => mention.recompute()}
-            onKeyUp={() => mention.recompute()}
-            onBlur={() => mention.clear()}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (mention.active) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  mentionPopoverRef.current?.moveHighlight(1);
-                  return;
-                }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  mentionPopoverRef.current?.moveHighlight(-1);
-                  return;
-                }
-                // Only a pick that actually landed consumes Enter — with no
-                // results (a stray "@" mid-sentence) it falls through to send.
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  mentionPopoverRef.current?.pickHighlighted()
-                ) {
-                  e.preventDefault();
-                  return;
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  mention.dismiss();
-                  return;
-                }
-              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void send();
@@ -487,7 +417,7 @@ function ToolActivity({ call }: { call: ChatToolCall }) {
     <details className="my-1 text-xs text-muted-foreground">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 py-0.5 hover:text-foreground">
         {!call.done && <Loader2 className="h-3 w-3 animate-spin" />}
-        <span>{call.name}</span>
+        <span title={call.name}>{call.label ?? call.name}</span>
         {call.detail && !call.done && <span className="truncate opacity-70">· {call.detail}</span>}
         {call.isError && <span className="text-destructive">· failed</span>}
       </summary>

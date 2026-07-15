@@ -1,23 +1,24 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
-import type { SyncMessage } from "../../../src/email/sync/syncProviders.js";
+import type { ConnectedAccount } from "@trailin/shared";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import type { SentMessage } from "../../../src/email/read/readProviders.js";
 
 // db/index.ts runs its DDL as an import-time side effect and resolves its
-// path through env.ts's DATABASE_PATH read, also at import time — same
-// isolation dance as test/email/enrich/enrichStore.test.ts: point
+// path through env.ts's DATABASE_PATH read, also at import time — point
 // DATABASE_PATH at a fresh temp file before anything pulls db/index.ts in,
-// then import everything dynamically.
+// then import everything dynamically. The DB holds only the draft snapshots;
+// sent-mail candidates come through the injected reader seam.
 const tempDir = mkdtempSync(join(tmpdir(), "trailin-learn-match-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(tempDir, "test.db");
 
 const { sqlite } = await import("../../../src/db/index.js");
-const { applySyncPage } = await import("../../../src/email/sync/mailStore.js");
 const { createDraftSnapshot, getDraftStatus } = await import("../../../src/db/draftStore.js");
 const { runMatchSweep } = await import("../../../src/email/learn/matcher.js");
-type TiebreakInput = Parameters<NonNullable<Parameters<typeof runMatchSweep>[0]>>[0];
+type SweepDeps = NonNullable<Parameters<typeof runMatchSweep>[0]>;
+type TiebreakInput = Parameters<NonNullable<SweepDeps["tiebreak"]>>[0];
 
 afterAll(() => {
   sqlite.close();
@@ -26,28 +27,29 @@ afterAll(() => {
   else process.env.DATABASE_PATH = originalDatabasePath;
 });
 
-/** Fills in every SyncMessage field a fixture doesn't care about. Dates default
- *  to 2030 so they always postdate a snapshot's real-clock createdAt. */
-function message(
-  overrides: Partial<SyncMessage> & Pick<SyncMessage, "providerMessageId" | "providerThreadId">,
-): SyncMessage {
+function account(id: string): ConnectedAccount {
   return {
-    subject: "",
-    from: "me@example.com",
-    to: ["them@example.com"],
-    cc: [],
-    date: "2030-01-01T00:00:00.000Z",
-    snippet: "",
-    bodyText: "",
-    isFromMe: true,
-    isUnread: false,
-    labels: [],
-    ...overrides,
+    id,
+    app: "gmail",
+    appName: "Gmail",
+    name: `${id}@example.com`,
+    healthy: true,
+    createdAt: "2026-01-01",
   };
 }
 
-function seed(accountId: string, upserts: SyncMessage[]): void {
-  applySyncPage(accountId, { upserts, deletes: [], cursor: "seed", hasMore: false });
+/** Fills in every SentMessage field a fixture doesn't care about. Dates default
+ *  to 2030 so they always postdate a snapshot's real-clock createdAt. */
+function message(
+  overrides: Partial<SentMessage> & Pick<SentMessage, "providerMessageId" | "providerThreadId">,
+): SentMessage {
+  return {
+    subject: "",
+    to: ["them@example.com"],
+    date: "2030-01-01T00:00:00.000Z",
+    bodyText: "",
+    ...overrides,
+  };
 }
 
 /** A timestamp `offsetMs` after the real clock — standalone drafts only match within a
@@ -60,6 +62,21 @@ function soon(offsetMs: number): string {
 /** Fails the test loudly if the deterministic rules ever fall through to the tiebreak seam. */
 async function neverCalledTiebreak(): Promise<string | null> {
   throw new Error("tiebreak should not have been called for a deterministic match");
+}
+
+/** Sweep with candidates served per account id; unknown accounts are simply absent from listAccounts. */
+function sweep(
+  candidatesByAccount: Record<string, SentMessage[]>,
+  tiebreak: SweepDeps["tiebreak"] = neverCalledTiebreak,
+): Promise<void> {
+  return runMatchSweep({
+    tiebreak,
+    listAccounts: async () => Object.keys(candidatesByAccount).map(account),
+    readerFor: () => ({
+      listSentSince: async (acct) => candidatesByAccount[acct.id] ?? [],
+      getMessageBody: async () => null,
+    }),
+  });
 }
 
 describe("runMatchSweep — reply drafts (thread match)", () => {
@@ -76,25 +93,25 @@ describe("runMatchSweep — reply drafts (thread match)", () => {
       body: "Draft body.",
     });
 
-    seed(accountId, [
-      message({
-        providerMessageId: "m-thread-late",
-        providerThreadId: "thread-1",
-        date: "2030-01-03T00:00:00.000Z",
-      }),
-      message({
-        providerMessageId: "m-thread-early",
-        providerThreadId: "thread-1",
-        date: "2030-01-02T00:00:00.000Z",
-      }),
-      message({
-        providerMessageId: "m-other-thread",
-        providerThreadId: "thread-2",
-        date: "2030-01-01T00:00:00.000Z",
-      }),
-    ]);
-
-    await runMatchSweep(neverCalledTiebreak);
+    await sweep({
+      [accountId]: [
+        message({
+          providerMessageId: "m-thread-early",
+          providerThreadId: "thread-1",
+          date: "2030-01-02T00:00:00.000Z",
+        }),
+        message({
+          providerMessageId: "m-thread-late",
+          providerThreadId: "thread-1",
+          date: "2030-01-03T00:00:00.000Z",
+        }),
+        message({
+          providerMessageId: "m-other-thread",
+          providerThreadId: "thread-2",
+          date: "2030-01-01T00:00:00.000Z",
+        }),
+      ],
+    });
 
     expect(await getDraftStatus(accountId, "draft-thread-1")).toEqual({
       status: "sent",
@@ -113,7 +130,7 @@ describe("runMatchSweep — reply drafts (thread match)", () => {
       body: "Draft body.",
     });
 
-    await runMatchSweep(neverCalledTiebreak);
+    await sweep({ [accountId]: [] });
 
     expect(await getDraftStatus(accountId, "draft-thread-2")).toEqual({ status: "open" });
   });
@@ -132,31 +149,31 @@ describe("runMatchSweep — standalone drafts (recipients + subject match)", () 
       body: "Draft body.",
     });
 
-    seed(accountId, [
-      message({
-        providerMessageId: "m-standalone-hit",
-        providerThreadId: "thread-x",
-        subject: "Re: Invoice for March",
-        to: ["ALICE@Example.com", "Bob <bob@example.com>"],
-        date: soon(1_000),
-      }),
-      message({
-        providerMessageId: "m-standalone-miss-subject",
-        providerThreadId: "thread-y",
-        subject: "Unrelated",
-        to: ["alice@example.com", "bob@example.com"],
-        date: soon(1_000),
-      }),
-      message({
-        providerMessageId: "m-standalone-miss-recipient",
-        providerThreadId: "thread-z",
-        subject: "Invoice for March",
-        to: ["carol@example.com"],
-        date: soon(1_000),
-      }),
-    ]);
-
-    await runMatchSweep(neverCalledTiebreak);
+    await sweep({
+      [accountId]: [
+        message({
+          providerMessageId: "m-standalone-hit",
+          providerThreadId: "thread-x",
+          subject: "Re: Invoice for March",
+          to: ["ALICE@Example.com", "Bob <bob@example.com>"],
+          date: soon(1_000),
+        }),
+        message({
+          providerMessageId: "m-standalone-miss-subject",
+          providerThreadId: "thread-y",
+          subject: "Unrelated",
+          to: ["alice@example.com", "bob@example.com"],
+          date: soon(1_000),
+        }),
+        message({
+          providerMessageId: "m-standalone-miss-recipient",
+          providerThreadId: "thread-z",
+          subject: "Invoice for March",
+          to: ["carol@example.com"],
+          date: soon(1_000),
+        }),
+      ],
+    });
 
     expect(await getDraftStatus(accountId, "draft-standalone-1")).toEqual({
       status: "sent",
@@ -174,7 +191,7 @@ describe("runMatchSweep — standalone drafts (recipients + subject match)", () 
       body: "Draft body.",
     });
 
-    await runMatchSweep(neverCalledTiebreak);
+    await sweep({ [accountId]: [] });
 
     expect(await getDraftStatus(accountId, "draft-standalone-2")).toEqual({ status: "open" });
   });
@@ -183,16 +200,8 @@ describe("runMatchSweep — standalone drafts (recipients + subject match)", () 
 describe("runMatchSweep — ambiguous standalone match falls to the injected tiebreak seam", () => {
   const accountId = "acct-tiebreak";
 
-  async function seedAmbiguousDraft(providerDraftId: string): Promise<void> {
-    await createDraftSnapshot({
-      accountId,
-      providerDraftId,
-      subject: "Quick question",
-      to: ["dana@example.com"],
-      signature: null,
-      body: "Are we still on for Friday?",
-    });
-    seed(accountId, [
+  function ambiguousCandidates(providerDraftId: string): SentMessage[] {
+    return [
       message({
         providerMessageId: `${providerDraftId}-cand-a`,
         providerThreadId: "t-a",
@@ -209,7 +218,18 @@ describe("runMatchSweep — ambiguous standalone match falls to the injected tie
         date: soon(2_000),
         bodyText: "Body B",
       }),
-    ]);
+    ];
+  }
+
+  async function seedAmbiguousDraft(providerDraftId: string): Promise<void> {
+    await createDraftSnapshot({
+      accountId,
+      providerDraftId,
+      subject: "Quick question",
+      to: ["dana@example.com"],
+      signature: null,
+      body: "Are we still on for Friday?",
+    });
   }
 
   it("marks the candidate the seam picks, passing it the snapshot's latest body and every candidate", async () => {
@@ -217,7 +237,7 @@ describe("runMatchSweep — ambiguous standalone match falls to the injected tie
     await seedAmbiguousDraft(providerDraftId);
 
     let received: TiebreakInput | undefined;
-    await runMatchSweep(async (input) => {
+    await sweep({ [accountId]: ambiguousCandidates(providerDraftId) }, async (input) => {
       received = input;
       return `${providerDraftId}-cand-b`;
     });
@@ -240,7 +260,7 @@ describe("runMatchSweep — ambiguous standalone match falls to the injected tie
     const providerDraftId = "draft-tiebreak-none";
     await seedAmbiguousDraft(providerDraftId);
 
-    await runMatchSweep(async () => null);
+    await sweep({ [accountId]: ambiguousCandidates(providerDraftId) }, async () => null);
 
     expect(await getDraftStatus(accountId, providerDraftId)).toEqual({ status: "open" });
   });
@@ -260,22 +280,139 @@ describe("runMatchSweep — ambiguous standalone match falls to the injected tie
       signature: null,
       body: "Draft body.",
     });
-    seed(accountId, [
-      message({
-        providerMessageId: "m-alongside",
-        providerThreadId: "thread-alongside",
-        date: "2030-03-01T00:00:00.000Z",
-      }),
-    ]);
 
-    await runMatchSweep(async () => {
-      throw new Error("boom");
-    });
+    await sweep(
+      {
+        [accountId]: [
+          ...ambiguousCandidates(providerDraftId),
+          message({
+            providerMessageId: "m-alongside",
+            providerThreadId: "thread-alongside",
+            date: "2030-03-01T00:00:00.000Z",
+          }),
+        ],
+      },
+      async () => {
+        throw new Error("boom");
+      },
+    );
 
     expect(await getDraftStatus(accountId, providerDraftId)).toEqual({ status: "open" });
     expect(await getDraftStatus(accountId, "draft-alongside-error")).toEqual({
       status: "sent",
       sentMessageId: "m-alongside",
     });
+  });
+});
+
+describe("runMatchSweep — live-fetch batching and per-account failure isolation", () => {
+  it("makes one listSentSince call per account, anchored at that account's oldest open draft", async () => {
+    const accountId = "acct-batching";
+    await createDraftSnapshot({
+      accountId,
+      providerDraftId: "draft-batch-1",
+      threadId: "thread-b1",
+      subject: "Re: One",
+      to: ["a@example.com"],
+      signature: null,
+      body: "Draft body.",
+    });
+    await createDraftSnapshot({
+      accountId,
+      providerDraftId: "draft-batch-2",
+      threadId: "thread-b2",
+      subject: "Re: Two",
+      to: ["b@example.com"],
+      signature: null,
+      body: "Draft body.",
+    });
+
+    const listSentSince = vi.fn(async () => [
+      message({ providerMessageId: "m-b1", providerThreadId: "thread-b1" }),
+      message({ providerMessageId: "m-b2", providerThreadId: "thread-b2" }),
+    ]);
+    await runMatchSweep({
+      tiebreak: neverCalledTiebreak,
+      listAccounts: async () => [account(accountId)],
+      readerFor: () => ({ listSentSince, getMessageBody: async () => null }),
+    });
+
+    const callsForAccount = listSentSince.mock.calls.length;
+    expect(callsForAccount).toBe(1);
+    expect(await getDraftStatus(accountId, "draft-batch-1")).toMatchObject({ status: "sent" });
+    expect(await getDraftStatus(accountId, "draft-batch-2")).toMatchObject({ status: "sent" });
+  });
+
+  it("skips an account whose fetch throws without aborting the others", async () => {
+    const failing = "acct-fetch-fails";
+    const healthy = "acct-fetch-works";
+    await createDraftSnapshot({
+      accountId: failing,
+      providerDraftId: "draft-failing",
+      threadId: "thread-f",
+      subject: "Re: Failing",
+      to: ["a@example.com"],
+      signature: null,
+      body: "Draft body.",
+    });
+    await createDraftSnapshot({
+      accountId: healthy,
+      providerDraftId: "draft-healthy",
+      threadId: "thread-h",
+      subject: "Re: Healthy",
+      to: ["b@example.com"],
+      signature: null,
+      body: "Draft body.",
+    });
+
+    await runMatchSweep({
+      tiebreak: neverCalledTiebreak,
+      listAccounts: async () => [account(failing), account(healthy)],
+      readerFor: () => ({
+        listSentSince: async (acct) => {
+          if (acct.id === failing) throw new Error("proxy timeout");
+          return [message({ providerMessageId: "m-h", providerThreadId: "thread-h" })];
+        },
+        getMessageBody: async () => null,
+      }),
+    });
+
+    expect(await getDraftStatus(failing, "draft-failing")).toEqual({ status: "open" });
+    expect(await getDraftStatus(healthy, "draft-healthy")).toEqual({
+      status: "sent",
+      sentMessageId: "m-h",
+    });
+  });
+
+  it("skips accounts that are disconnected or lack a read driver", async () => {
+    const gone = "acct-disconnected";
+    const unsupported = "acct-no-driver";
+    await createDraftSnapshot({
+      accountId: gone,
+      providerDraftId: "draft-gone",
+      threadId: "thread-g",
+      subject: "Re: Gone",
+      to: ["a@example.com"],
+      signature: null,
+      body: "Draft body.",
+    });
+    await createDraftSnapshot({
+      accountId: unsupported,
+      providerDraftId: "draft-unsupported",
+      threadId: "thread-u",
+      subject: "Re: Unsupported",
+      to: ["b@example.com"],
+      signature: null,
+      body: "Draft body.",
+    });
+
+    await runMatchSweep({
+      tiebreak: neverCalledTiebreak,
+      listAccounts: async () => [account(unsupported)],
+      readerFor: () => null,
+    });
+
+    expect(await getDraftStatus(gone, "draft-gone")).toEqual({ status: "open" });
+    expect(await getDraftStatus(unsupported, "draft-unsupported")).toEqual({ status: "open" });
   });
 });

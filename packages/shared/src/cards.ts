@@ -35,9 +35,9 @@ export interface EmailHit {
 }
 
 /**
- * One message inside a thread card. The optional fields are populated when
- * served by GET /api/threads/:accountId/:threadId; chat cards persisted in
- * agent conversations omit them, so every consumer must tolerate absence.
+ * One message inside a thread card. Every field beyond the display basics is
+ * optional — cards persisted in agent conversations carry only what the
+ * producing tool knew, so every consumer must tolerate absence.
  */
 export interface EmailThreadMessage {
   /** Provider message id. */
@@ -51,14 +51,6 @@ export interface EmailThreadMessage {
   subject?: string;
   isUnread?: boolean;
   isFromMe?: boolean;
-}
-
-/** Response of GET /api/threads/:accountId/:threadId — oldest message first. */
-export interface EmailThread {
-  messages: EmailThreadMessage[];
-  subject?: string;
-  /** Deep link to the thread in the provider's web UI; "" when unknown. */
-  webUrl?: string;
 }
 
 /** A composed, unsent draft, as the create-draft tool built it. */

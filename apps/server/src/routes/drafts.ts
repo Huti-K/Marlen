@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
-import type { AccountDrafts, ConnectedAccount, CreatedDraft, EmailDraft } from "@trailin/shared";
+import type { AccountDrafts, ConnectedAccount, EmailDraft } from "@trailin/shared";
 import {
   appendDraftVersion,
   getDraftConversationLinks,
@@ -64,15 +64,6 @@ const draftPatchBody = Type.Object({
   body: Type.Optional(Type.String()),
   subject: Type.Optional(Type.String()),
 });
-const draftComposeParams = Type.Object({ accountId: Type.String() });
-const draftComposeBody = Type.Object({
-  to: Type.Array(Type.String(), { minItems: 1 }),
-  cc: Type.Optional(Type.Array(Type.String())),
-  bcc: Type.Optional(Type.Array(Type.String())),
-  subject: Type.String(),
-  body: Type.String(),
-  threadId: Type.Optional(Type.String()),
-});
 export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
   /** Live drafts per connected account that has a DraftProvider (Gmail, Outlook, ...). */
   app.get(
@@ -109,30 +100,6 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
         }),
       );
       return attachConversationLinks(byAccount);
-    },
-  );
-
-  /**
-   * Create a draft with exactly the caller's content — no humanizer, no
-   * signature pass (those belong to the agent's create-draft tool; here the
-   * user typed every character of the compose form, signature included).
-   * Deliberately no agent_drafts snapshot either: snapshots feed the
-   * draft-vs-sent learning loop, which compares agent prose against what the
-   * user actually sent, and a fully user-authored draft carries no such
-   * signal. With `threadId` the provider attaches the draft to that
-   * conversation (a reply); without it, a standalone draft.
-   */
-  app.post(
-    "/api/drafts/:accountId",
-    { schema: { params: draftComposeParams, body: draftComposeBody } },
-    async (req): Promise<CreatedDraft> => {
-      try {
-        const found = await findDraftAccount(req.params.accountId);
-        if (!found) throw notFound("account not found");
-        return await found.provider.createDraft(found.account, req.body);
-      } catch (error) {
-        throw toProviderError(error, "thread not found");
-      }
     },
   );
 

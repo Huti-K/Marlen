@@ -3,40 +3,92 @@ import { Type } from "@sinclair/typebox";
 import type { AccountVoice } from "@trailin/shared";
 import { createMemory, deleteMemory, listMemories } from "../db/memories.js";
 import { getAccountVoices, setAccountVoices } from "../db/settings.js";
+import { normalizeAddressSet } from "../email/learn/addressSubject.js";
+import { getMailReadProvider, type SentMessage } from "../email/read/readProviders.js";
+// Side-effect import: populates the MailReadProvider registry.
+import "../email/read/registerReadProviders.js";
 import { moduleLogger } from "../logger.js";
 import { listAccounts } from "../pipedream/connect.js";
-import { buildMailReadTools } from "./mailTools.js";
 import { runOneShot } from "./oneShot.js";
 import { textResult, tool } from "./toolkit.js";
 
 const log = moduleLogger("voiceLearn");
 
 /**
- * Learns an account's writing voice from its own sent mail: a one-shot
- * ephemeral Agent (same pattern as delegate.ts) reads a sample of the user's
- * sent messages from the local mailbox mirror, then calls a local
- * report_style tool (terminate: true) to hand back its findings instead of
- * replying in prose — the structured-output pattern the pi framework's
- * AgentTool is meant for; a run that never calls the tool fails rather than
- * being parsed out of prose. The signature is saved on the account's
- * AccountVoice (the same record Settings edits and the create-draft tool,
- * pipedream/mcp.ts, reads at save time); the style directives are saved as
- * account-scoped long-term memories instead (db/memories.ts), with their ids
- * recorded on AccountVoice.styleMemoryIds so the next learn run knows which
- * ones to replace.
+ * Learns an account's writing voice from its own sent mail: the server
+ * fetches a sample of the user's sent messages live from the provider
+ * (email/read/), downselects it for variety, and hands the samples inline to
+ * a one-shot ephemeral Agent whose only tool is report_style (terminate:
+ * true) — the structured-output pattern the pi framework's AgentTool is
+ * meant for; a run that never calls the tool fails rather than being parsed
+ * out of prose. The signature is saved on the account's AccountVoice (the
+ * same record Settings edits and the create-draft tool, pipedream/mcp.ts,
+ * reads at save time); the style directives are saved as account-scoped
+ * long-term memories instead (db/memories.ts), with their ids recorded on
+ * AccountVoice.styleMemoryIds so the next learn run knows which ones to
+ * replace.
  */
+
+/** How far back and how much sent mail one learn run considers. */
+const SAMPLE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+const FETCH_LIMIT = 40;
+const MAX_SAMPLES = 15;
+const MAX_BODY_CHARS = 2000;
 
 function systemPromptFor(accountName: string): string {
   return `You are a writing-style analyst for Trailin, a personal email assistant. Your only job is
-to study the user's OWN sent messages in the connected account ${accountName} and report back
-their writing style — nothing else.
+to study the user's OWN sent messages from the connected account ${accountName} — provided below in
+the prompt — and report back their writing style, nothing else. Study how the user writes: greeting,
+sign-off, tone, length, language(s). When you are done, call the report_style tool exactly once with
+your findings.`;
+}
 
-Steps:
-1. Call list_sent_messages with account set to "${accountName}" to list the most recent messages
-   the user sent from this account.
-2. Read 8-15 of those messages across DIFFERENT threads and recipients: read_thread with each
-   threadId, studying only the messages the user wrote (the ones sent by ${accountName}).
-3. When you are done, call the report_style tool exactly once with your findings.`;
+/**
+ * Downselect the fetched sent mail for variety: newest first, at most one
+ * message per thread, preferring unseen recipient sets while filling up —
+ * fifteen one-on-one threads with fifteen different people beat fifteen
+ * replies into the same thread when the goal is the user's range.
+ */
+function sampleSentMessages(sent: SentMessage[]): SentMessage[] {
+  const newestFirst = [...sent].reverse();
+  const seenThreads = new Set<string>();
+  const seenRecipients = new Set<string>();
+  const distinct: SentMessage[] = [];
+  const fallback: SentMessage[] = [];
+  for (const message of newestFirst) {
+    if (!message.bodyText.trim()) continue;
+    if (seenThreads.has(message.providerThreadId)) continue;
+    seenThreads.add(message.providerThreadId);
+    const recipientKey = [...normalizeAddressSet(message.to)].sort().join(",");
+    if (seenRecipients.has(recipientKey)) {
+      fallback.push(message);
+      continue;
+    }
+    seenRecipients.add(recipientKey);
+    distinct.push(message);
+  }
+  return [...distinct, ...fallback].slice(0, MAX_SAMPLES);
+}
+
+/** The one-shot's prompt: every sample numbered, with enough envelope to read register shifts. */
+function renderSamples(accountName: string, samples: SentMessage[]): string {
+  const blocks = samples.map((message, index) => {
+    const body =
+      message.bodyText.length > MAX_BODY_CHARS
+        ? `${message.bodyText.slice(0, MAX_BODY_CHARS)}\n[truncated]`
+        : message.bodyText;
+    return `--- Message ${index + 1} ---
+To: ${message.to.join(", ")}
+Subject: ${message.subject}
+Date: ${message.date}
+
+${body}`;
+  });
+  return `Sent messages from ${accountName} (${samples.length} samples, newest first):
+
+${blocks.join("\n\n")}
+
+Report this account's writing style and signature via report_style as instructed.`;
 }
 
 interface LearnedVoice {
@@ -89,8 +141,8 @@ function buildReportStyleTool(onReport: (report: LearnedVoice) => void): AgentTo
 
 /**
  * Analyze one account's sent mail and persist the learned style (as
- * account-scoped memories) and signature (on AccountVoice). This runs
- * several tool round-trips against the model — expect 30-90s. Called by
+ * account-scoped memories) and signature (on AccountVoice). Fetching the
+ * samples plus one model round-trip — expect 10-60s. Called by
  * voiceLearnTool's execute below (interactive chat) and by voiceLearnService
  * (the accept-on-connect background run).
  */
@@ -100,14 +152,25 @@ export async function learnAccountVoice(accountId: string): Promise<AccountVoice
   if (!account.name.includes("@")) {
     throw new Error(`${account.name} is not an email account — voice learning needs sent mail.`);
   }
+  const provider = getMailReadProvider(account.app);
+  if (!provider) {
+    throw new Error(`Voice learning isn't supported for ${account.appName} accounts yet.`);
+  }
+
+  const since = new Date(Date.now() - SAMPLE_WINDOW_MS).toISOString();
+  const sent = await provider.listSentSince(account, since, { limit: FETCH_LIMIT });
+  const samples = sampleSentMessages(sent);
+  if (samples.length === 0) {
+    throw new Error(
+      `${account.name} has no recent sent mail to learn from — write a few emails first.`,
+    );
+  }
 
   let captured: LearnedVoice | undefined;
-  // Mirror-served reads only — no MCP session to open or close. The prompt
-  // pins list_sent_messages to this account via its account param.
   await runOneShot({
     systemPrompt: systemPromptFor(account.name),
-    tools: [...buildMailReadTools(), buildReportStyleTool((report) => (captured = report))],
-    prompt: `Study ${account.name}'s sent mail and report its writing style and signature as instructed.`,
+    tools: [buildReportStyleTool((report) => (captured = report))],
+    prompt: renderSamples(account.name, samples),
   });
   if (!captured) {
     throw new Error("the style analysis finished without calling report_style — try again");

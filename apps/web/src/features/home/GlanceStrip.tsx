@@ -1,4 +1,4 @@
-import type { AccountDrafts, Automation, OpenConversations, RunFeedItem } from "@trailin/shared";
+import type { AccountDrafts, Automation, RunFeedItem } from "@trailin/shared";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { countUrgentItems } from "@/features/home/BriefingHero";
@@ -14,21 +14,17 @@ import { dayTimeLabel } from "@/lib/dates";
 export function GlanceStrip({
   drafts,
   heroRun,
-  waiting,
   automations,
 }: {
   drafts: AccountDrafts[] | null;
   /** The hero run, for the same urgent count BriefingHero shows on its badge. */
   heroRun: RunFeedItem | null;
-  waiting: OpenConversations | null;
   automations: Automation[] | null;
 }) {
   const { t, i18n } = useTranslation();
 
   const draftsCount = drafts?.reduce((n, a) => n + a.drafts.length, 0) ?? 0;
   const urgentCount = heroRun ? countUrgentItems(heroRun) : 0;
-  const needsReplyCount = waiting?.waitingOnYou.reduce((n, a) => n + a.items.length, 0) ?? 0;
-  const waitingCount = waiting?.waitingOnOthers.reduce((n, a) => n + a.items.length, 0) ?? 0;
 
   const nextRunAt = React.useMemo(() => {
     let earliest: string | null = null;
@@ -43,9 +39,7 @@ export function GlanceStrip({
 
   const stats: string[] = [];
   if (draftsCount > 0) stats.push(t("home.glance.drafts", { count: draftsCount }));
-  if (needsReplyCount > 0) stats.push(t("home.glance.needsReply", { count: needsReplyCount }));
   if (urgentCount > 0) stats.push(t("home.briefingUrgent", { count: urgentCount }));
-  if (waitingCount > 0) stats.push(t("home.glance.waiting", { count: waitingCount }));
   if (nextRunAt)
     stats.push(t("home.glance.nextRun", { when: dayTimeLabel(nextRunAt, i18n.language) }));
 

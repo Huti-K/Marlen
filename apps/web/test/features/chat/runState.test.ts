@@ -51,6 +51,7 @@ describe("reduceRunEvent", () => {
         type: "tool_start",
         toolCallId: "call-1",
         toolName: "search_mail",
+        toolLabel: "Search mail",
         parameters: { q: "invoice" },
         contentOffset: 0,
       },
@@ -75,6 +76,7 @@ describe("reduceRunEvent", () => {
       {
         id: "call-1",
         name: "search_mail",
+        label: "Search mail",
         isError: false,
         done: true,
         detail: "1/2",

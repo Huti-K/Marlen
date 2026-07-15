@@ -192,6 +192,7 @@ function reduceStreamEvent(
           {
             id: event.toolCallId,
             name: event.toolName,
+            label: event.toolLabel,
             isError: false,
             done: false,
             parameters: event.parameters,

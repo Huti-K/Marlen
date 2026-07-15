@@ -1,6 +1,17 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { describe, expect, it } from "vitest";
-import { findCutIndex, KEEP_RECENT_TOKENS } from "../../src/agent/compaction.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// compactedMessages hands the dropped prefix to a one-shot summarizer model
+// (oneShot.ts → the live model registry); stub it at the module boundary so
+// the compaction pipeline runs for real with a canned brief.
+const runOneShotMock = vi.fn<() => Promise<string>>();
+vi.mock("../../src/agent/oneShot.js", () => ({
+  runOneShot: () => runOneShotMock(),
+}));
+
+const { compactedMessages, findCutIndex, KEEP_RECENT_TOKENS } = await import(
+  "../../src/agent/compaction.js"
+);
 
 // estimateTokens (pi-agent-core) is a plain chars/4 heuristic per role, so
 // fixtures below use char counts that are multiples of 4 for exact,
@@ -104,5 +115,63 @@ describe("findCutIndex", () => {
   it("keeps KEEP_RECENT_TOKENS as the trigger this test suite is pinned to", () => {
     // Guards against a silent threshold change invalidating the char counts above.
     expect(KEEP_RECENT_TOKENS).toBe(20_000);
+  });
+});
+
+describe("compactedMessages", () => {
+  const quietLog = { info: () => {}, warn: () => {} };
+
+  // Ten 4,000-token user messages: findCutIndex keeps the last five (~20k
+  // tokens) verbatim and leaves a five-message prefix, comfortably over
+  // MIN_PREFIX_MESSAGES, for the summarizer.
+  function transcript(): AgentMessage[] {
+    return Array.from({ length: 10 }, (_, i) => userMessage(16_000, i + 1));
+  }
+
+  beforeEach(() => {
+    runOneShotMock.mockReset();
+  });
+
+  it("returns null under the trigger fraction without calling the summarizer", async () => {
+    runOneShotMock.mockResolvedValue("BRIEF");
+
+    const result = await compactedMessages(
+      { systemPrompt: "", model: { contextWindow: 1_000_000 }, messages: transcript() },
+      quietLog,
+    );
+
+    expect(result).toBeNull();
+    expect(runOneShotMock).not.toHaveBeenCalled();
+  });
+
+  it("replaces the prefix with one summary message and keeps the recent tail verbatim", async () => {
+    runOneShotMock.mockResolvedValue("BRIEF");
+    const messages = transcript();
+
+    const result = await compactedMessages(
+      { systemPrompt: "", model: { contextWindow: 1_000_000 }, messages },
+      quietLog,
+      { force: true },
+    );
+
+    expect(result).toHaveLength(6);
+    const summary = result?.[0];
+    expect(summary?.role).toBe("user");
+    expect(summary && "content" in summary ? summary.content : "").toContain("BRIEF");
+    expect(result?.slice(1)).toEqual(messages.slice(5));
+  });
+
+  it("fails open when the summarizer returns nothing or throws", async () => {
+    const state = {
+      systemPrompt: "",
+      model: { contextWindow: 1_000_000 },
+      messages: transcript(),
+    };
+
+    runOneShotMock.mockResolvedValue("");
+    expect(await compactedMessages(state, quietLog, { force: true })).toBeNull();
+
+    runOneShotMock.mockRejectedValue(new Error("model down"));
+    expect(await compactedMessages(state, quietLog, { force: true })).toBeNull();
   });
 });

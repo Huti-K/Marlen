@@ -85,7 +85,7 @@ describe("renderRefNotes", () => {
     expect(note).toContain("t1");
     expect(note).toContain("work@example.com");
     expect(note).toContain("authoritative");
-    expect(note).toContain("read_thread");
+    expect(note).toContain("thread read tool");
     expect(note).toContain('subject "Contract renewal"');
     expect(note).toContain("from Ayşe Kaya <ayse@example.com>");
     expect(note).toContain("date 2026-07-01T00:00:00.000Z");

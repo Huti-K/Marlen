@@ -1,22 +1,23 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ConnectedAccount } from "@trailin/shared";
 import { afterAll, describe, expect, it } from "vitest";
-import type { SyncMessage } from "../../../src/email/sync/syncProviders.js";
 
-// Same DATABASE_PATH isolation dance as matcher.test.ts / enrichStore.test.ts:
-// point it at a fresh temp file before anything pulls db/index.ts in.
+// Same DATABASE_PATH isolation dance as matcher.test.ts: point it at a fresh
+// temp file before anything pulls db/index.ts in. The DB holds only the
+// draft snapshots; sent bodies come through the injected reader seam.
 const tempDir = mkdtempSync(join(tmpdir(), "trailin-learn-extract-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(tempDir, "test.db");
 
 const { sqlite } = await import("../../../src/db/index.js");
-const { applySyncPage } = await import("../../../src/email/sync/mailStore.js");
 const { createDraftSnapshot, markDraftStatus, listUnlearnedSentDrafts } = await import(
   "../../../src/db/draftStore.js"
 );
 const { listMemories } = await import("../../../src/db/memories.js");
 const { runExtractionSweep } = await import("../../../src/email/learn/extractor.js");
+type SweepDeps = NonNullable<Parameters<typeof runExtractionSweep>[0]>;
 
 afterAll(() => {
   sqlite.close();
@@ -25,26 +26,15 @@ afterAll(() => {
   else process.env.DATABASE_PATH = originalDatabasePath;
 });
 
-function message(
-  overrides: Partial<SyncMessage> & Pick<SyncMessage, "providerMessageId" | "providerThreadId">,
-): SyncMessage {
+function account(id: string): ConnectedAccount {
   return {
-    subject: "Sent copy",
-    from: "me@example.com",
-    to: ["them@example.com"],
-    cc: [],
-    date: "2030-01-01T00:00:00.000Z",
-    snippet: "",
-    bodyText: "",
-    isFromMe: true,
-    isUnread: false,
-    labels: [],
-    ...overrides,
+    id,
+    app: "gmail",
+    appName: "Gmail",
+    name: `${id}@example.com`,
+    healthy: true,
+    createdAt: "2026-01-01",
   };
-}
-
-function seedSent(accountId: string, msg: SyncMessage): void {
-  applySyncPage(accountId, { upserts: [msg], deletes: [], cursor: "seed", hasMore: false });
 }
 
 /** Creates a snapshot, then moves it straight to sent+unlearned via markDraftStatus, as the matcher would. */
@@ -67,7 +57,24 @@ async function seedSentSnapshot(input: {
 }
 
 async function neverCalledExtract(): Promise<string[]> {
-  throw new Error("extract should not have been called for an identical pair");
+  throw new Error("extract should not have been called for this sweep");
+}
+
+/** Sweep with sent bodies served per account id from an in-memory map keyed by provider message id. */
+function sweep(
+  accountIds: string[],
+  bodiesByMessageId: Record<string, string>,
+  extract: SweepDeps["extract"] = neverCalledExtract,
+): Promise<void> {
+  return runExtractionSweep({
+    extract,
+    listAccounts: async () => accountIds.map(account),
+    readerFor: () => ({
+      listSentSince: async () => [],
+      getMessageBody: async (_acct, providerMessageId) =>
+        bodiesByMessageId[providerMessageId] ?? null,
+    }),
+  });
 }
 
 describe("runExtractionSweep — identical pair", () => {
@@ -83,18 +90,10 @@ describe("runExtractionSweep — identical pair", () => {
       draftBody: "Hello there.\n\nBest,\nAlice",
       sentMessageId: "sent-identical-1",
     });
-    // The mirrored copy differs only in whitespace — still "identical" once
-    // both sides are whitespace-normalized and the signature is stripped.
-    seedSent(
-      accountId,
-      message({
-        providerMessageId: "sent-identical-1",
-        providerThreadId: "thread-identical",
-        bodyText: "Hello   there.\n\n\nBest,\nAlice",
-      }),
-    );
 
-    await runExtractionSweep(neverCalledExtract);
+    // The sent copy differs only in whitespace — still "identical" once both
+    // sides are whitespace-normalized and the signature is stripped.
+    await sweep([accountId], { "sent-identical-1": "Hello   there.\n\n\nBest,\nAlice" });
 
     const pending = await listUnlearnedSentDrafts();
     expect(pending.some((p) => p.providerDraftId === providerDraftId)).toBe(false);
@@ -116,22 +115,18 @@ describe("runExtractionSweep — differing pair", () => {
       draftBody: "Hi, please find the report attached. Let me know if you have questions.",
       sentMessageId: "sent-differing-1",
     });
-    seedSent(
-      accountId,
-      message({
-        providerMessageId: "sent-differing-1",
-        providerThreadId: "thread-differing",
-        bodyText: "Hey! Report's attached — shout if anything's unclear.",
-      }),
-    );
 
     let receivedAccountName: string | undefined;
     let receivedPairCount: number | undefined;
-    await runExtractionSweep(async (input) => {
-      receivedAccountName = input.accountName;
-      receivedPairCount = input.pairs.length;
-      return ['Opens casually ("Hey!") rather than formally.'];
-    });
+    await sweep(
+      [accountId],
+      { "sent-differing-1": "Hey! Report's attached — shout if anything's unclear." },
+      async (input) => {
+        receivedAccountName = input.accountName;
+        receivedPairCount = input.pairs.length;
+        return ['Opens casually ("Hey!") rather than formally.'];
+      },
+    );
 
     expect(receivedPairCount).toBe(1);
     expect(receivedAccountName).toBeTruthy();
@@ -159,16 +154,8 @@ describe("runExtractionSweep — differing pair", () => {
       draftBody: "Draft body one.",
       sentMessageId: "sent-empty-1",
     });
-    seedSent(
-      accountId,
-      message({
-        providerMessageId: "sent-empty-1",
-        providerThreadId: "thread-empty",
-        bodyText: "Sent body one, quite different.",
-      }),
-    );
 
-    await runExtractionSweep(async () => []);
+    await sweep([accountId], { "sent-empty-1": "Sent body one, quite different." }, async () => []);
 
     const pending = await listUnlearnedSentDrafts();
     expect(pending.some((p) => p.providerDraftId === providerDraftId)).toBe(false);
@@ -176,7 +163,7 @@ describe("runExtractionSweep — differing pair", () => {
 });
 
 describe("runExtractionSweep — unresolved sent message", () => {
-  it("leaves the pair pending (and never calls the seam) when the mirror hasn't synced the sent message yet", async () => {
+  it("leaves the pair pending (and never calls the seam) when the provider no longer serves the sent message", async () => {
     const accountId = "acct-extract-unresolved";
     const providerDraftId = "draft-unresolved-1";
 
@@ -185,11 +172,60 @@ describe("runExtractionSweep — unresolved sent message", () => {
       providerDraftId,
       signature: null,
       draftBody: "Draft body.",
-      sentMessageId: "sent-never-synced",
+      sentMessageId: "sent-gone",
     });
-    // No applySyncPage call — the mirror never sees this provider message id.
 
-    await runExtractionSweep(neverCalledExtract);
+    // The reader map has no entry for this id — getMessageBody returns null.
+    await sweep([accountId], {});
+
+    const pending = await listUnlearnedSentDrafts();
+    expect(pending.some((p) => p.providerDraftId === providerDraftId)).toBe(true);
+  });
+
+  it("leaves the pair pending when the body fetch throws, without aborting the sweep", async () => {
+    const accountId = "acct-extract-fetch-fails";
+    const providerDraftId = "draft-fetch-fails";
+
+    await seedSentSnapshot({
+      accountId,
+      providerDraftId,
+      signature: null,
+      draftBody: "Draft body.",
+      sentMessageId: "sent-timeout",
+    });
+
+    await runExtractionSweep({
+      extract: neverCalledExtract,
+      listAccounts: async () => [account(accountId)],
+      readerFor: () => ({
+        listSentSince: async () => [],
+        getMessageBody: async () => {
+          throw new Error("proxy timeout");
+        },
+      }),
+    });
+
+    const pending = await listUnlearnedSentDrafts();
+    expect(pending.some((p) => p.providerDraftId === providerDraftId)).toBe(true);
+  });
+
+  it("leaves the pair pending when the account is disconnected or has no read driver", async () => {
+    const accountId = "acct-extract-disconnected";
+    const providerDraftId = "draft-disconnected";
+
+    await seedSentSnapshot({
+      accountId,
+      providerDraftId,
+      signature: null,
+      draftBody: "Draft body.",
+      sentMessageId: "sent-x",
+    });
+
+    await runExtractionSweep({
+      extract: neverCalledExtract,
+      listAccounts: async () => [],
+      readerFor: () => null,
+    });
 
     const pending = await listUnlearnedSentDrafts();
     expect(pending.some((p) => p.providerDraftId === providerDraftId)).toBe(true);

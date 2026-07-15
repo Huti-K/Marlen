@@ -1,23 +1,28 @@
-import { createMailReactivePipeline } from "../reactivePipeline.js";
+import { JobLoop } from "../../jobs.js";
 import { runMatchSweep } from "./matcher.js";
 
 /**
- * Drives the draft-vs-sent matcher on top of the shared mail reactive
- * pipeline (email/reactivePipeline.ts): a draft can only resolve when new
- * mail lands, so cycles are reactive to "mail" events, a boot catch-up, and
- * a slow safety interval for backlogs left over from a quiet mailbox.
+ * Drives the draft-vs-sent matcher on a plain interval: a boot catch-up plus
+ * a fixed cadence. A sweep with no open drafts costs one local query and zero
+ * provider calls, so idle ticks are effectively free; when a draft is
+ * pending, the interval bounds how long a send can go unnoticed. The nightly
+ * extraction sweep (extractService.ts) also runs a match sweep first, so a
+ * pair never waits an extra night on this loop's cadence.
  */
 
-const pipeline = createMailReactivePipeline({
+const MATCH_INTERVAL_MS = 30 * 60_000;
+
+const loop = new JobLoop({
   name: "learn-match",
   run: () => runMatchSweep(),
+  intervalMs: MATCH_INTERVAL_MS,
 });
 
 export function startDraftMatching(): void {
-  pipeline.start();
+  loop.start();
 }
 
-/** Detach from "mail" events and cancel pending cycles; one already running finishes on its own. */
+/** Stop the interval; a sweep already running finishes on its own. */
 export function stopDraftMatching(): void {
-  pipeline.stop();
+  loop.stop();
 }

@@ -30,35 +30,30 @@ const gmailAccount: ConnectedAccount = {
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 
-/** A deps object wired to a fake clock; overrides tweak individual behaviors per test. */
+/** A deps object whose probe finds sent mail immediately; overrides tweak individual behaviors per test. */
 function makeDeps(overrides: Partial<VoiceLearnDeps> = {}): VoiceLearnDeps {
-  let clock = 0;
   return {
     listAccounts: vi.fn(async () => [gmailAccount]),
-    syncAccount: vi.fn(async () => {}),
-    countSentMessages: vi.fn(() => 5),
+    hasSentMail: vi.fn(async () => true),
     modelConfigured: vi.fn(async () => true),
     learn: vi.fn(async () => ({})),
-    now: () => clock,
-    sleep: vi.fn(async (ms: number) => {
-      clock += ms;
-    }),
+    sleep: vi.fn(async () => {}),
     ...overrides,
   };
 }
 
 describe("runVoiceLearnOnConnect", () => {
-  it("learns once sent mail is already mirrored", async () => {
+  it("probes for sent mail and learns", async () => {
     const deps = makeDeps();
     await runVoiceLearnOnConnect("acc_gmail", deps);
-    expect(deps.syncAccount).toHaveBeenCalledTimes(1);
+    expect(deps.hasSentMail).toHaveBeenCalledTimes(1);
     expect(deps.learn).toHaveBeenCalledWith("acc_gmail");
   });
 
   it("skips entirely when no LLM is configured", async () => {
     const deps = makeDeps({ modelConfigured: vi.fn(async () => false) });
     await runVoiceLearnOnConnect("acc_gmail", deps);
-    expect(deps.syncAccount).not.toHaveBeenCalled();
+    expect(deps.hasSentMail).not.toHaveBeenCalled();
     expect(deps.learn).not.toHaveBeenCalled();
   });
 
@@ -69,23 +64,36 @@ describe("runVoiceLearnOnConnect", () => {
     expect(deps.learn).not.toHaveBeenCalled();
   });
 
-  it("polls until the fresh account's sent mail backfills, then learns", async () => {
-    let calls = 0;
-    // Empty for the first two syncs, then the mirror has sent mail.
-    const countSentMessages = vi.fn(() => (calls++ < 2 ? 0 : 3));
-    const deps = makeDeps({ countSentMessages });
+  it("skips without learning when the account has no sent mail", async () => {
+    const deps = makeDeps({ hasSentMail: vi.fn(async () => false) });
     await runVoiceLearnOnConnect("acc_gmail", deps);
-    expect(deps.syncAccount).toHaveBeenCalledTimes(3);
+    expect(deps.hasSentMail).toHaveBeenCalledTimes(1);
+    expect(deps.sleep).not.toHaveBeenCalled();
+    expect(deps.learn).not.toHaveBeenCalled();
+  });
+
+  it("retries a throwing probe a bounded number of times, then learns if one succeeds", async () => {
+    let calls = 0;
+    const hasSentMail = vi.fn(async () => {
+      if (calls++ < 2) throw new Error("proxy timeout");
+      return true;
+    });
+    const deps = makeDeps({ hasSentMail });
+    await runVoiceLearnOnConnect("acc_gmail", deps);
+    expect(hasSentMail).toHaveBeenCalledTimes(3);
     expect(deps.sleep).toHaveBeenCalledTimes(2);
     expect(deps.learn).toHaveBeenCalledTimes(1);
   });
 
-  it("gives up without learning when sent mail never arrives", async () => {
-    const deps = makeDeps({ countSentMessages: vi.fn(() => 0) });
+  it("gives up (without learning) when the probe keeps throwing", async () => {
+    const deps = makeDeps({
+      hasSentMail: vi.fn(async () => {
+        throw new Error("proxy timeout");
+      }),
+    });
     await runVoiceLearnOnConnect("acc_gmail", deps);
+    expect(deps.hasSentMail).toHaveBeenCalledTimes(3);
     expect(deps.learn).not.toHaveBeenCalled();
-    // Bounded: it stopped polling rather than looping forever.
-    expect((deps.sleep as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
   });
 
   it("dedupes a concurrent second run for the same account", async () => {

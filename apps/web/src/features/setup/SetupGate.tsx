@@ -4,7 +4,7 @@ import {
   type LlmProviderInfo,
   type PipedreamStatus,
 } from "@trailin/shared";
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,6 @@ export function SetupGate({
   const { t } = useTranslation();
   const [providers, setProviders] = React.useState<LlmProviderInfo[] | null>(null);
   const complete = status !== null && isSetupComplete(status);
-  const importing = (status?.emailAccountsImporting ?? 0) > 0;
 
   // A build without a usable email bridge gets the Pipedream credentials
   // wizard inline in step 2 — the guided flow must not dead-end in Settings.
@@ -97,14 +96,12 @@ export function SetupGate({
   }, [refreshProviders]);
 
   // Sign-in and account linking both finish in other tabs; polling is the
-  // only reliable completion signal while the gate is up. It also keeps
-  // running while the first mail import is underway, so the "importing"
-  // line in the completion notice clears itself.
+  // only reliable completion signal while the gate is up.
   React.useEffect(() => {
-    if (complete && !importing) return;
+    if (complete) return;
     const timer = setInterval(onStatusChanged, 4000);
     return () => clearInterval(timer);
-  }, [complete, importing, onStatusChanged]);
+  }, [complete, onStatusChanged]);
 
   return (
     <div className="min-h-dvh overflow-y-auto scroll-stable px-5 py-12 sm:px-8">
@@ -168,12 +165,6 @@ export function SetupGate({
           <Notice tone="success" className="flex flex-col items-start gap-2 p-4">
             <p className="text-sm font-medium">{t("setup.allSetTitle")}</p>
             <p className="text-sm">{t("setup.allSetBody")}</p>
-            {importing && (
-              <p className="flex items-center gap-2 text-sm">
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                {t("setup.allSetImporting")}
-              </p>
-            )}
             <p className="text-sm">{t("setup.allSetReadOnly")}</p>
             <Button className="mt-1" onClick={() => onFinish(false)}>
               {t("setup.openApp")}

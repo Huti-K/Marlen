@@ -54,14 +54,18 @@ async function messagesFor(conversationId: string) {
 
 /**
  * Stands in for pi's real Agent class, exposing exactly what run.ts consumes
- * (subscribe/abort/prompt/state.errorMessage) and nothing else — the real
- * Agent builds against the modelRegistry singleton and can't run in tests.
- * Scriptable: emit(...) replays an AgentEvent to every subscriber, and
- * resolveTurn()/rejectTurn() settle the pending prompt() call, standing in
- * for the moment pi's Agent finishes (or aborts) a turn.
+ * (subscribe/abort/prompt and state.errorMessage/messages/tools) and nothing
+ * else — the real Agent builds against the modelRegistry singleton and can't
+ * run in tests. Scriptable: emit(...) replays an AgentEvent to every
+ * subscriber, and resolveTurn()/rejectTurn() settle the pending prompt()
+ * call, standing in for the moment pi's Agent finishes (or aborts) a turn.
  */
 class FakeAgent {
-  state: { errorMessage?: string } = {};
+  state: {
+    errorMessage?: string;
+    messages: unknown[];
+    tools: { name: string; label: string }[];
+  } = { messages: [], tools: [] };
   aborted = false;
   prompts: string[] = [];
 
@@ -120,7 +124,7 @@ function fakeSession(
 ): AgentSession {
   const session: AgentSession = {
     agent: agent as unknown as Agent,
-    toolset: { tools: [], close: closeSpy },
+    toolset: { tools: [], readTools: [], close: closeSpy },
     inFlight: 0,
     lastUsed: Date.now(),
     async runTurn(prompt: string, handlers?: RunHandlers, signal?: AbortSignal, log?: TurnLogger) {
@@ -198,6 +202,30 @@ describe("turnRecorder", () => {
 
     // Guard released: a second beginTurn for the same conversation now succeeds.
     expect(() => beginTurn(conversationId)).not.toThrow();
+  });
+
+  it("appends the date/time note to the live prompt while the persisted row stays raw", async () => {
+    const conversationId = randomUUID();
+    const agent = new FakeAgent();
+    _setSessionsForTest({ pooled: async () => fakeSession(agent), ephemeral: neverEphemeral });
+
+    const turn = beginTurn(conversationId);
+    const runPromise = turn.run({
+      prompt: "when is the deadline?",
+      session: "pooled",
+      conversation: { type: "chat", title: "test" },
+      log: testLog,
+    });
+    await agent.whenPrompted;
+    agent.resolveTurn();
+    await runPromise;
+
+    // The model sees the note (with the user's timezone in parentheses); the
+    // stored user row keeps only what the user typed.
+    expect(agent.prompts[0]).toContain("when is the deadline?");
+    expect(agent.prompts[0]).toContain("[Current date and time:");
+    const rows = await messagesFor(conversationId);
+    expect(rows[0]?.content).toBe("when is the deadline?");
   });
 
   it("throws TurnInFlightError for an overlapping beginTurn, then succeeds once the run ends", async () => {

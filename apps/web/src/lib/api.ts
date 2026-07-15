@@ -1,6 +1,5 @@
 import type {
   AccountColor,
-  AccountDescription,
   AccountDrafts,
   AccountVoice,
   ApiErrorCode,
@@ -9,37 +8,25 @@ import type {
   AutomationRun,
   ChatMessage,
   ChatStreamEvent,
-  ConnectedAccountWithSync,
+  ConnectedAccount,
   ConnectTokenResponse,
-  Contact,
-  ContactCategory,
-  ContactDetail,
-  ContactKind,
   Conversation,
-  CreatedDraft,
   EmailRef,
-  EmailThread,
   Language,
   LibrarySearchHit,
   LibraryStatus,
   LlmProviderInfo,
   LoginFlowStatus,
-  MailSuggestion,
-  MailThreadFilter,
-  MailThreadOverview,
   MemoryEntry,
   MissedAutomation,
   ModelSettings,
-  NewsletterSender,
   OnOfficeConfigInput,
   OnOfficeStatus,
-  OpenConversations,
   PipedreamApp,
   PipedreamConfigInput,
   PipedreamStatus,
   RunFeedItem,
   SearchResult,
-  UnsubscribeResult,
 } from "@trailin/shared";
 import i18n from "@/lib/i18n";
 import { openExternal } from "@/lib/utils";
@@ -146,14 +133,6 @@ export const api = {
   setTimezone: (timezone: string) =>
     http<{ timezone: string }>("PUT", "/api/settings/timezone", { timezone }),
 
-  syncBackfillDays: () => get<{ days: number }>("/api/settings/sync-backfill-days"),
-  setSyncBackfillDays: (days: number) =>
-    http<{ days: number }>("PUT", "/api/settings/sync-backfill-days", { days }),
-
-  contactThreadsLimit: () => get<{ limit: number }>("/api/settings/contact-threads-limit"),
-  setContactThreadsLimit: (limit: number) =>
-    http<{ limit: number }>("PUT", "/api/settings/contact-threads-limit", { limit }),
-
   writeAccess: () => get<{ accountIds: string[] }>("/api/settings/write-access"),
   setWriteAccess: (accountIds: string[]) =>
     http<{ accountIds: string[] }>("PUT", "/api/settings/write-access", { accountIds }),
@@ -161,12 +140,6 @@ export const api = {
   accountColors: () => get<{ colors: AccountColor[] }>("/api/settings/account-colors"),
   setAccountColors: (colors: AccountColor[]) =>
     http<{ colors: AccountColor[] }>("PUT", "/api/settings/account-colors", { colors }),
-  accountDescriptions: () =>
-    get<{ descriptions: AccountDescription[] }>("/api/settings/account-descriptions"),
-  setAccountDescriptions: (descriptions: AccountDescription[]) =>
-    http<{ descriptions: AccountDescription[] }>("PUT", "/api/settings/account-descriptions", {
-      descriptions,
-    }),
   accountVoices: () => get<{ voices: AccountVoice[] }>("/api/settings/account-voices"),
   saveAccountVoices: (voices: AccountVoice[]) =>
     http<{ voices: AccountVoice[] }>("PUT", "/api/settings/account-voices", { voices }),
@@ -193,7 +166,7 @@ export const api = {
   clearPipedream: () => http<PipedreamStatus>("DELETE", "/api/pipedream"),
   setPipedreamMode: (useCustom: boolean) =>
     http<PipedreamStatus>("PUT", "/api/pipedream/mode", { useCustom }),
-  pipedreamAccounts: () => get<ConnectedAccountWithSync[]>("/api/pipedream/accounts"),
+  pipedreamAccounts: () => get<ConnectedAccount[]>("/api/pipedream/accounts"),
   pipedreamApps: (q: string) =>
     get<PipedreamApp[]>(`/api/pipedream/apps?q=${encodeURIComponent(q)}`),
   pipedreamConnectToken: (app: string) =>
@@ -257,58 +230,6 @@ export const api = {
     get<DraftStatusResult>(
       `/api/drafts/${encodeURIComponent(accountId)}/${encodeURIComponent(draftId)}/status`,
     ),
-  // Create a draft with exactly the given content (no humanizer/signature
-  // pass); `threadId` attaches it to that conversation as a reply.
-  composeDraft: (
-    accountId: string,
-    body: {
-      to: string[];
-      cc?: string[];
-      bcc?: string[];
-      subject: string;
-      body: string;
-      threadId?: string;
-    },
-  ) => http<CreatedDraft>("POST", `/api/drafts/${encodeURIComponent(accountId)}`, body),
-  /** Mailbox-mirror thread overviews for the Email page's inbox list, newest first. */
-  mailThreads: (
-    params: {
-      accountId?: string;
-      filter?: MailThreadFilter;
-      sinceDays?: number;
-      limit?: number;
-    } = {},
-  ) => {
-    const qs = new URLSearchParams();
-    if (params.accountId) qs.set("accountId", params.accountId);
-    if (params.filter) qs.set("filter", params.filter);
-    if (params.sinceDays !== undefined) qs.set("sinceDays", String(params.sinceDays));
-    if (params.limit !== undefined) qs.set("limit", String(params.limit));
-    const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return get<{ items: MailThreadOverview[] }>(`/api/threads${suffix}`);
-  },
-  /** `excludeMessageId` drops the draft's own message — Gmail counts it as part of the thread. */
-  mailThread: (accountId: string, threadId: string, excludeMessageId?: string) =>
-    get<EmailThread>(
-      `/api/threads/${encodeURIComponent(accountId)}/${encodeURIComponent(threadId)}${
-        excludeMessageId ? `?excludeMessageId=${encodeURIComponent(excludeMessageId)}` : ""
-      }`,
-    ),
-  waiting: () => get<OpenConversations>("/api/waiting"),
-  // Removes one thread from the "waiting on you" lane until a new inbound message revives it.
-  dismissWaiting: (accountId: string, threadId: string) =>
-    http<{ ok: boolean }>(
-      "POST",
-      `/api/waiting/${encodeURIComponent(accountId)}/${encodeURIComponent(threadId)}/dismiss`,
-    ),
-
-  /** The composer's @-mention search — empty `q` returns recent threads instead of no results. */
-  mailSuggest: (q: string, limit?: number) => {
-    const search = new URLSearchParams({ q });
-    if (limit !== undefined) search.set("limit", String(limit));
-    return get<{ items: MailSuggestion[] }>(`/api/mail/suggest?${search.toString()}`);
-  },
-
   conversations: (params: { q?: string; limit?: number; offset?: number } = {}) => {
     const search = new URLSearchParams();
     if (params.q) search.set("q", params.q);
@@ -375,36 +296,6 @@ export const api = {
     }),
   deleteMemory: (id: string) =>
     http<{ ok: boolean }>("DELETE", `/api/memories/${encodeURIComponent(id)}`),
-
-  /** Mailbox-derived correspondents (see email/contacts/) — one row per address. */
-  contacts: (params: { kind?: ContactKind; category?: ContactCategory; q?: string } = {}) => {
-    const qs = new URLSearchParams();
-    if (params.kind) qs.set("kind", params.kind);
-    if (params.category) qs.set("category", params.category);
-    if (params.q) qs.set("q", params.q);
-    const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return get<Contact[]>(`/api/contacts${suffix}`);
-  },
-  contactDetail: (address: string) =>
-    get<ContactDetail>(`/api/contacts/${encodeURIComponent(address)}`),
-  // The manual overrides the Contacts page can make — each pins server-side so
-  // a later enrichment/derivation pass never reverts it. Category pins
-  // category_source to "user"; a name override wins over the derived name.
-  setContactCategory: (address: string, category: ContactCategory) =>
-    http<Contact>("PATCH", `/api/contacts/${encodeURIComponent(address)}`, { category }),
-  setContactName: (address: string, displayName: string) =>
-    http<Contact>("PATCH", `/api/contacts/${encodeURIComponent(address)}`, { displayName }),
-  // Manual add for an address the mailbox hasn't produced a contact for yet.
-  createContact: (address: string, displayName: string) =>
-    http<Contact>("POST", "/api/contacts", { address, displayName }),
-  // Soft delete: hides the contact from the lists; the row survives server-side.
-  deleteContact: (address: string) =>
-    http<{ ok: boolean }>("DELETE", `/api/contacts/${encodeURIComponent(address)}`),
-
-  /** Bulk/newsletter senders (contacts rows with kind="bulk") and their unsubscribe state. */
-  newsletters: () => get<NewsletterSender[]>("/api/newsletters"),
-  unsubscribeNewsletter: (address: string, accountId: string) =>
-    http<UnsubscribeResult>("POST", "/api/newsletters/unsubscribe", { address, accountId }),
 
   library: () => get<LibraryStatus>("/api/library"),
   setLibraryFolder: (folder: string) =>

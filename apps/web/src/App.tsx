@@ -28,8 +28,6 @@ import { AttachmentViewer } from "@/features/chat/AttachmentViewer";
 import { ChatPanel } from "@/features/chat/ChatPanel";
 import { FocusChip } from "@/features/chat/FocusChip";
 import { HistoryList } from "@/features/chat/HistoryList";
-import { ContactsPanel } from "@/features/contacts/ContactsPanel";
-import { EmailPanel } from "@/features/email/EmailPanel";
 import { HomePanel } from "@/features/home/HomePanel";
 import { KnowledgePanel } from "@/features/knowledge/KnowledgePanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
@@ -38,7 +36,6 @@ import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showca
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { NAV_VIEWS, SHOWCASE_NAV, type View } from "@/lib/nav";
-import { useServerEvents } from "@/lib/serverEvents";
 import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useTheme } from "@/lib/useTheme";
@@ -181,14 +178,6 @@ export default function App() {
         setGate((g) => (g === "pending" ? "closed" : g));
       });
   }, []);
-
-  // While a fresh account's first import runs, follow the mirror's progress so
-  // the Home banner clears itself when the import lands. Gated on `importing`
-  // so steady-state mail traffic doesn't refetch status forever.
-  const importing = (status?.emailAccountsImporting ?? 0) > 0;
-  useServerEvents(["mail"], () => {
-    if (importing) refreshStatus();
-  });
 
   // Mount + whenever the tab regains focus (sign-in and account linking
   // happen in other tabs, and status must not go stale).
@@ -414,8 +403,6 @@ export default function App() {
               <Route path="/chat" element={null} />
               <Route path="/settings" element={<SettingsPanel onStatusChanged={refreshStatus} />} />
               <Route path="/automations" element={<AutomationsPanel />} />
-              <Route path="/email" element={<EmailPanel />} />
-              <Route path="/contacts" element={<ContactsPanel />} />
               <Route path="/knowledge" element={<KnowledgePanel />} />
               {/* DEV showcase / theme lab — delete this line and the ShowcasePanel file to remove. */}
               {import.meta.env.DEV && <Route path="/showcase" element={<ShowcasePanel />} />}
@@ -425,7 +412,6 @@ export default function App() {
                   <HomePanel
                     setupIncomplete={status !== null && !isSetupComplete(status)}
                     offline={Boolean(status?.pipedreamConfigured) && !status?.emailAccountsKnown}
-                    importing={importing}
                     onNavigate={select}
                   />
                 }

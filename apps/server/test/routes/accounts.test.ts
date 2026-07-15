@@ -27,7 +27,6 @@ vi.mock("../../src/pipedream/connect.js", async (importOriginal) => {
 });
 
 const { buildApp } = await import("../../src/app.js");
-const { markSyncStatus } = await import("../../src/email/sync/mailStore.js");
 
 function account(id: string, app: string): ConnectedAccount {
   return { id, app, name: `${id}@example.com`, healthy: true, createdAt: "2026-01-01T00:00:00Z" };
@@ -54,36 +53,23 @@ async function getStatus(): Promise<Record<string, unknown>> {
   return res.json() as Record<string, unknown>;
 }
 
-describe("GET /api/status — first-import progress", () => {
-  it("counts only mail accounts, and reports those without a completed first sync as importing", async () => {
+describe("GET /api/status — email account counting", () => {
+  it("counts only mail accounts toward the setup gate", async () => {
     listAccountsMock.mockResolvedValue([
-      account("acct-status-synced", "gmail"),
-      account("acct-status-fresh", "gmail"),
+      account("acct-status-a", "gmail"),
+      account("acct-status-b", "gmail"),
       account("acct-status-slack", "slack_bot"),
     ]);
-    markSyncStatus("acct-status-synced", "idle");
 
     const body = await getStatus();
     expect(body.emailAccounts).toBe(2);
-    // The fresh account has no sync state row yet — its first import is pending.
-    expect(body.emailAccountsImporting).toBe(1);
+    expect(body.emailAccountsKnown).toBe(true);
   });
 
-  it("treats an in-flight first sync as importing", async () => {
-    markSyncStatus("acct-status-fresh", "syncing");
+  it("reports the count as unknown when listing accounts fails", async () => {
+    listAccountsMock.mockRejectedValueOnce(new Error("pipedream down"));
     const body = await getStatus();
-    expect(body.emailAccountsImporting).toBe(1);
-  });
-
-  it("does not report a failing first sync as importing", async () => {
-    markSyncStatus("acct-status-fresh", "error", "boom");
-    const body = await getStatus();
-    expect(body.emailAccountsImporting).toBe(0);
-  });
-
-  it("stops reporting an account once its first sync succeeds", async () => {
-    markSyncStatus("acct-status-fresh", "idle");
-    const body = await getStatus();
-    expect(body.emailAccountsImporting).toBe(0);
+    expect(body.emailAccounts).toBe(0);
+    expect(body.emailAccountsKnown).toBe(false);
   });
 });

@@ -1,12 +1,11 @@
 import type { ConnectedAccount } from "@trailin/shared";
-import { getAccountDescriptions, getWriteAccessAccounts } from "../db/settings.js";
+import { getWriteAccessAccounts } from "../db/settings.js";
 import { listAccounts } from "../pipedream/connect.js";
 
 /**
  * Shared account plumbing for agent tools: resolving a tool's `account`
  * parameter to a connected account, mapping accounts to their display names,
- * and the system-prompt section that tells the model what is connected and
- * what each connection is for.
+ * and the system-prompt section that tells the model what is connected.
  */
 
 /** Case-insensitive match on a connected account's name, or an exact account id. */
@@ -97,8 +96,7 @@ export async function fetchAccountNameMap(): Promise<Map<string, string>> {
 }
 
 /**
- * System-prompt section listing the connected accounts with the user's
- * purpose note for each ("work", "family stuff", …) and whether each is
+ * System-prompt section listing the connected accounts and whether each is
  * armed for send/change or read-only, so the model can pick the right
  * account without every tool description restating the list. Empty string
  * when nothing is connected (the prompt's setup guidance covers that case).
@@ -111,15 +109,11 @@ export async function buildAccountsContext(): Promise<string> {
     return "";
   }
   if (accounts.length === 0) return "";
-  const purposes = new Map(
-    (await getAccountDescriptions()).map((d) => [d.accountId, d.text.trim()]),
-  );
   const writeAccess = new Set(await getWriteAccessAccounts());
   const lines = accounts.map((account) => {
-    const purpose = purposes.get(account.id);
     const app = account.appName ?? account.app;
     const access = writeAccess.has(account.id) ? " — may send & change" : " — read-only";
-    return `- ${account.name} (${app})${purpose ? ` — used for: ${purpose}` : ""}${access}`;
+    return `- ${account.name} (${app})${access}`;
   });
   return `\n\nConnected accounts:\n${lines.join("\n")}`;
 }

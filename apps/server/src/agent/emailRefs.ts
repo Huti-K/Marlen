@@ -15,10 +15,10 @@ export function serializeRefs(refs: EmailRef[] | undefined): string | null {
 
 /**
  * Defensive parse of a single ref-shaped value: threadId/accountId are
- * required non-empty strings (the tool handles they feed — read_thread,
- * create-draft — need both), every other field is an optional string kept
- * only when non-empty. Never throws; returns undefined for anything
- * malformed rather than a half-built ref.
+ * required non-empty strings (the tool handles they feed — the account's
+ * read tools, create-draft — need both), every other field is an optional
+ * string kept only when non-empty. Never throws; returns undefined for
+ * anything malformed rather than a half-built ref.
  */
 export function parseEmailRef(value: unknown): EmailRef | undefined {
   if (!isRecord(value)) return undefined;
@@ -63,8 +63,8 @@ export function renderRefNotes(refs: EmailRef[]): string {
       if (ref.date) parts.push(`date ${ref.date}`);
       return (
         `[Attached email: ${parts.join(", ")}. This reference is authoritative — read this ` +
-        `exact thread with read_thread and use its threadId for any reply draft; do not search ` +
-        `for a different match.]`
+        `exact thread with the account's thread read tool and use its threadId for any reply ` +
+        `draft; do not search for a different match.]`
       );
     })
     .join("\n");

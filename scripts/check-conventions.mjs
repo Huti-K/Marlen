@@ -4,7 +4,7 @@
  *
  *  1. Source files stay under 800 lines (seed/fixture data exempt).
  *  2. Tests live in apps/server/test/, never colocated in a src/ tree.
- *  3. Provider registration (registerDraftProvider / registerSyncProvider /
+ *  3. Provider registration (registerDraftProvider / registerMailReadProvider /
  *     registerAttachmentProvider) is called only from register*.ts files —
  *     never as a module side effect elsewhere.
  *
@@ -31,7 +31,7 @@ const SOURCE_FILE = /^(apps|packages)\/[^/]+\/src\/.+\.(ts|tsx)$/;
 const COLOCATED_TEST = /\.(test|spec)\.(ts|tsx)$/;
 
 const REGISTER_CALL =
-  /\b(registerDraftProvider|registerSyncProvider|registerAttachmentProvider)\s*\(/;
+  /\b(registerDraftProvider|registerMailReadProvider|registerAttachmentProvider)\s*\(/;
 
 const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
   encoding: "utf8",

@@ -16,17 +16,9 @@
       "title": "Start",
       "description": "Entwürfe, die auf Ihre Prüfung warten, und was der Assistent zuletzt getan hat."
     },
-    "email": {
-      "title": "Mails",
-      "description": "Ihre Postfächer: Unterhaltungen lesen, Entwürfe prüfen und schreiben."
-    },
     "automations": {
       "title": "Automatisierungen",
       "description": "Lässt den Assistenten nach einem festen Zeitplan mit einer festen Anweisung laufen."
-    },
-    "contacts": {
-      "title": "Kontakte",
-      "description": "Die Personen, mit denen Sie in Kontakt stehen, und jeder Newsletter, der Ihnen schreibt."
     },
     "knowledge": {
       "title": "Wissen",
@@ -106,10 +98,6 @@
       "matches_other": "{{count}} Treffer",
       "copy": "Kopieren",
       "copied": "Kopiert"
-    },
-    "mention": {
-      "empty": "Keine passenden E-Mails.",
-      "loading": "Durchsucht Ihre E-Mails…"
     },
     "refs": {
       "remove": "{{label}} entfernen"
@@ -210,8 +198,8 @@
   "search": {
     "openButton": "Suchen",
     "title": "Suche",
-    "placeholder": "Chats, Übersichten, Entwürfe, E-Mails, Dokumente, Erinnerungen durchsuchen…",
-    "hint": "Durchsuchen Sie Ihre Chats, Übersichten, Entwürfe, E-Mails, Dokumente und Erinnerungen.",
+    "placeholder": "Chats, Übersichten, Entwürfe, Dokumente, Erinnerungen durchsuchen…",
+    "hint": "Durchsuchen Sie Ihre Chats, Übersichten, Entwürfe, Dokumente und Erinnerungen.",
     "shortcuts": "Gehe zu",
     "topHit": "Bester Treffer",
     "recent": "Zuletzt gesucht",
@@ -230,7 +218,6 @@
       "run": "Übersicht öffnen",
       "chat": "Chat öffnen",
       "draft": "Entwurf öffnen",
-      "mail": "Im Postfach öffnen",
       "document": "Dokument öffnen",
       "memory": "Erinnerung öffnen"
     },
@@ -238,7 +225,6 @@
       "run": "Übersichten",
       "chat": "Chats",
       "draft": "Entwürfe",
-      "mail": "E-Mails",
       "document": "Dokumente",
       "memory": "Erinnerungen"
     }
@@ -291,9 +277,6 @@
     "finishConnecting": "Schließen Sie die Verbindung in dem gerade geöffneten Fenster ab, es schließt sich von selbst, sobald Sie fertig sind.",
     "healthy": "OK",
     "unhealthy": "Gestört",
-    "importing": "E-Mails werden importiert …",
-    "syncStale": "Sync gestört · {{when}}",
-    "syncNever": "Sync gestört",
     "disconnect": "Trennen",
     "disconnectConfirm": "Dieses Konto trennen?",
     "projectFooter": "Pipedream-Projekt <code>{{projectId}}</code> · {{environment}} · {{source}}",
@@ -315,7 +298,6 @@
     "setupBanner": "Trailin ist noch nicht fertig eingerichtet, der Assistent erreicht Ihre E-Mails noch nicht.",
     "setupBannerCta": "Einrichtung abschließen",
     "offlineBanner": "Ihr E-Mail-Anbieter ist gerade nicht erreichbar, prüfen Sie Ihre Verbindung.",
-    "importingBanner": "Ihre E-Mails werden importiert — diese Seite füllt sich, sobald der erste Abgleich ankommt.",
     "missedBanner_one": "1 Automatisierung lief nicht, während die App geschlossen war.",
     "missedBanner_other": "{{count}} Automatisierungen liefen nicht, während die App geschlossen war.",
     "missedRun": "Jetzt ausführen",
@@ -345,91 +327,10 @@
     "briefingRefresh": "Briefing aktualisieren",
     "briefingNext": "Nächstes Briefing: {{when}}",
     "openInChat": "Im Chat öffnen",
-    "openConversationsTitle": "Offene Konversationen",
-    "waitingOnYouTitle": "Wartet auf Sie",
-    "waitingOnYouDraftReply": "Antwort entwerfen",
-    "waitingOnYouDraftReplyPrompt": "Entwirf eine Antwort auf {{counterpart}}s E-Mail \"{{subject}}\" in {{account}} (Thread {{threadId}}). Sie braucht eine Antwort: {{gist}}",
-    "waitingOnYouDismiss": "Verwerfen",
-    "waitingTitle": "Wartet auf Antwort",
-    "waitingNudge": "Nachfassen entwerfen",
-    "waitingNudgePrompt": "Entwirf eine freundliche Nachfass-E-Mail an {{counterpart}} zum Thread \"{{subject}}\" in {{account}}.",
     "glance": {
       "drafts_one": "{{count}} Entwurf zu prüfen",
       "drafts_other": "{{count}} Entwürfe zu prüfen",
-      "needsReply_one": "{{count}} braucht Ihre Antwort",
-      "needsReply_other": "{{count}} brauchen Ihre Antwort",
-      "waiting_one": "{{count}} wartet auf Antwort",
-      "waiting_other": "{{count}} warten auf Antwort",
       "nextRun": "Nächster Lauf {{when}}"
-    }
-  },
-  "email": {
-    "lanes": {
-      "inbox": "Posteingang",
-      "drafts": "Entwürfe"
-    },
-    "filters": {
-      "recent": "Aktuell",
-      "unread": "Ungelesen",
-      "needs_attention": "Braucht Aufmerksamkeit"
-    },
-    "allAccounts": "Alle Konten",
-    "accountFilterLabel": "Postfach",
-    "noSubject": "(kein Betreff)",
-    "emptyTitle": "Der Posteingang ist ruhig",
-    "emptyBody": "Unterhaltungen aus Ihren verbundenen Postfächern erscheinen hier, sobald sie synchronisiert sind.",
-    "emptyFiltered": "Keine Unterhaltungen entsprechen diesem Filter.",
-    "importingTitle": "Import läuft noch",
-    "importingBody": "Dieses Postfach wird zum ersten Mal synchronisiert — Unterhaltungen erscheinen hier, sobald der Import abgeschlossen ist.",
-    "syncError": "Die Synchronisierung für {{account}} schlägt fehl — angezeigt wird der letzte gespiegelte Stand.",
-    "triage": {
-      "needs_reply": "Antwort nötig",
-      "needs_action": "Handlung nötig",
-      "waiting_on": "Wartet",
-      "fyi": "Zur Info",
-      "done": "Erledigt"
-    },
-    "thread": {
-      "back": "Zurück",
-      "reply": "Antworten",
-      "replyUnavailable": "Entwürfe werden für dieses Postfach nicht unterstützt",
-      "askAgent": "Den Assistenten zu dieser Unterhaltung fragen",
-      "openInMailbox": "Im Postfach öffnen",
-      "messageCount_one": "{{count}} Nachricht",
-      "messageCount_other": "{{count}} Nachrichten"
-    },
-    "replyNoRecipient": "Aus dieser Unterhaltung ließ sich kein Empfänger ableiten.",
-    "replyStartedToast": "Antwortentwurf erstellt.",
-    "actions": {
-      "archive": "Archivieren",
-      "delete": "Löschen",
-      "move": "In Ordner verschieben",
-      "labels": "Labels",
-      "markUnread": "Als ungelesen markieren",
-      "forward": "Weiterleiten"
-    },
-    "comingSoon": "Diese Aktion ist in Trailin noch nicht angebunden — nutzen Sie vorerst „Im Postfach öffnen“. Der Button markiert, wo sie landen wird.",
-    "drafts": {
-      "emptyTitle": "Keine offenen Entwürfe",
-      "emptyBody": "Entwürfe von Ihnen oder dem Assistenten erscheinen hier zur Prüfung vor dem Senden."
-    },
-    "compose": {
-      "trigger": "Neuer Entwurf",
-      "title": "Neuer Entwurf",
-      "from": "Von",
-      "to": "An",
-      "cc": "Cc",
-      "bcc": "Bcc",
-      "showCcBcc": "Cc/Bcc",
-      "subject": "Betreff",
-      "subjectPlaceholder": "Betreff",
-      "bodyLabel": "Nachricht",
-      "bodyPlaceholder": "Schreiben Sie Ihre Nachricht…",
-      "recipientPlaceholder": "Empfänger hinzufügen…",
-      "removeRecipient": "{{address}} entfernen",
-      "saveDraft": "Entwurf speichern",
-      "savedToast": "Entwurf gespeichert.",
-      "noAccounts": "Kein verbundenes Postfach unterstützt bisher Entwürfe."
     }
   },
   "drafts": {
@@ -448,10 +349,7 @@
     "refine": "Mit KI verfeinern",
     "refineInChat": "Im zugehörigen Chat verfeinern",
     "refinePrompt": "Bitte überarbeite den Entwurf \"{{subject}}\"",
-    "save": "Speichern",
-    "conversation_one": "Konversation · {{count}}",
-    "conversation_other": "Konversation · {{count}}",
-    "threadLoadFailed": "Die zugehörige Konversation konnte nicht geladen werden."
+    "save": "Speichern"
   },
   "automations": {
     "new": "Neue Automatisierung",
@@ -505,65 +403,6 @@
       "error": "Fehler"
     }
   },
-  "contacts": {
-    "lanes": {
-      "people": "Personen",
-      "newsletters": "Newsletter"
-    },
-    "searchPlaceholder": "Personen durchsuchen…",
-    "category": {
-      "all": "Alle",
-      "colleague": "Kollege/Kollegin",
-      "client_business": "Kunde / Geschäftlich",
-      "personal": "Privat",
-      "service_vendor": "Dienstleister",
-      "other": "Sonstiges"
-    },
-    "emptyTitle": "Noch keine Kontakte",
-    "emptyBody": "Personen, mit denen Sie E-Mails austauschen, erscheinen hier, sobald Ihre Konten synchronisiert sind.",
-    "detail": {
-      "back": "Zurück zu Kontakte",
-      "messages_one": "{{count}} Nachricht",
-      "messages_other": "{{count}} Nachrichten",
-      "sent_one": "{{count}} gesendet",
-      "sent_other": "{{count}} gesendet",
-      "lastContact": "Letzter Kontakt {{when}}",
-      "nameLabel": "Name",
-      "namePlaceholder": "Vollständiger Name",
-      "nameHint": "Überschreibt den aus den E-Mails erkannten Namen.",
-      "categoryLabel": "Kategorie",
-      "categorySourceUser": "Manuell festgelegt",
-      "categorySourceAuto": "Automatisch erkannt",
-      "threadsTitle": "Letzte Konversationen",
-      "noThreads": "Noch keine Konversationen.",
-      "loadError": "Dieser Kontakt konnte nicht geladen werden.",
-      "delete": "Kontakt löschen",
-      "deleteConfirmTitle": "{{name}} löschen?",
-      "deleteConfirmBody": "Entfernt {{name}} aus deinen Kontakten. Der E-Mail-Verlauf bleibt erhalten; der Kontakt erscheint nur wieder, wenn du ihn erneut hinzufügst."
-    },
-    "add": {
-      "trigger": "Kontakt hinzufügen",
-      "title": "Kontakt hinzufügen",
-      "addressLabel": "E-Mail-Adresse",
-      "addressPlaceholder": "name@beispiel.de",
-      "nameLabel": "Name",
-      "namePlaceholder": "Vollständiger Name (optional)",
-      "submit": "Kontakt hinzufügen"
-    },
-    "newsletters": {
-      "searchPlaceholder": "Newsletter durchsuchen…",
-      "emptyTitle": "Nichts zum Abbestellen",
-      "emptyBody": "Newsletter mit Ein-Klick-Abbestellung erscheinen hier, sobald Ihre Konten synchronisiert sind. Eine Abbestell-Anfrage entfernt den Eintrag aus dieser Liste.",
-      "frequency_one": "{{count}} E-Mail · {{when}}",
-      "frequency_other": "{{count}} E-Mails · {{when}}",
-      "unsubscribe": "Abbestellen",
-      "unsubscribeConfirmTitle": "{{name}} abbestellen?",
-      "unsubscribeConfirmBody": "Trailin sendet eine Ein-Klick-Abbestellung an {{name}}. Das lässt sich von hier aus nicht rückgängig machen.",
-      "unsubscribeRequested": "Abbestellung angefragt",
-      "stillReceiving": "Erhält weiterhin Mails",
-      "stillReceivingHint": "Nach der Abmeldeanfrage kam weiterhin Post an — sie hat vermutlich nicht funktioniert. Du kannst erneut anfragen."
-    }
-  },
   "memory": {
     "addPlaceholder": "Etwas hinzufügen, das sich Trailin merken soll…",
     "add": "Erinnerung hinzufügen",
@@ -613,8 +452,7 @@
         "filterContactsHint": "Nur Kontakt-Erinnerungen anzeigen",
         "contacts": "Kontakte",
         "contact": "Kontakt",
-        "contactPlaceholder": "E-Mail-Adresse des Kontakts",
-        "unknownContactHint": "Nicht in Ihren Kontakten — Adresse prüfen. Speichern funktioniert auch für neue Personen."
+        "contactPlaceholder": "E-Mail-Adresse des Kontakts"
       },
       "library": {
         "title": "Dokumente",
@@ -634,7 +472,6 @@
     "advancedLink": "Erweitert: eigenes Pipedream-Projekt verwenden",
     "allSetTitle": "Alles bereit",
     "allSetBody": "Der Assistent kann jetzt Ihre Post lesen, Antworten entwerfen und Ihre Fragen beantworten.",
-    "allSetImporting": "Ihre E-Mails werden gerade importiert — die Startseite füllt sich in den nächsten Minuten.",
     "allSetReadOnly": "Trailin startet schreibgeschützt: Der Assistent entwirft und antwortet, sendet oder ändert aber nichts, bis Sie es unter Einstellungen → Berechtigungen erlauben.",
     "openApp": "Trailin öffnen",
     "skip": "Später, ich sehe mich erst um",
@@ -706,18 +543,6 @@
       "label": "Zeitzone",
       "description": "Automatisierungen laufen und Zeiten werden in dieser Zeitzone angezeigt",
       "localTime": "Ortszeit {{time}}"
-    },
-    "syncBackfill": {
-      "label": "E-Mail-Verlauf",
-      "description": "Wie weit zurück die E-Mails eines Kontos gespiegelt werden — eine Änderung synchronisiert alle Konten neu",
-      "option_one": "{{count}} Tag",
-      "option_other": "{{count}} Tage"
-    },
-    "contactThreads": {
-      "label": "Kontakt-Konversationen",
-      "description": "Wie viele der letzten Konversationen eine Kontaktseite zeigt",
-      "option_one": "{{count}} Konversation",
-      "option_other": "{{count}} Konversationen"
     },
     "backup": {
       "label": "Sicherung",

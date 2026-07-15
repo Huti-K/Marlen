@@ -1,7 +1,6 @@
-import type { AccountColor, AccountDescription, AccountVoice } from "@trailin/shared";
+import type { AccountColor, AccountVoice } from "@trailin/shared";
 import { isLanguage, type Language } from "@trailin/shared";
 import { eq } from "drizzle-orm";
-import { env } from "../env.js";
 import { db, dbGeneration, schema } from "./index.js";
 
 /**
@@ -71,26 +70,6 @@ export async function getTimezoneSetting(): Promise<string | null> {
   return isValidTimezone(value) ? value : null;
 }
 
-/** Reads a stored positive-integer setting, or `fallback` when unset/unparseable. */
-async function getPositiveIntSetting(key: string, fallback: number): Promise<number> {
-  const value = Number(await getSetting(key));
-  return Number.isInteger(value) && value > 0 ? value : fallback;
-}
-
-export const SYNC_BACKFILL_DAYS_SETTING_KEY = "sync.backfillDays";
-
-/** The mail mirror's bounded-backfill window in days; the SYNC_BACKFILL_DAYS env default applies until set. */
-export async function getSyncBackfillDaysSetting(): Promise<number> {
-  return getPositiveIntSetting(SYNC_BACKFILL_DAYS_SETTING_KEY, env.sync.backfillDays);
-}
-
-export const CONTACT_THREADS_LIMIT_SETTING_KEY = "contacts.recentThreadsLimit";
-
-/** How many recent threads a contact page lists (GET /api/contacts/:address). */
-export async function getContactThreadsLimitSetting(): Promise<number> {
-  return getPositiveIntSetting(CONTACT_THREADS_LIMIT_SETTING_KEY, 15);
-}
-
 export const LIBRARY_FOLDER_SETTING_KEY = "library.folder";
 
 /** The user-chosen library drop folder, or null to fall back to the LIBRARY_PATH env default. */
@@ -129,15 +108,6 @@ const accountColorsSetting = jsonArraySetting<AccountColor>(ACCOUNT_COLORS_SETTI
 /** All persisted account color assignments. */
 export const getAccountColors = accountColorsSetting.get;
 export const setAccountColors = accountColorsSetting.set;
-
-const ACCOUNT_DESCRIPTIONS_SETTING_KEY = "account.descriptions";
-const accountDescriptionsSetting = jsonArraySetting<AccountDescription>(
-  ACCOUNT_DESCRIPTIONS_SETTING_KEY,
-);
-
-/** All persisted per-account purpose notes (fed to the agent as tool context). */
-export const getAccountDescriptions = accountDescriptionsSetting.get;
-export const setAccountDescriptions = accountDescriptionsSetting.set;
 
 const ACCOUNT_VOICES_SETTING_KEY = "account.voices";
 const accountVoicesSetting = jsonArraySetting<AccountVoice>(ACCOUNT_VOICES_SETTING_KEY);

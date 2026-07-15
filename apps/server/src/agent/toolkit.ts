@@ -24,6 +24,9 @@ import { accountNameMap, resolveAccountParam, resolveRequiredAccountParam } from
  *   sees a valid resolution.
  * - `catchToText` converts a thrown error into plain result text for tools
  *   whose failures should steer the model rather than fail the run.
+ * - Malformed-but-unambiguous argument shapes are repaired before validation
+ *   ever rejects them (see repairToolArguments), wired through pi's
+ *   prepareArguments hook.
  */
 
 type ToolResult = AgentToolResult<AgentCard | undefined>;
@@ -86,6 +89,59 @@ const OPTIONAL_ACCOUNT_DESCRIPTION =
   "Optional: only this connected account (its email address or id).";
 const REQUIRED_ACCOUNT_DESCRIPTION = "The connected account (its email address or id).";
 
+/** JSON.parse for a string that looks like a JSON object or array; undefined otherwise. */
+function parseJsonComposite(text: string): unknown {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Repairs the malformed argument shapes models actually produce, before
+ * validation rejects them: the whole arguments object sent as one JSON
+ * string, a JSON-encoded string where an array or object parameter belongs,
+ * and a bare element where an array belongs. Only unambiguous fixes are
+ * applied — anything else returns unchanged for validation to report. pi
+ * runs this through the tool's prepareArguments hook, ahead of its own
+ * argument validation (which also handles primitive coercion like "5" → 5).
+ */
+export function repairToolArguments(parameters: TObject, raw: unknown): unknown {
+  if (Value.Check(parameters, raw)) return raw;
+
+  let args = raw;
+  if (typeof args === "string") {
+    const parsed = parseJsonComposite(args);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return raw;
+    args = parsed;
+  }
+  if (typeof args !== "object" || args === null || Array.isArray(args)) return raw;
+
+  const repaired: Record<string, unknown> = { ...(args as Record<string, unknown>) };
+  for (const [key, schema] of Object.entries(parameters.properties ?? {})) {
+    const value = repaired[key];
+    if (value === undefined) continue;
+    const type = (schema as { type?: unknown }).type;
+    if (type === "array") {
+      if (typeof value === "string") {
+        const parsed = parseJsonComposite(value);
+        repaired[key] = Array.isArray(parsed) ? parsed : [value];
+      } else if (!Array.isArray(value)) {
+        repaired[key] = [value];
+      }
+    } else if (type === "object" && typeof value === "string") {
+      const parsed = parseJsonComposite(value);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        repaired[key] = parsed;
+      }
+    }
+  }
+  return repaired;
+}
+
 export function tool<P extends TProperties>(
   spec: ToolSpecBase<P> & {
     account: "required";
@@ -137,6 +193,7 @@ export function tool(
     label: spec.label,
     description: spec.description,
     parameters,
+    prepareArguments: (args) => repairToolArguments(parameters, args),
     execute: async (toolCallId, params, signal, onUpdate) => {
       if (!Value.Check(parameters, params)) {
         const issue = Value.Errors(parameters, params).First();
@@ -183,15 +240,6 @@ export function limitParam(defaultLimit: number, noun = "results") {
 export function clampLimit(raw: number | undefined, defaultLimit: number, max: number): number {
   const n = raw !== undefined && Number.isFinite(raw) ? Math.floor(raw) : defaultLimit;
   return Math.min(Math.max(n, 1), max);
-}
-
-/** The optional `refresh` parameter for tools that can pull the provider feed first. */
-export function refreshParam(verb: string) {
-  return Type.Optional(
-    Type.Boolean({
-      description: `Pull the latest changes from the provider before ${verb}.`,
-    }),
-  );
 }
 
 export interface NumberedRow {

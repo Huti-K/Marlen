@@ -61,11 +61,11 @@ export function buildListAttachmentsTool(
       `and library-supported files (${SUPPORTED_FORMATS}) can be saved to the document library — ` +
       `both from the card, without you saving anything. Call this when a message has an ` +
       `attachment the user might want to see, instead of only offering to save it. Pass the ` +
-      `messageId from search_mail or read_thread results.\n\n` +
+      `messageId from this account's email read tools' results.\n\n` +
       `Acts as the connected account: ${account.name}.`,
     params: {
       messageId: Type.String({
-        description: "The message id, from search_mail or read_thread results.",
+        description: "The message id, from this account's email read tools' results.",
       }),
     },
     execute: async ({ messageId }) => {
@@ -99,12 +99,12 @@ export function buildSaveAttachmentTool(
       `Download an attachment from an email in this account and save it into the user's local ` +
       `document library, where it is indexed — afterwards it can be found with library_search, ` +
       `read with library_read (library_list shows its id). Only these formats can be saved: ` +
-      `${SUPPORTED_FORMATS}. Pass the messageId from search_mail or read_thread results; if the ` +
+      `${SUPPORTED_FORMATS}. Pass the messageId from this account's email read tools' results; if the ` +
       `message has several attachments, call this once per attachment with its filename.\n\n` +
       `Acts as the connected account: ${account.name}.`,
     params: {
       messageId: Type.String({
-        description: "The message id, from search_mail or read_thread results.",
+        description: "The message id, from this account's email read tools' results.",
       }),
       filename: Type.Optional(
         Type.String({

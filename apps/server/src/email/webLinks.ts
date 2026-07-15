@@ -2,11 +2,10 @@ import type { ConnectedAccount } from "@trailin/shared";
 
 /**
  * Webmail deep links, keyed by Pipedream app slug. Provider-specific by
- * nature, but kept in this one spot so features computed from the local
- * mailbox mirror (email/waiting.ts today) stay provider-neutral — add a new
- * provider's link builder here, not a branch at a call site. The web app's
- * counterpart (which hosts get the "open in mailbox" chip) lives in
- * apps/web/src/lib/mailboxLinks.ts.
+ * nature, but kept in this one spot so consumers (agent/briefingTool.ts)
+ * stay provider-neutral — add a new provider's link builder here, not a
+ * branch at a call site. The web app's counterpart (which hosts get the
+ * "open in mailbox" chip) lives in apps/web/src/lib/mailboxLinks.ts.
  */
 
 type ThreadLinkBuilder = (account: ConnectedAccount, providerThreadId: string) => string;

@@ -13,20 +13,16 @@ import { accountRoutes } from "./routes/accounts.js";
 import { automationRoutes } from "./routes/automations.js";
 import { backupRoutes } from "./routes/backup.js";
 import { chatRoutes } from "./routes/chat.js";
-import { contactRoutes } from "./routes/contacts.js";
 import { draftRoutes } from "./routes/drafts.js";
 import { eventRoutes } from "./routes/events.js";
 import { libraryRoutes } from "./routes/library.js";
 import { llmRoutes } from "./routes/llm.js";
 import { mailRoutes } from "./routes/mail.js";
 import { memoryRoutes } from "./routes/memories.js";
-import { newsletterRoutes } from "./routes/newsletters.js";
 import { onOfficeRoutes } from "./routes/onoffice.js";
 import { pipedreamRoutes } from "./routes/pipedream.js";
 import { searchRoutes } from "./routes/search.js";
 import { settingsRoutes } from "./routes/settings.js";
-import { threadRoutes } from "./routes/threads.js";
-import { waitingRoutes } from "./routes/waiting.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -43,7 +39,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Typed as FastifyBaseLogger at the boundary: handing Fastify a pino.Logger
   // narrows the inferred FastifyInstance and every plugin then mismatches it.
   const loggerInstance: FastifyBaseLogger = logger;
-  const app = Fastify({ loggerInstance });
+  // maxParamLength must exceed the longest provider id that rides in a path
+  // param: Outlook Graph message/conversation ids run ~140-170 chars (and
+  // immutable ids longer), while the router's 100-char default makes such
+  // routes miss entirely — a bare 404 with no handler ever running.
+  const app = Fastify({ loggerInstance, routerOptions: { maxParamLength: 512 } });
   registerErrorHandler(app);
 
   // The database handle follows the app's lifecycle: close() releases it so
@@ -75,17 +75,13 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(accountRoutes);
   await app.register(chatRoutes);
-  await app.register(contactRoutes);
   await app.register(automationRoutes);
   await app.register(llmRoutes);
   await app.register(pipedreamRoutes);
   await app.register(onOfficeRoutes);
   await app.register(settingsRoutes);
   await app.register(draftRoutes);
-  await app.register(threadRoutes);
-  await app.register(waitingRoutes);
   await app.register(memoryRoutes);
-  await app.register(newsletterRoutes);
   await app.register(libraryRoutes);
   await app.register(mailRoutes);
   await app.register(eventRoutes);

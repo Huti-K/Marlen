@@ -289,11 +289,12 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
               send({ type: "thinking" });
             }
           },
-          onToolStart: (toolCallId, toolName, parameters) => {
+          onToolStart: (toolCallId, toolName, toolLabel, parameters) => {
             send({
               type: "tool_start",
               toolCallId,
               toolName,
+              toolLabel,
               parameters,
               contentOffset: streamedText.length,
             });

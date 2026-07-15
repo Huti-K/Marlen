@@ -20,7 +20,7 @@ vi.mock("../../src/pipedream/connect.js", () => ({
   listAccounts: () => listAccountsMock(),
 }));
 
-const { db, schema, closeDb } = await import("../../src/db/index.js");
+const { closeDb } = await import("../../src/db/index.js");
 const { createMemory } = await import("../../src/db/memories.js");
 const { buildKnowledgeContext, buildKnowledgeTools } = await import(
   "../../src/agent/knowledgeTools.js"
@@ -35,28 +35,6 @@ afterAll(() => {
 
 function account(id: string, name: string): ConnectedAccount {
   return { id, app: "gmail", appName: "Gmail", name, healthy: true, createdAt: "2026-01-01" };
-}
-
-async function seedContact(
-  address: string,
-  overrides: Partial<typeof schema.contacts.$inferInsert> = {},
-) {
-  await db.insert(schema.contacts).values({
-    address,
-    displayName: "",
-    kind: "person",
-    category: "other",
-    categorySource: "auto",
-    gist: "",
-    accounts: "[]",
-    messageCount: 0,
-    sentCount: 0,
-    lastContactAt: "",
-    inputHash: "",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-    ...overrides,
-  });
 }
 
 const tools = buildKnowledgeTools();
@@ -74,9 +52,8 @@ describe("buildKnowledgeContext — contact grouping", () => {
     expect(await buildKnowledgeContext()).toBe("");
   });
 
-  it("groups contact-scoped memories after account-scoped ones, using the contacts display name when known", async () => {
+  it("groups contact-scoped memories after account-scoped ones, labeled by address", async () => {
     listAccountsMock.mockResolvedValue([account("acct-ctx", "work@example.com")]);
-    await seedContact("anna@firm.de", { displayName: "Anna Becker" });
 
     await createMemory("Global standing fact", "user", null, null);
     await createMemory("Account-only fact", "user", "acct-ctx", null);
@@ -86,21 +63,14 @@ describe("buildKnowledgeContext — contact grouping", () => {
     expect(context).toContain("Global standing fact");
     expect(context).toContain("Memory for work@example.com");
     expect(context).toContain("Account-only fact");
-    expect(context).toContain("Memory about Anna Becker <anna@firm.de>");
+    expect(context).toContain("Memory about anna@firm.de");
     expect(context).toContain("Anna prefers Du");
 
     // Account-scoped section precedes the contact-scoped section.
     const accountIdx = context.indexOf("Memory for work@example.com");
-    const contactIdx = context.indexOf("Memory about Anna Becker");
+    const contactIdx = context.indexOf("Memory about anna@firm.de");
     expect(accountIdx).toBeGreaterThan(-1);
     expect(contactIdx).toBeGreaterThan(accountIdx);
-  });
-
-  it("falls back to the bare address when the contact has no contacts row", async () => {
-    listAccountsMock.mockResolvedValue([]);
-    await createMemory("Unknown contact fact", "user", null, "ghost@example.com");
-    const context = await buildKnowledgeContext();
-    expect(context).toContain("Memory about ghost@example.com");
   });
 });
 
@@ -114,13 +84,12 @@ describe("memory_save — contact scope", () => {
     );
   });
 
-  it("saves a contact-scoped memory, using the contacts display name in the confirmation", async () => {
-    await seedContact("carla@vendor.com", { displayName: "Carla Diaz" });
+  it("saves a contact-scoped memory, using the normalized address in the confirmation", async () => {
     const result = await memorySave.execute("call-1", {
       content: "Always CCs her assistant",
       contact: "Carla@Vendor.com",
     } as never);
-    expect(textOf(result)).toContain("Carla Diaz <carla@vendor.com>");
+    expect(textOf(result)).toContain("carla@vendor.com");
     expect(textOf(result)).toContain("Always CCs her assistant");
   });
 

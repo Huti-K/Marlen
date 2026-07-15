@@ -9,7 +9,7 @@ A locally-run AI email agent for **any email provider** — Gmail, Outlook / Mic
 
 ```
 apps/
-  server/   Fastify API: chat (SSE), Pipedream Connect, mail sync, automations + scheduler
+  server/   Fastify API: chat (SSE), Pipedream Connect, live mail tools, automations + scheduler
   web/      Vite/React UI: Home briefing, Automations, Settings + a persistent chat rail
 packages/
   shared/   Types shared between server and web
@@ -48,9 +48,10 @@ pnpm start   # everything on http://localhost:3001
 
 - Each chat conversation gets its own **pi Agent**. On creation, the server connects to Pipedream's MCP server (`https://remote.mcp.pipedream.net/v3`) **once per connected account**, pinned with `x-pd-account-id` and in `tools-only` mode (structured parameters, no sub-agent), lists the tools, and bridges them into pi `AgentTool`s. With several accounts of the same app, tool names carry an account suffix (`gmail-find-email__work`) and every description names the account it acts as.
 - **Automations** are cron-scheduled standing instructions ("summarize unread mail every weekday at 8am"). Each run spins up a fresh agent, executes the instruction, and stores the result in SQLite (visible under *Recent runs*).
-- A **local mail mirror** syncs each connected account into SQLite (`mail_*` tables + FTS5 full-text search) through provider registries (drivers today: Gmail, Outlook). It currently powers waiting-for detection; briefing and enrichment build on it.
-- Provider-specific code (drafts, sync, attachments) lives behind registries in `src/email/` — new providers register in the `register*.ts` files, nothing else hardcodes a provider.
-- Conversation transcripts, automations, and the mail mirror live in `data/trailin.db`. Agent context (tool-call history) is in-memory per conversation and resets on server restart.
+- **Mail is read live** — the agent's read tools are the per-account Pipedream MCP tools; nothing is mirrored locally. Deterministic reads (the draft-vs-sent learning loop, voice learning) go through small live read drivers per provider (today: Gmail, Outlook).
+- **Web search works out of the box** — the agent (and its delegate research workers) carry a `web_search` tool that needs no key: searches go through Exa's keyless public MCP endpoint by default, or the Brave Search API when `BRAVE_SEARCH_API_KEY` is set (`src/websearch/`).
+- Provider-specific code (drafts, read, attachments) lives behind registries in `src/email/` — new providers register in the `register*.ts` files, nothing else hardcodes a provider.
+- Conversation transcripts, automations, drafts, and memories live in `data/trailin.db`. Agent context (tool-call history) is in-memory per conversation and resets on server restart.
 
 ## Development
 

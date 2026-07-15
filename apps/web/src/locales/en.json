@@ -16,17 +16,9 @@
       "title": "Home",
       "description": "Drafts waiting for your review, and what the agent has been doing."
     },
-    "email": {
-      "title": "Mails",
-      "description": "Your inboxes: read threads, review drafts, and compose."
-    },
     "automations": {
       "title": "Automations",
       "description": "Run the agent on a schedule with a standing instruction."
-    },
-    "contacts": {
-      "title": "Contacts",
-      "description": "The people you correspond with, and every newsletter that mails you."
     },
     "knowledge": {
       "title": "Knowledge",
@@ -106,10 +98,6 @@
       "matches_other": "{{count}} matches",
       "copy": "Copy",
       "copied": "Copied"
-    },
-    "mention": {
-      "empty": "No matching emails.",
-      "loading": "Searching your mail…"
     },
     "refs": {
       "remove": "Remove {{label}}"
@@ -210,8 +198,8 @@
   "search": {
     "openButton": "Search",
     "title": "Search",
-    "placeholder": "Search chats, briefings, drafts, mail, documents, memories…",
-    "hint": "Search across your chats, briefings, drafts, mail, documents and memories.",
+    "placeholder": "Search chats, briefings, drafts, documents, memories…",
+    "hint": "Search across your chats, briefings, drafts, documents and memories.",
     "shortcuts": "Go to",
     "topHit": "Top hit",
     "recent": "Recent",
@@ -230,7 +218,6 @@
       "run": "Open briefing",
       "chat": "Open chat",
       "draft": "Open draft",
-      "mail": "Open in mailbox",
       "document": "Open document",
       "memory": "Open memory"
     },
@@ -238,7 +225,6 @@
       "run": "Briefings",
       "chat": "Chats",
       "draft": "Drafts",
-      "mail": "Mail",
       "document": "Documents",
       "memory": "Memories"
     }
@@ -291,9 +277,6 @@
     "finishConnecting": "Complete the connection in the window that just opened, it closes by itself when you're done.",
     "healthy": "Healthy",
     "unhealthy": "Unhealthy",
-    "importing": "Importing mail…",
-    "syncStale": "Sync failing · {{when}}",
-    "syncNever": "Sync failing",
     "disconnect": "Disconnect",
     "disconnectConfirm": "Disconnect this account?",
     "projectFooter": "Pipedream project <code>{{projectId}}</code> · {{environment}} · {{source}}",
@@ -315,7 +298,6 @@
     "setupBanner": "Trailin isn't fully set up, the agent can't reach your mail yet.",
     "setupBannerCta": "Finish setup",
     "offlineBanner": "Can't reach your email provider right now, check your connection.",
-    "importingBanner": "Importing your mail — this page fills itself in as the first sync lands.",
     "missedBanner_one": "1 automation didn't run while the app was closed.",
     "missedBanner_other": "{{count}} automations didn't run while the app was closed.",
     "missedRun": "Run now",
@@ -345,91 +327,10 @@
     "briefingRefresh": "Update briefing",
     "briefingNext": "Next briefing: {{when}}",
     "openInChat": "Open in chat",
-    "openConversationsTitle": "Open conversations",
-    "waitingOnYouTitle": "Waiting on you",
-    "waitingOnYouDraftReply": "Draft reply",
-    "waitingOnYouDraftReplyPrompt": "Draft a reply to {{counterpart}}'s email \"{{subject}}\" in {{account}} (thread {{threadId}}). It needs a reply: {{gist}}",
-    "waitingOnYouDismiss": "Dismiss",
-    "waitingTitle": "Waiting on others",
-    "waitingNudge": "Draft a follow-up",
-    "waitingNudgePrompt": "Draft a friendly follow-up to {{counterpart}} for the thread \"{{subject}}\" in {{account}}.",
     "glance": {
       "drafts_one": "{{count}} draft to review",
       "drafts_other": "{{count}} drafts to review",
-      "needsReply_one": "{{count}} needs your reply",
-      "needsReply_other": "{{count}} need your reply",
-      "waiting_one": "{{count}} waiting on a reply",
-      "waiting_other": "{{count}} waiting on replies",
       "nextRun": "Next run {{when}}"
-    }
-  },
-  "email": {
-    "lanes": {
-      "inbox": "Inbox",
-      "drafts": "Drafts"
-    },
-    "filters": {
-      "recent": "Recent",
-      "unread": "Unread",
-      "needs_attention": "Needs attention"
-    },
-    "allAccounts": "All accounts",
-    "accountFilterLabel": "Mailbox",
-    "noSubject": "(no subject)",
-    "emptyTitle": "The inbox is quiet",
-    "emptyBody": "Threads from your connected mailboxes appear here as they sync.",
-    "emptyFiltered": "No threads match this filter.",
-    "importingTitle": "Still importing",
-    "importingBody": "This mailbox is syncing for the first time — threads appear here once the import lands.",
-    "syncError": "Mail sync for {{account}} is failing — showing the last mirrored state.",
-    "triage": {
-      "needs_reply": "Needs reply",
-      "needs_action": "Needs action",
-      "waiting_on": "Waiting",
-      "fyi": "FYI",
-      "done": "Done"
-    },
-    "thread": {
-      "back": "Back",
-      "reply": "Reply",
-      "replyUnavailable": "Drafts aren't supported for this mailbox",
-      "askAgent": "Ask the agent about this thread",
-      "openInMailbox": "Open in mailbox",
-      "messageCount_one": "{{count}} message",
-      "messageCount_other": "{{count}} messages"
-    },
-    "replyNoRecipient": "No recipient could be derived from this thread.",
-    "replyStartedToast": "Reply draft created.",
-    "actions": {
-      "archive": "Archive",
-      "delete": "Delete",
-      "move": "Move to folder",
-      "labels": "Labels",
-      "markUnread": "Mark unread",
-      "forward": "Forward"
-    },
-    "comingSoon": "This action isn't wired up in Trailin yet — use \"Open in mailbox\" for now. The button marks where it will land.",
-    "drafts": {
-      "emptyTitle": "No open drafts",
-      "emptyBody": "Drafts you or the agent write appear here for review before sending."
-    },
-    "compose": {
-      "trigger": "New draft",
-      "title": "New draft",
-      "from": "From",
-      "to": "To",
-      "cc": "Cc",
-      "bcc": "Bcc",
-      "showCcBcc": "Cc/Bcc",
-      "subject": "Subject",
-      "subjectPlaceholder": "Subject",
-      "bodyLabel": "Message",
-      "bodyPlaceholder": "Write your message…",
-      "recipientPlaceholder": "Add a recipient…",
-      "removeRecipient": "Remove {{address}}",
-      "saveDraft": "Save draft",
-      "savedToast": "Draft saved.",
-      "noAccounts": "No connected mailbox supports drafts yet."
     }
   },
   "drafts": {
@@ -448,10 +349,7 @@
     "refine": "Refine with AI",
     "refineInChat": "Refine in the chat that wrote it",
     "refinePrompt": "Please refine the draft \"{{subject}}\"",
-    "save": "Save",
-    "conversation_one": "Conversation · {{count}}",
-    "conversation_other": "Conversation · {{count}}",
-    "threadLoadFailed": "Couldn't load the conversation this replies to."
+    "save": "Save"
   },
   "automations": {
     "new": "New automation",
@@ -505,65 +403,6 @@
       "error": "error"
     }
   },
-  "contacts": {
-    "lanes": {
-      "people": "People",
-      "newsletters": "Newsletters"
-    },
-    "searchPlaceholder": "Search people…",
-    "category": {
-      "all": "All",
-      "colleague": "Colleague",
-      "client_business": "Client / business",
-      "personal": "Personal",
-      "service_vendor": "Service / vendor",
-      "other": "Other"
-    },
-    "emptyTitle": "No contacts yet",
-    "emptyBody": "People you exchange mail with show up here once your accounts sync.",
-    "detail": {
-      "back": "Back to contacts",
-      "messages_one": "{{count}} message",
-      "messages_other": "{{count}} messages",
-      "sent_one": "{{count}} sent",
-      "sent_other": "{{count}} sent",
-      "lastContact": "Last contact {{when}}",
-      "nameLabel": "Name",
-      "namePlaceholder": "Full name",
-      "nameHint": "Overrides the name detected from mail.",
-      "categoryLabel": "Category",
-      "categorySourceUser": "Set manually",
-      "categorySourceAuto": "Detected automatically",
-      "threadsTitle": "Recent threads",
-      "noThreads": "No recent threads yet.",
-      "loadError": "Couldn't load this contact.",
-      "delete": "Delete contact",
-      "deleteConfirmTitle": "Delete {{name}}?",
-      "deleteConfirmBody": "Removes {{name}} from your contacts. Their mail history stays, and they'll reappear only if you add them again."
-    },
-    "add": {
-      "trigger": "Add contact",
-      "title": "Add contact",
-      "addressLabel": "Email address",
-      "addressPlaceholder": "name@example.com",
-      "nameLabel": "Name",
-      "namePlaceholder": "Full name (optional)",
-      "submit": "Add contact"
-    },
-    "newsletters": {
-      "searchPlaceholder": "Search newsletters…",
-      "emptyTitle": "Nothing to unsubscribe",
-      "emptyBody": "Newsletters with a one-click unsubscribe show up here as your accounts sync. Requesting one removes it from this list.",
-      "frequency_one": "{{count}} mail · {{when}}",
-      "frequency_other": "{{count}} mails · {{when}}",
-      "unsubscribe": "Unsubscribe",
-      "unsubscribeConfirmTitle": "Unsubscribe from {{name}}?",
-      "unsubscribeConfirmBody": "Trailin sends a one-click unsubscribe request to {{name}}. This can't be undone from here.",
-      "unsubscribeRequested": "Unsubscribe requested",
-      "stillReceiving": "Still receiving mail",
-      "stillReceivingHint": "New mail arrived well after the unsubscribe request — it likely didn't work. You can request again."
-    }
-  },
   "memory": {
     "addPlaceholder": "Add something Trailin should remember…",
     "add": "Add memory",
@@ -613,8 +452,7 @@
         "filterContactsHint": "Show only contact memories",
         "contacts": "Contacts",
         "contact": "Contact",
-        "contactPlaceholder": "Contact's email address",
-        "unknownContactHint": "Not in your contacts — double-check the address. Saving still works for someone new."
+        "contactPlaceholder": "Contact's email address"
       },
       "library": {
         "title": "Documents",
@@ -634,7 +472,6 @@
     "advancedLink": "Advanced: use my own Pipedream project",
     "allSetTitle": "You're all set",
     "allSetBody": "The agent can now read your mail, draft replies, and answer your questions.",
-    "allSetImporting": "Importing your mail now — Home fills in over the next few minutes.",
     "allSetReadOnly": "Trailin starts read-only: the agent drafts and answers, but never sends or changes anything until you allow it in Settings → Permissions.",
     "openApp": "Open Trailin",
     "skip": "Skip for now, I'll look around first",
@@ -706,18 +543,6 @@
       "label": "Timezone",
       "description": "Automations run and times are shown in this timezone",
       "localTime": "Local time {{time}}"
-    },
-    "syncBackfill": {
-      "label": "Mail history",
-      "description": "How far back an account's mail is mirrored — changing this re-syncs all accounts",
-      "option_one": "{{count}} day",
-      "option_other": "{{count}} days"
-    },
-    "contactThreads": {
-      "label": "Contact conversations",
-      "description": "How many recent conversations a contact page shows",
-      "option_one": "{{count}} conversation",
-      "option_other": "{{count}} conversations"
     },
     "backup": {
       "label": "Backup",

@@ -2,7 +2,6 @@ import type { AgentCard } from "./cards.js";
 
 export * from "./cards.js";
 export * from "./onoffice.js";
-export * from "./unsubscribe.js";
 
 /**
  * Suggested email apps, shown before the user searches the full catalog.
@@ -110,34 +109,6 @@ export interface ConnectedAccount {
   createdAt: string;
 }
 
-/** Mailbox-mirror sync health for one connected account (email/sync/mailStore.ts's state row). */
-export interface AccountSyncHealth {
-  status: "idle" | "syncing" | "error";
-  /** Provider/transport failure from the most recent attempt; null when it succeeded. */
-  error: string | null;
-  /** When the last successful sync completed; null before the first success. */
-  lastSyncedAt: string | null;
-}
-
-/**
- * Whether a mail account's first import is still on its way: no sync state at
- * all (the engine hasn't picked the account up yet) or no successful pass so
- * far. A failing first sync doesn't count — that's surfaced as an error, not
- * as progress.
- */
-export function isFirstSyncPending(sync: AccountSyncHealth | null | undefined): boolean {
-  return !sync || (sync.lastSyncedAt === null && sync.status !== "error");
-}
-
-/**
- * GET /api/pipedream/accounts row: the account plus its mirror sync health,
- * attached once the sync engine has a state row for it (mail apps only) — so
- * the Connections screen can show "sync failing / last synced" per account.
- */
-export interface ConnectedAccountWithSync extends ConnectedAccount {
-  sync?: AccountSyncHealth;
-}
-
 /** Persisted color assignment for a connected account. */
 export interface AccountColor {
   /** Pipedream account id. */
@@ -147,24 +118,12 @@ export interface AccountColor {
 }
 
 /**
- * A user-written note on a connected account describing what it's for. Unlike
- * the app/name (which come from Pipedream), this is app-local and, crucially,
- * fed to the agent as tool context so it knows why the connection exists
- * (e.g. a Notion account connected "to save meeting notes").
- */
-export interface AccountDescription {
-  /** Pipedream account id. */
-  accountId: string;
-  /** Free-text purpose, e.g. "Save meeting notes here". */
-  text: string;
-}
-
-/**
  * Per-account voice: the signature applied mechanically by the create-draft
- * tool. Like AccountDescription this is app-local. Writing style is NOT a
- * field here — style directives live as account-scoped memories, learned from
- * sent mail by voiceLearn or written by the user, and reach the agent through
- * the memory section of its system prompt.
+ * tool. Unlike the app/name (which come from Pipedream), this is app-local.
+ * Writing style is NOT a field here — style directives live as
+ * account-scoped memories, learned from sent mail by voiceLearn or written
+ * by the user, and reach the agent through the memory section of its system
+ * prompt.
  */
 export interface AccountVoice {
   /** Pipedream account id. */
@@ -182,18 +141,16 @@ export interface AccountVoice {
 /** One hit from the global search (GET /api/search). */
 export interface SearchResult {
   /** What the hit is; decides the icon and where clicking navigates. */
-  type: "chat" | "run" | "draft" | "mail" | "document" | "memory";
-  /** conversationId | automation run id | draft id | provider message id (mail) | document id | memory id. */
+  type: "chat" | "run" | "draft" | "document" | "memory";
+  /** conversationId | automation run id | draft id | document id | memory id. */
   id: string;
   title: string;
   /** Short plain-text context around the match. */
   snippet: string;
   /** ISO timestamp for ordering, when the source has one. */
   date?: string;
-  /** Owning email account (draft and mail hits), for inbox chips and navigation. */
+  /** Owning email account (draft hits), for inbox chips and navigation. */
   accountId?: string;
-  /** Deep link to the provider's webmail UI (mail hits only); absent when the account's app has no known web UI. */
-  webUrl?: string;
 }
 
 export interface ConnectTokenResponse {
@@ -222,6 +179,8 @@ export interface Conversation {
 export interface ChatToolCall {
   id: string;
   name: string;
+  /** Human-readable label from the tool definition; display falls back to `name` when absent. */
+  label?: string;
   isError: boolean;
   done: boolean;
   detail?: string;
@@ -267,18 +226,6 @@ export interface EmailRef {
   /** "Name <address>" or a bare address. */
   from?: string;
   date?: string;
-}
-
-/** One row of GET /api/mail/suggest — an email the composer's @-mention can attach. */
-export interface MailSuggestion {
-  threadId: string;
-  accountId: string;
-  /** Present for message-level matches (keyword search); absent for recent-thread rows. */
-  messageId?: string;
-  subject: string;
-  from: string;
-  date: string;
-  snippet?: string;
 }
 
 /** One persisted card of an assistant turn, keyed by the tool call that produced it. */
@@ -358,59 +305,6 @@ export interface AccountDrafts {
   error?: string;
 }
 
-/** One sent thread still awaiting a counterpart's reply (Home "Waiting on others"). */
-export interface WaitingThread {
-  threadId: string;
-  subject: string;
-  /** Display name/address of the recipient of the last sent message. */
-  counterpart: string;
-  /** When the user's last (unanswered) message was sent. */
-  lastSentAt: string;
-  /** Deep link to the thread in the provider's web UI. */
-  webUrl: string;
-}
-
-/** Pending threads of one connected account. */
-export interface AccountWaiting {
-  account: string;
-  accountId: string;
-  items: WaitingThread[];
-  error?: string;
-}
-
-/**
- * One thread where the newest message is inbound and enrichment triaged it
- * needs_reply (Home "Waiting on you" — the other lane of "Open
- * conversations", alongside WaitingThread/AccountWaiting above).
- */
-export interface WaitingOnYouThread {
-  threadId: string;
-  /** Connected account this thread belongs to; resolves the row's colour dot. */
-  accountId: string;
-  subject: string;
-  /** Display name/address of the message's sender. */
-  counterpart: string;
-  /** One-sentence summary from enrichment. */
-  gist: string;
-  urgency: ThreadUrgency;
-  /** Deep link to the thread in the provider's web UI. */
-  webUrl: string;
-}
-
-/** Threads needing the owner's reply, for one connected account (Home "Waiting on you"). */
-export interface AccountWaitingOnYou {
-  account: string;
-  accountId: string;
-  items: WaitingOnYouThread[];
-  error?: string;
-}
-
-/** GET /api/waiting's response: the two lanes of Home's "Open conversations" section. */
-export interface OpenConversations {
-  waitingOnYou: AccountWaitingOnYou[];
-  waitingOnOthers: AccountWaiting[];
-}
-
 /** One LLM provider known to the pi SDK, with its current auth state. */
 export interface LlmProviderInfo {
   id: string;
@@ -458,12 +352,6 @@ export interface AppStatus {
    * accounts failed — a transient outage, not a setup problem.
    */
   emailAccountsKnown: boolean;
-  /**
-   * How many of `emailAccounts` are still waiting for their first successful
-   * mirror sync (see isFirstSyncPending) — the UI shows import progress while
-   * this is above zero.
-   */
-  emailAccountsImporting: number;
   provider: string;
   model: string;
 }
@@ -493,7 +381,7 @@ export interface MemoryEntry {
   source: "user" | "agent";
   /** Connected-account id this fact is scoped to; null = not account-scoped. */
   accountId: string | null;
-  /** Contact address (contacts.address, lowercased) this fact is about; null = not contact-scoped. */
+  /** Normalized (lowercased) email address this fact is about; null = not contact-scoped. */
   contactId: string | null;
   /** Times the agent has reported relying on this memory (via memory_used) — the pruning signal. */
   usedCount: number;
@@ -545,112 +433,7 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/**
- * Whether an address is a real correspondent or a bulk/newsletter sender, as
- * the contacts pipeline (server: email/contacts/) judged it. Authoritative —
- * not derived from a no-reply regex, which is only a prior the judgment may
- * consider.
- */
-export const CONTACT_KINDS = ["person", "bulk"] as const;
-export type ContactKind = (typeof CONTACT_KINDS)[number];
-
-/** Relationship bucket for a "person" contact; not meaningful for "bulk". */
-export const CONTACT_CATEGORIES = [
-  "colleague",
-  "client_business",
-  "personal",
-  "service_vendor",
-  "other",
-] as const;
-export type ContactCategory = (typeof CONTACT_CATEGORIES)[number];
-
-/**
- * One row of the mailbox-derived contacts core (server: email/contacts/) —
- * one per correspondent address, never per person. Aggregates
- * (messageCount/sentCount/lastContactAt/accounts) are re-derived from the
- * mailbox mirror; kind/category/gist are LLM judgments that persist across
- * re-derivation. `categorySource: "user"` marks the one field the Contacts
- * page can override, which then survives future judgments.
- */
-export interface Contact {
-  /** Normalized (lowercased) email address — the contact's identity. */
-  address: string;
-  displayName: string;
-  kind: ContactKind;
-  category: ContactCategory;
-  categorySource: "auto" | "user";
-  /** One LLM-written relationship line, e.g. "your accountant; formal tone". */
-  gist: string;
-  /** Connected-account ids this address corresponds on. */
-  accounts: string[];
-  messageCount: number;
-  /** Messages the user sent to this address. */
-  sentCount: number;
-  lastContactAt: string;
-  /** Model id that produced kind/category/gist; null before the first judgment. */
-  model: string | null;
-  error: string | null;
-  enrichedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** One thread involving a contact (GET /api/contacts/:address's recentThreads). */
-export interface ContactThread {
-  /** Provider thread id. */
-  threadId: string;
-  accountId: string;
-  subject: string;
-  /** The thread's last-message timestamp. */
-  date: string;
-  /** Enrichment gist, when the thread has been triaged; "" otherwise. */
-  gist: string;
-  /** Deep link to the thread in the provider's web UI; "" when unknown. */
-  webUrl: string;
-}
-
-/** GET /api/contacts/:address's response. */
-export interface ContactDetail extends Contact {
-  /** Up to 15 threads involving this address, newest first. */
-  recentThreads: ContactThread[];
-}
-
 /** Topics broadcast over GET /api/events when server-side data changes. */
-/**
- * Lifecycle triage of a mail thread relative to the user, as the enrichment
- * pipeline (server: email/enrich/) judged it. Orthogonal to urgency: triage
- * says WHO the ball is with, urgency says how hot it is.
- */
-export const THREAD_TRIAGES = ["needs_reply", "needs_action", "waiting_on", "fyi", "done"] as const;
-export type ThreadTriage = (typeof THREAD_TRIAGES)[number];
-
-export const THREAD_URGENCIES = ["high", "normal", "low"] as const;
-export type ThreadUrgency = (typeof THREAD_URGENCIES)[number];
-
-/** Thread-list filters accepted by GET /api/threads. */
-export const MAIL_THREAD_FILTERS = ["recent", "unread", "needs_attention"] as const;
-export type MailThreadFilter = (typeof MAIL_THREAD_FILTERS)[number];
-
-/** One row of GET /api/threads — a mailbox-mirror thread overview. */
-export interface MailThreadOverview {
-  accountId: string;
-  /** Provider thread id. */
-  threadId: string;
-  subject: string;
-  participants: string[];
-  messageCount: number;
-  lastMessageAt: string;
-  hasUnread: boolean;
-  lastFromMe: boolean;
-  /** Enrichment gist; null until the pipeline has judged this thread. */
-  gist: string | null;
-  triage: ThreadTriage | null;
-  urgency: ThreadUrgency | null;
-  deadline: string | null;
-  /** Deep link to the thread in the provider's web UI; "" when unknown. */
-  webUrl: string;
-}
-
 /** Provider handles of a just-created draft (POST /api/drafts/:accountId). */
 export interface CreatedDraft {
   draftId: string;
@@ -663,9 +446,6 @@ export interface CreatedDraft {
 export type ServerEventTopic =
   | "runs" // automation run started/finished (activity feed, run history)
   | "drafts" // a Gmail draft was created or deleted
-  | "mail" // the local mailbox mirror changed (messages synced/updated/removed)
-  | "mail_state" // enrichment updated thread summaries/triage (email/enrich/)
-  | "contacts" // contacts derived/enriched, or a category overridden (email/contacts/)
   | "memories" // agent memory saved/updated/deleted
   | "library" // library document written/changed
   | "conversations" // chat/automation conversation list changed
@@ -684,6 +464,8 @@ export type ChatStreamEvent =
       type: "tool_start";
       toolCallId: string;
       toolName: string;
+      /** Human-readable label from the tool definition (falls back to the name server-side). */
+      toolLabel: string;
       parameters?: unknown;
       contentOffset: number;
     }

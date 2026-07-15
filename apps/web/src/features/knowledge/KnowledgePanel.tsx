@@ -1,7 +1,6 @@
 import type {
   AccountColor,
   ConnectedAccount,
-  Contact,
   LibraryDocument,
   LibrarySearchHit,
   LibraryStatus,
@@ -289,20 +288,8 @@ function MemoryStrip({
     (accountId: string) => colors.find((c) => c.accountId === accountId)?.hex,
     [colors],
   );
-  // The contacts directory, fetched once for display names only — a contact
-  // memory is keyed by address, so an unresolved (or since-deleted) contact
-  // still shows as its bare address.
-  const [contacts, setContacts] = React.useState<Contact[]>([]);
-  React.useEffect(() => {
-    api
-      .contacts()
-      .then(setContacts)
-      .catch(() => {});
-  }, []);
-  const contactLabel = React.useCallback(
-    (address: string) => contacts.find((c) => c.address === address)?.displayName || address,
-    [contacts],
-  );
+  // Contact memories are keyed by the normalized address itself.
+  const contactLabel = React.useCallback((address: string) => address, []);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -611,7 +598,6 @@ function MemoryStrip({
             initialContactId={scopeForFilter(filter).contactId}
             emailAccounts={emailAccounts}
             accountColor={accountColor}
-            contacts={contacts}
             busy={adding}
             onSave={(content, accountId, contactId) => void add(content, accountId, contactId)}
             onCancel={() => setComposerOpen(false)}
@@ -719,7 +705,6 @@ function MemoryStrip({
                                   }
                                   resolveColor={accountColor}
                                   emailAccounts={emailAccounts}
-                                  contacts={contacts}
                                   filterActive={
                                     entry.accountId !== null
                                       ? filter === `account:${entry.accountId}`
@@ -761,7 +746,6 @@ function MemoryStrip({
                         contactLabel={entry.contactId ? contactLabel(entry.contactId) : null}
                         resolveColor={accountColor}
                         emailAccounts={emailAccounts}
-                        contacts={contacts}
                         filterActive={
                           entry.accountId !== null
                             ? filter === `account:${entry.accountId}`
@@ -849,7 +833,6 @@ function MemoryEditor({
   initialContactId,
   emailAccounts,
   accountColor,
-  contacts,
   busy,
   onSave,
   onCancel,
@@ -862,8 +845,6 @@ function MemoryEditor({
   initialContactId: string | null;
   emailAccounts: ConnectedAccount[];
   accountColor: (accountId: string) => string | undefined;
-  /** The contacts directory — drives the contact field's suggestions and typo hint. */
-  contacts: Contact[];
   /** True while a save is in flight — disables every control. */
   busy: boolean;
   onSave: (content: string, accountId: string | null, contactId: string | null) => void;
@@ -904,44 +885,6 @@ function MemoryEditor({
   const trimmedContact = contactAddress.trim().toLowerCase();
   const resolvedAccountId = scopeKind === "account" ? accountId || null : null;
   const resolvedContactId = scopeKind === "contact" ? trimmedContact || null : null;
-  // A typo'd address saves fine but never matches a real correspondent, so the
-  // memory would silently never fire. Warn — never block — once the address
-  // looks complete (a dot in the domain) and the directory doesn't know it;
-  // someone genuinely new is a legitimate scope too.
-  const contactDomain = trimmedContact.split("@")[1] ?? "";
-  const unknownContact =
-    scopeKind === "contact" &&
-    contactDomain.includes(".") &&
-    !contacts.some((c) => c.address === trimmedContact);
-
-  // Address suggestions from the contacts directory, matched on address or
-  // display name. People only — a memory is about a correspondent, and bulk
-  // senders (newsletters) aren't ones. Free text always stays valid —
-  // picking is a shortcut, not a requirement, so someone not in the
-  // directory yet can still be scoped.
-  const [suggestOpen, setSuggestOpen] = React.useState(false);
-  // -1 = nothing highlighted: Enter saves the typed text. Arrow keys (or
-  // hovering) highlight a row, and only then does Enter pick it instead.
-  const [suggestIndex, setSuggestIndex] = React.useState(-1);
-  const suggestions = React.useMemo(() => {
-    if (scopeKind !== "contact") return [];
-    return contacts
-      .filter(
-        (c) =>
-          c.kind === "person" &&
-          (c.address.includes(trimmedContact) ||
-            c.displayName.toLowerCase().includes(trimmedContact)),
-      )
-      .slice(0, 6);
-  }, [contacts, scopeKind, trimmedContact]);
-  const suggestShown = suggestOpen && suggestions.length > 0;
-
-  const pickSuggestion = (contact: Contact) => {
-    setContactAddress(contact.address);
-    setSuggestOpen(false);
-    setSuggestIndex(-1);
-    contactInputRef.current?.focus();
-  };
   const unchanged =
     trimmed === initialContent.trim() &&
     resolvedAccountId === (initialAccountId ?? null) &&
@@ -1038,102 +981,25 @@ function MemoryEditor({
         </div>
       </div>
       {scopeKind === "contact" && (
-        <>
-          <div className="relative">
-            <Input
-              ref={contactInputRef}
-              value={contactAddress}
-              onChange={(e) => {
-                setContactAddress(e.target.value);
-                setSuggestOpen(true);
-                setSuggestIndex(-1);
-              }}
-              onFocus={() => setSuggestOpen(true)}
-              onBlur={() => setSuggestOpen(false)}
-              onKeyDown={(e) => {
-                // The open suggestion list layers under the editor's own keys:
-                // arrows walk it, Enter picks only a highlighted row, Escape
-                // closes it first — a second Escape then cancels the editor.
-                if (suggestShown) {
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setSuggestIndex((i) => Math.min(suggestions.length - 1, i + 1));
-                    return;
-                  }
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setSuggestIndex((i) => Math.max(-1, i - 1));
-                    return;
-                  }
-                  if (e.key === "Enter" && suggestIndex >= 0) {
-                    e.preventDefault();
-                    const picked = suggestions[suggestIndex];
-                    if (picked) pickSuggestion(picked);
-                    return;
-                  }
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setSuggestOpen(false);
-                    return;
-                  }
-                }
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  save();
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  onCancel();
-                }
-              }}
-              disabled={busy}
-              placeholder={t("knowledge.sections.memory.contactPlaceholder")}
-              aria-label={t("knowledge.sections.memory.contactPlaceholder")}
-              role="combobox"
-              aria-expanded={suggestShown}
-              aria-autocomplete="list"
-              className="text-sm"
-            />
-            {suggestShown && (
-              <div
-                role="listbox"
-                aria-label={t("knowledge.sections.memory.contactPlaceholder")}
-                className="surface-pop absolute inset-x-0 top-full z-20 mt-2 max-h-56 overflow-y-auto p-1"
-              >
-                {suggestions.map((contact, index) => (
-                  <button
-                    key={contact.address}
-                    type="button"
-                    role="option"
-                    aria-selected={index === suggestIndex}
-                    tabIndex={-1}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onMouseEnter={() => setSuggestIndex(index)}
-                    onClick={() => pickSuggestion(contact)}
-                    className={cn(
-                      "flex w-full items-baseline gap-2 rounded-lg px-2.5 py-2 text-left transition-colors",
-                      index === suggestIndex ? "bg-accent/10" : "hover:bg-secondary",
-                    )}
-                  >
-                    <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                      {contact.displayName || contact.address}
-                    </span>
-                    {contact.displayName && (
-                      <span className="min-w-0 truncate text-xs text-muted-foreground">
-                        {contact.address}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {unknownContact && (
-            <p className="text-xs text-warning">
-              {t("knowledge.sections.memory.unknownContactHint")}
-            </p>
-          )}
-        </>
+        <Input
+          ref={contactInputRef}
+          value={contactAddress}
+          onChange={(e) => setContactAddress(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              save();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+          disabled={busy}
+          placeholder={t("knowledge.sections.memory.contactPlaceholder")}
+          aria-label={t("knowledge.sections.memory.contactPlaceholder")}
+          className="text-sm"
+        />
       )}
     </div>
   );
@@ -1147,7 +1013,6 @@ function MemoryRow({
   contactLabel,
   resolveColor,
   emailAccounts,
-  contacts,
   filterActive,
   onToggleFilter,
   showDotColumn,
@@ -1158,10 +1023,8 @@ function MemoryRow({
   highlighted?: boolean;
   /** Precomputed display name for `entry.accountId`, or null for a global entry. */
   accountLabel: string | null;
-  /** Precomputed display name (or bare address) for `entry.contactId`, or null. */
+  /** The address for `entry.contactId`, or null. */
   contactLabel: string | null;
-  /** The contacts directory — feeds the edit card's address suggestions and typo hint. */
-  contacts: Contact[];
   /** Resolves any account's dot color (falls back to grey) — feeds both this
    *  row's own dot and the edit card's per-account scope chips. */
   resolveColor: (accountId: string) => string | undefined;
@@ -1221,7 +1084,6 @@ function MemoryRow({
           initialContactId={entry.contactId}
           emailAccounts={emailAccounts}
           accountColor={resolveColor}
-          contacts={contacts}
           busy={saving}
           onSave={(content, accountId, contactId) => void save(content, accountId, contactId)}
           onCancel={() => setEditing(false)}

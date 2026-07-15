@@ -27,15 +27,16 @@ import {
  * Every AgentCard kind's shape rules, plus the CARD_KINDS registry that
  * cards.ts and focus.ts dispatch through. Each kind keeps the same split:
  * coerce* validates one untrusted entry, build* assembles the card its
- * emitting tool publishes (mailTools, pipedream/mcp.ts's draft tools,
- * briefingTool, choicesTool), and the kind's registry entry carries its
+ * emitting tool publishes (pipedream/mcp.ts's draft tools, briefingTool,
+ * choicesTool), and the kind's registry entry carries its
  * parse arm (parseAgentCard), focus extraction (focusFromCard) and the note
  * the tool appends to its result text.
  */
 
-// email_hits — a search result list. search_mail's hits are already-typed
-// local mail rows; parseAgentCard sees only `unknown` off the wire — both
-// funnel through buildEmailHitsCard so a hit's required-field rule lives once.
+// email_hits — a search result list. No live tool emits this kind any more;
+// the parse arm keeps historical conversations rendering. parseAgentCard sees
+// only `unknown` off the wire, funneled through buildEmailHitsCard so a hit's
+// required-field rule lives once.
 
 /** Validates a raw hit-shaped value. messageId/threadId/from are required; everything else degrades to empty rather than dropping the hit. */
 export function coerceEmailHit(value: unknown): EmailHit | undefined {
@@ -56,7 +57,7 @@ export function coerceEmailHit(value: unknown): EmailHit | undefined {
 
 export interface EmailHitsCardInput {
   account?: CardAccount;
-  /** Echoed back as the card's header; always set by search_mail, even to "". */
+  /** Echoed back as the card's header. */
   query?: string;
   /** Raw hit-shaped values, coerced one by one — malformed entries are dropped, not the whole card. */
   hits: unknown[];
@@ -88,8 +89,9 @@ function parseEmailHitsCard(
   });
 }
 
-// email_thread — a full thread read. read_thread's messages are already-typed
-// mirror rows; both it and parseAgentCard funnel through buildEmailThreadCard.
+// email_thread — a full thread read. No live tool emits this kind any more;
+// the parse arm keeps historical conversations rendering, funneled through
+// buildEmailThreadCard.
 
 /** Validates a raw message-shaped value. `from` and `body` are required; everything else degrades to empty rather than dropping the message. */
 export function coerceEmailThreadMessage(value: unknown): EmailThreadMessage | undefined {
@@ -246,7 +248,7 @@ function parseAttachmentsCard(
 }
 
 // choices — clickable buttons the user picks from. present_choices
-// (choicesTool.ts) resolves each option's ref from the local mailbox mirror
+// (choicesTool.ts) attaches each option's bare ref
 // via its own `account`/`threadId` parameters — never from a raw `ref` field
 // — while the parse arm trusts a stored card's own `ref` field, parsed via
 // parseEmailRef; both funnel an option's label/detail/reply through
