@@ -1,7 +1,8 @@
-import type { Contact, ContactCategory, ContactKind } from "@trailin/shared";
+import type { Contact, ContactCategory, ContactKind, MemoryEntry } from "@trailin/shared";
 import { lazyStatement, sqlite } from "../../db/index.js";
+import { likeContains } from "../../db/like.js";
 import { upsertSql } from "../../db/sql.js";
-import { escapeLikeInput } from "../../util.js";
+import { groupBy } from "../../util.js";
 import { decodeStringArray } from "../sync/rows.js";
 import { isEmailLike, parseAddressEntry } from "./addressMatch.js";
 
@@ -14,6 +15,11 @@ import { isEmailLike, parseAddressEntry } from "./addressMatch.js";
  * and never touched here. A contact whose messages later disappear (a
  * deleted sync page) keeps its row rather than being pruned, so an
  * enrichment or a user's category override is never silently lost.
+ *
+ * getContactContexts and searchContacts also join the agent-domain memories
+ * table (contact-scoped facts, memories.contact_id = contacts.address) —
+ * they're the only reads that know about it, so a caller never has to query
+ * contacts and memories separately to answer "what do we know about X".
  */
 
 interface RawMessageRow {
@@ -225,6 +231,56 @@ export function getContact(address: string): Contact | null {
   return row ? toContact(row) : null;
 }
 
+const MEMORY_COLUMNS = `
+  id, content, source, account_id AS accountId, contact_id AS contactId,
+  created_at AS createdAt, updated_at AS updatedAt
+`;
+
+/**
+ * Contact-scoped memories for a set of addresses, grouped by contact_id. No
+ * ORDER BY — a plain scan of the (small, unindexed-on-contact_id) memories
+ * table returns rows in insertion order, so a caller that caps the list
+ * keeps the oldest notes first.
+ */
+function memoriesByContactId(addresses: string[]): Map<string, MemoryEntry[]> {
+  if (addresses.length === 0) return new Map();
+  const placeholders = addresses.map(() => "?").join(", ");
+  const rows = sqlite
+    .prepare(`SELECT ${MEMORY_COLUMNS} FROM memories WHERE contact_id IN (${placeholders})`)
+    .all(...addresses) as MemoryEntry[];
+  return groupBy(rows, (row) => row.contactId as string);
+}
+
+export interface ContactContext {
+  address: string;
+  /** The address's "person" contact row; null when there is none, or it's "bulk". */
+  contact: Contact | null;
+  /** Contact-scoped memories for this address (possibly empty). */
+  memories: MemoryEntry[];
+}
+
+/**
+ * Per-participant context for a thread: one entry per input address, in the
+ * same order, pairing its "person" contact row (bulk/newsletter senders
+ * never count as a known contact here) with its contact-scoped memories.
+ */
+export function getContactContexts(addresses: string[]): ContactContext[] {
+  if (addresses.length === 0) return [];
+  const placeholders = addresses.map(() => "?").join(", ");
+  const contactRows = sqlite
+    .prepare(
+      `SELECT ${CONTACT_COLUMNS} FROM contacts WHERE address IN (${placeholders}) AND kind = 'person'`,
+    )
+    .all(...addresses) as ContactRow[];
+  const contactByAddress = new Map(contactRows.map((row) => [row.address, toContact(row)]));
+  const memories = memoriesByContactId(addresses);
+  return addresses.map((address) => ({
+    address,
+    contact: contactByAddress.get(address) ?? null,
+    memories: memories.get(address) ?? [],
+  }));
+}
+
 export interface ListContactsFilter {
   kind?: ContactKind;
   category?: ContactCategory;
@@ -245,13 +301,38 @@ export function listContacts(filter: ListContactsFilter): Contact[] {
   }
   if (filter.q) {
     clauses.push("(display_name LIKE @q ESCAPE '\\' OR address LIKE @q ESCAPE '\\')");
-    params.q = `%${escapeLikeInput(filter.q)}%`;
+    params.q = likeContains(filter.q);
   }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
   const rows = sqlite
     .prepare(`SELECT ${CONTACT_COLUMNS} FROM contacts ${where} ORDER BY last_contact_at DESC`)
     .all(params) as ContactRow[];
   return rows.map(toContact);
+}
+
+export interface ContactMatch {
+  contact: Contact;
+  memories: MemoryEntry[];
+}
+
+/**
+ * lookup_contact's read: address or display-name substring match (either
+ * side), newest contact first, capped at `limit` — then within that cap,
+ * real correspondents ("person") sort ahead of bulk/newsletter senders, each
+ * paired with its contact-scoped memories.
+ */
+export function searchContacts(query: string, limit: number): ContactMatch[] {
+  const needle = likeContains(query.toLowerCase());
+  const rows = sqlite
+    .prepare(
+      `SELECT ${CONTACT_COLUMNS} FROM contacts WHERE address LIKE ? ESCAPE '\\' ` +
+        `OR display_name LIKE ? ESCAPE '\\' ORDER BY last_contact_at DESC LIMIT ?`,
+    )
+    .all(needle, needle, limit) as ContactRow[];
+  const sorted = [...rows].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "person" ? -1 : 1));
+  const contacts = sorted.map(toContact);
+  const memories = memoriesByContactId(contacts.map((c) => c.address));
+  return contacts.map((contact) => ({ contact, memories: memories.get(contact.address) ?? [] }));
 }
 
 const overrideCategoryStmt = lazyStatement(`

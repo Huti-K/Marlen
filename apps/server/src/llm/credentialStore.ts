@@ -1,7 +1,9 @@
 import { promises as fs } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
+import { writeFileAtomic } from "../atomicFile.js";
 import { env } from "../env.js";
+import { KeyedJobs } from "../jobs.js";
 import { moduleLogger } from "../logger.js";
 
 const log = moduleLogger("credential-store");
@@ -11,18 +13,13 @@ const log = moduleLogger("credential-store");
  * Holds one credential per provider id; pi-ai reads it on every model call
  * and writes refreshed OAuth tokens back through `modify`.
  */
-export class FileCredentialStore implements CredentialStore {
-  private chain: Promise<unknown> = Promise.resolve();
+class FileCredentialStore implements CredentialStore {
+  private readonly jobs = new KeyedJobs();
 
   constructor(private readonly filePath: string) {}
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.chain.then(fn, fn);
-    this.chain = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
+    return this.jobs.enqueue(this.filePath, fn);
   }
 
   private async load(): Promise<Record<string, Credential>> {
@@ -39,20 +36,10 @@ export class FileCredentialStore implements CredentialStore {
   }
 
   private async save(all: Record<string, Credential>): Promise<void> {
-    await fs.mkdir(dirname(this.filePath), { recursive: true });
-    // Atomic write: a crash or power loss mid-write must never leave a
-    // truncated/corrupt auth.json — load() would then wipe every credential
-    // on the very next save. Write to a temp file in the same directory,
-    // fsync it, then rename over the target (same-filesystem rename is atomic).
-    const tempPath = `${this.filePath}.tmp`;
-    const handle = await fs.open(tempPath, "w", 0o600);
-    try {
-      await handle.writeFile(JSON.stringify(all, null, 2));
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    await fs.rename(tempPath, this.filePath);
+    // A crash or power loss mid-write must never leave a truncated/corrupt
+    // auth.json — load() would then wipe every credential on the very next
+    // save. writeFileAtomic (atomicFile.ts) makes the write atomic.
+    await writeFileAtomic(this.filePath, JSON.stringify(all, null, 2));
   }
 
   read(providerId: string): Promise<Credential | undefined> {

@@ -16,7 +16,7 @@ describe("buildApp", () => {
   it("answers unknown API routes with the { error } envelope", async () => {
     const res = await app.inject({ method: "GET", url: "/api/does-not-exist" });
     expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ error: "not found" });
+    expect(res.json()).toEqual({ error: "not found", requestId: expect.any(String) });
   });
 
   it("rejects a non-loopback Host header (DNS-rebinding guard)", async () => {

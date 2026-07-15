@@ -1,18 +1,18 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import {
-  type AgentCard,
-  BRIEFING_PRIORITIES,
-  type BriefingItem,
-  type BriefingRollup,
-  type CardAccount,
-  type ConnectedAccount,
-} from "@trailin/shared";
+import { Type } from "@sinclair/typebox";
+import type { BriefingItem, BriefingRollup, CardAccount, ConnectedAccount } from "@trailin/shared";
 import { threadWebUrl } from "../email/webLinks.js";
 import { listAccounts } from "../pipedream/connect.js";
 import { errorMessage, isNonEmptyString, isRecord } from "../util.js";
 import { findAccount } from "./accounts.js";
-import { coerceBriefingItem, coerceBriefingRollup, toCardAccount } from "./cards.js";
-import { defineTool, textResult } from "./toolResult.js";
+import { toCardAccount } from "./card/common.js";
+import {
+  buildBriefingCard,
+  CARD_KINDS,
+  coerceBriefingItem,
+  coerceBriefingRollup,
+} from "./card/kinds.js";
+import { textResult, tool } from "./toolkit.js";
 
 /**
  * Agent tool that publishes the structured "briefing" AgentCard — a triaged,
@@ -23,6 +23,13 @@ import { defineTool, textResult } from "./toolResult.js";
  * resolves `account` strings itself and drops what it can't resolve rather
  * than failing the call. Nothing here throws — a malformed argument yields a
  * text error result instead of an unhandled rejection.
+ *
+ * Every items/rollups field is schema-typed as optional and unknown-valued:
+ * coerceBriefingItem/coerceBriefingRollup are the real validators (they drop
+ * an entry missing its required fields or holding the wrong type), so the
+ * param schema only has to describe the shape to the model, not enforce it —
+ * enforcing it here would reject the whole call over one malformed entry
+ * instead of leaving that entry for the coercion pass to drop.
  */
 
 const PRIORITY_DESCRIPTION =
@@ -31,7 +38,57 @@ const PRIORITY_DESCRIPTION =
   'needs a decision or task from the user and nobody is waiting. "fyi" when it is worth ' +
   "knowing and needs nothing.";
 
-export const composeBriefingTool: AgentTool = defineTool({
+/**
+ * One message's shape, shared by the tier `items` and each rollup group's
+ * `items` — both render as the same clickable row, so both need the same
+ * per-thread fields. Every field is optional and unknown-valued on purpose:
+ * coerceBriefingItem is the real validator (it drops an entry missing its
+ * required fields), so this schema only describes the shape to the model.
+ */
+const briefingItemParam = Type.Object({
+  threadId: Type.Optional(
+    Type.Unknown({
+      description:
+        "The thread id from the search results, so the card's row actions (open thread, etc.) work.",
+    }),
+  ),
+  messageId: Type.Optional(Type.Unknown({ description: "The specific message's id, if known." })),
+  account: Type.Optional(
+    Type.Unknown({
+      description: "The connected account this arrived in — its email address or account id.",
+    }),
+  ),
+  sender: Type.Optional(
+    Type.Unknown({ description: 'Display name of the sender, e.g. "Ayşe Kaya".' }),
+  ),
+  senderEmail: Type.Optional(
+    Type.Unknown({ description: "The sender's email address, if known." }),
+  ),
+  subject: Type.Optional(Type.Unknown({ description: "The message subject." })),
+  gist: Type.Optional(
+    Type.Unknown({
+      description:
+        'One line, never a sentence: "topic: key fact → action" when it needs the ' +
+        'user (urgent/reply/action) — e.g. "contract: signs Fri, wants payment terms ' +
+        'fixed → reply" — or just "event" for fyi — e.g. "Hosting invoice paid ' +
+        '(€12,40)". State the fact and the action tersely; no explanation prose (never ' +
+        '"Anna replied regarding the contract, mentioning that she plans to sign on ' +
+        'Friday but wants the payment terms adjusted first").',
+    }),
+  ),
+  priority: Type.Optional(Type.Unknown({ description: PRIORITY_DESCRIPTION })),
+  deadline: Type.Optional(
+    Type.Unknown({
+      description: 'When it must be answered by, in the sender\'s own terms, e.g. "Friday 17:00".',
+    }),
+  ),
+  receivedAt: Type.Optional(Type.Unknown({ description: "When the message was received." })),
+  draftId: Type.Optional(
+    Type.Unknown({ description: "Set when this run saved a reply draft for the thread." }),
+  ),
+});
+
+export const composeBriefingTool: AgentTool = tool({
   name: "compose_briefing",
   label: "Compose the briefing",
   description:
@@ -42,166 +99,129 @@ export const composeBriefingTool: AgentTool = defineTool({
     `search results so the card's row actions work, and keep every item's gist to one line — ` +
     `see the gist field for the exact shape. The card IS the report: once you call this, don't ` +
     `re-list the items in prose in your final answer.`,
-  parameters: {
-    type: "object",
-    properties: {
-      headline: {
-        type: "string",
+  params: {
+    headline: Type.Optional(
+      Type.Unknown({
         description: 'One line on where the user stands, e.g. "Two things need you today".',
-      },
-      periodLabel: {
-        type: "string",
+      }),
+    ),
+    periodLabel: Type.Optional(
+      Type.Unknown({
         description: 'The window reviewed, in plain words, e.g. "since yesterday morning".',
-      },
-      scanned: {
-        type: "number",
-        description: "Total messages reviewed, including the ones rolled up.",
-      },
-      items: {
-        type: "array",
-        description: "Every noteworthy message, flat across accounts — the UI groups by priority.",
-        items: {
-          type: "object",
-          properties: {
-            threadId: {
-              type: "string",
+      }),
+    ),
+    scanned: Type.Optional(
+      Type.Unknown({ description: "Total messages reviewed, including the ones rolled up." }),
+    ),
+    items: Type.Array(briefingItemParam, {
+      description: "Every noteworthy message, flat across accounts — the UI groups by priority.",
+    }),
+    rollups: Type.Optional(
+      Type.Array(
+        Type.Object({
+          label: Type.Optional(
+            Type.Unknown({
               description:
-                "The thread id from the search results, so the card's row actions (open thread, etc.) work.",
-            },
-            messageId: { type: "string", description: "The specific message's id, if known." },
-            account: {
-              type: "string",
-              description:
-                "The connected account this arrived in — its email address or account id.",
-            },
-            sender: {
-              type: "string",
-              description: 'Display name of the sender, e.g. "Ayşe Kaya".',
-            },
-            senderEmail: { type: "string", description: "The sender's email address, if known." },
-            subject: { type: "string", description: "The message subject." },
-            gist: {
-              type: "string",
-              description:
-                'One line, never a sentence: "topic: key fact → action" when it needs the ' +
-                'user (urgent/reply/action) — e.g. "contract: signs Fri, wants payment terms ' +
-                'fixed → reply" — or just "event" for fyi — e.g. "Hosting invoice paid ' +
-                '(€12,40)". State the fact and the action tersely; no explanation prose (never ' +
-                '"Anna replied regarding the contract, mentioning that she plans to sign on ' +
-                'Friday but wants the payment terms adjusted first").',
-            },
-            priority: {
-              type: "string",
-              enum: [...BRIEFING_PRIORITIES],
-              description: PRIORITY_DESCRIPTION,
-            },
-            deadline: {
-              type: "string",
-              description:
-                'When it must be answered by, in the sender\'s own terms, e.g. "Friday 17:00".',
-            },
-            receivedAt: { type: "string", description: "When the message was received." },
-            draftId: {
-              type: "string",
-              description: "Set when this run saved a reply draft for the thread.",
-            },
-          },
-          required: ["threadId", "sender", "subject", "gist", "priority"],
+                'The kind of mail in this group, e.g. "Newsletters", "Receipts", ' +
+                '"Promotions", "Notifications".',
+            }),
+          ),
+          items: Type.Array(briefingItemParam, {
+            description:
+              "Every message in this group, listed individually — same shape as a tier item " +
+              "(real threadId, account, sender, subject, one-line gist), so each renders as its " +
+              "own actionable row under the group heading. Draw the gist from the list_threads " +
+              "line; don't full-read these just to roll them up.",
+          }),
+        }),
+        {
+          description:
+            "Low-value mail (newsletters, receipts, shipping updates, notifications) grouped by " +
+            "kind but still listed message by message, not collapsed to a count.",
         },
-      },
-      rollups: {
-        type: "array",
-        description:
-          "Low-value mail collapsed to a count instead of listed, e.g. newsletters or receipts.",
-        items: {
-          type: "object",
-          properties: {
-            account: {
-              type: "string",
-              description:
-                "The connected account this rollup covers — email address or account id.",
-            },
-            label: { type: "string", description: 'e.g. "Newsletters", "Receipts", "Promotions".' },
-            count: { type: "number", description: "How many messages this rollup covers." },
-            examples: {
-              type: "array",
-              items: { type: "string" },
-              description: "A few sender names, to show what was folded away.",
-            },
-          },
-          required: ["label", "count"],
-        },
-      },
-    },
-    required: ["items"],
+      ),
+    ),
   },
-  execute: async (_id, params) => {
+  execute: async ({
+    headline: rawHeadline,
+    periodLabel: rawPeriodLabel,
+    scanned: rawScanned,
+    items: rawItems,
+    rollups: rawRollups = [],
+  }) => {
     try {
-      const input = isRecord(params) ? params : {};
       const accounts = await listAccounts();
 
       const resolveAccount = (value: unknown): ConnectedAccount | undefined => {
         if (!isNonEmptyString(value)) return undefined;
         return findAccount(accounts, value);
       };
-      const resolveAccountId = (value: unknown): string | undefined => resolveAccount(value)?.id;
 
-      // Drop anything coerceBriefingItem/coerceBriefingRollup reject (missing
-      // required fields) rather than failing the whole call over one bad
-      // entry — the counts below tell the model what it lost.
-      const rawItems = Array.isArray(input.items) ? input.items : [];
-      const items: BriefingItem[] = [];
-      for (const raw of rawItems) {
-        if (!isRecord(raw)) continue;
-        // Same helper the search sources use (search/sources.ts) to build a
-        // hit's webmail deep link — never a model-supplied URL, and "" (an
-        // app with no known web UI) normalizes to undefined like there too.
+      // Resolve one raw message into a BriefingItem, or undefined when it's
+      // missing a required field. The account and webmail deep link are always
+      // server-resolved (never a model-supplied URL) via the same helper the
+      // search sources use; "" (an app with no known web UI) normalizes to
+      // undefined. Shared by the tier items and each rollup group's items.
+      const resolveItem = (raw: unknown): BriefingItem | undefined => {
+        if (!isRecord(raw)) return undefined;
         const account = resolveAccount(raw.account);
         const webUrl =
           account && isNonEmptyString(raw.threadId)
             ? threadWebUrl(account, raw.threadId) || undefined
             : undefined;
-        const item = coerceBriefingItem(raw, account?.id, webUrl);
+        return coerceBriefingItem(raw, account?.id, webUrl);
+      };
+
+      // Drop anything the coercion rejects (missing required fields) rather than
+      // failing the whole call over one bad entry — the counts below tell the
+      // model what it lost.
+      const items: BriefingItem[] = [];
+      for (const raw of rawItems) {
+        const item = resolveItem(raw);
         if (item) items.push(item);
       }
 
-      const rawRollups = Array.isArray(input.rollups) ? input.rollups : [];
       const rollups: BriefingRollup[] = [];
       for (const raw of rawRollups) {
         if (!isRecord(raw)) continue;
-        const rollup = coerceBriefingRollup(raw, resolveAccountId(raw.account));
+        const rollupItems: BriefingItem[] = [];
+        for (const rawItem of Array.isArray(raw.items) ? raw.items : []) {
+          const item = resolveItem(rawItem);
+          if (item) rollupItems.push(item);
+        }
+        const rollup = coerceBriefingRollup(raw, rollupItems);
         if (rollup) rollups.push(rollup);
       }
 
       // The card's `accounts` list credits every connected account that
-      // actually appears in the (resolved) items, not every account checked.
+      // actually appears in the (resolved) items — tier items and rolled-up
+      // ones alike, since both render account-dotted rows — not every account
+      // checked.
       const accountLookup = new Map<string, ConnectedAccount>(accounts.map((a) => [a.id, a]));
-      const seenAccountIds = new Set(items.flatMap((i) => (i.accountId ? [i.accountId] : [])));
+      const allItems = [...items, ...rollups.flatMap((r) => r.items)];
+      const seenAccountIds = new Set(allItems.flatMap((i) => (i.accountId ? [i.accountId] : [])));
       const cardAccounts: CardAccount[] = [...seenAccountIds]
         .map((id) => accountLookup.get(id))
         .filter((a): a is ConnectedAccount => a !== undefined)
         .map(toCardAccount);
 
-      const headline = isNonEmptyString(input.headline) ? input.headline : undefined;
-      const periodLabel = isNonEmptyString(input.periodLabel) ? input.periodLabel : undefined;
+      const headline = isNonEmptyString(rawHeadline) ? rawHeadline : undefined;
+      const periodLabel = isNonEmptyString(rawPeriodLabel) ? rawPeriodLabel : undefined;
       const scanned =
-        typeof input.scanned === "number" && Number.isFinite(input.scanned)
-          ? input.scanned
-          : undefined;
+        typeof rawScanned === "number" && Number.isFinite(rawScanned) ? rawScanned : undefined;
 
-      const card: AgentCard = {
-        kind: "briefing",
-        ...(headline ? { headline } : {}),
-        ...(periodLabel ? { periodLabel } : {}),
-        ...(cardAccounts.length > 0 ? { accounts: cardAccounts } : {}),
+      const card = buildBriefingCard({
+        headline,
+        periodLabel,
+        accounts: cardAccounts,
         items,
-        ...(rollups.length > 0 ? { rollups } : {}),
-        ...(scanned !== undefined ? { scanned } : {}),
-      };
+        rollups,
+        scanned,
+      });
 
       const urgentCount = items.filter((i) => i.priority === "urgent").length;
       const awaitingReplyCount = items.filter((i) => i.priority === "reply").length;
-      const rolledUpCount = rollups.reduce((sum, r) => sum + r.count, 0);
+      const rolledUpCount = rollups.reduce((sum, r) => sum + r.items.length, 0);
       const draftedCount = items.filter((i) => i.draftId).length;
 
       const summaryParts: string[] = [];
@@ -217,7 +237,8 @@ export const composeBriefingTool: AgentTool = defineTool({
             (tally.length > 0 ? ` (${tally.join(", ")})` : ""),
         );
       }
-      if (rolledUpCount > 0) summaryParts.push(`${rolledUpCount} messages rolled up`);
+      if (rolledUpCount > 0)
+        summaryParts.push(`${rolledUpCount} message${rolledUpCount === 1 ? "" : "s"} rolled up`);
       if (draftedCount > 0)
         summaryParts.push(`${draftedCount} draft${draftedCount === 1 ? "" : "s"} linked`);
 
@@ -232,12 +253,7 @@ export const composeBriefingTool: AgentTool = defineTool({
         );
       }
 
-      const confirmation =
-        `${summaryParts.join(", ")}. The user is now looking at this card. Do not repeat the ` +
-        `items in prose — close with exactly one line naming what needs them first, or "Quiet ` +
-        `otherwise — nothing urgent" if nothing does.`;
-
-      return textResult(confirmation, card);
+      return textResult(`${summaryParts.join(", ")}.${CARD_KINDS.briefing.note}`, card);
     } catch (error) {
       return textResult(`Could not compose the briefing: ${errorMessage(error)}`);
     }

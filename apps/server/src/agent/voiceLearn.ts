@@ -1,14 +1,13 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { Type } from "@sinclair/typebox";
 import type { AccountVoice } from "@trailin/shared";
 import { createMemory, deleteMemory, listMemories } from "../db/memories.js";
 import { getAccountVoices, setAccountVoices } from "../db/settings.js";
 import { moduleLogger } from "../logger.js";
 import { listAccounts } from "../pipedream/connect.js";
-import { errorMessage } from "../util.js";
-import { resolveRequiredAccountParam } from "./accounts.js";
 import { buildMailReadTools } from "./mailTools.js";
 import { runOneShot } from "./oneShot.js";
-import { defineTool, textResult } from "./toolResult.js";
+import { textResult, tool } from "./toolkit.js";
 
 const log = moduleLogger("voiceLearn");
 
@@ -46,75 +45,44 @@ interface LearnedVoice {
 }
 
 /**
- * Runtime guard for the report_style tool's call. The JSON schema below only
- * constrains what the model is told to send, not what actually arrives —
- * this throws (the AgentTool contract: "throw on failure instead of
- * encoding errors in content") on anything malformed, so a bad call fails
- * the tool call itself before learnAccountVoice ever touches persistence.
- */
-function validateReportStyleParams(value: unknown): LearnedVoice {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("report_style: params must be an object with style and signature.");
-  }
-  const v = value as Record<string, unknown>;
-  if (!Array.isArray(v.style) || v.style.length === 0) {
-    throw new Error("report_style: style must be a non-empty array of style directives.");
-  }
-  const style = v.style.map((entry) => (typeof entry === "string" ? entry.trim() : ""));
-  if (style.some((entry) => !entry)) {
-    throw new Error("report_style: every style entry must be a non-empty string.");
-  }
-  if (typeof v.signature !== "string") {
-    throw new Error('report_style: signature must be a string (use "" if there is none).');
-  }
-  return { style, signature: v.signature };
-}
-
-/**
  * The worker's structured-output tool: instead of parsing prose, it hands its
- * findings straight to `onReport` as validated params. `terminate: true`
- * tells the agent loop to stop after this tool batch rather than start
- * another turn — there is nothing left for the worker to do once it reports.
+ * findings straight to `onReport`. The schema guarantees a non-empty array of
+ * strings and a string signature before execute ever runs; execute still
+ * trims each style entry and drops any that turn out blank, since that's
+ * sanitization (not a shape the schema can express) rather than validation.
+ * `terminate: true` tells the agent loop to stop after this tool batch rather
+ * than start another turn — there is nothing left for the worker to do once
+ * it reports.
  */
 function buildReportStyleTool(onReport: (report: LearnedVoice) => void): AgentTool {
-  return defineTool({
+  return tool({
     name: "report_style",
     label: "Report writing style",
     description:
       `Record the writing-style analysis for this account. Call this exactly once, after reading ` +
       `the sample messages, to finish the job.`,
-    parameters: {
-      type: "object",
-      properties: {
-        style: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            `3-6 short, self-contained directives another assistant can follow when drafting as ` +
-            `this account, one aspect per entry — typical greeting, typical sign-off, ` +
-            `formality/tone, typical message length, language(s) used and when, and any quirks or ` +
-            `audience shifts (e.g. formal with clients, casual with colleagues). Each entry is ONE ` +
-            `sentence, written as an instruction ("Greets clients with 'Hallo Herr/Frau <Nachname>' ` +
-            `…"), not an observation about counts, and under 280 characters.`,
-        },
-        signature: {
-          type: "string",
-          description:
-            `The exact recurring signature block the user puts under their sign-off, verbatim ` +
-            `including line breaks, WITHOUT the closing line itself ("Best," / "Beste Grüße," ` +
-            `belongs to the body, not the signature). Use "" if there is no consistent block.`,
-        },
-      },
-      required: ["style", "signature"],
+    params: {
+      style: Type.Array(Type.String(), {
+        minItems: 1,
+        description:
+          `3-6 short, self-contained directives another assistant can follow when drafting as ` +
+          `this account, one aspect per entry — typical greeting, typical sign-off, ` +
+          `formality/tone, typical message length, language(s) used and when, and any quirks or ` +
+          `audience shifts (e.g. formal with clients, casual with colleagues). Each entry is ONE ` +
+          `sentence, written as an instruction ("Greets clients with 'Hallo Herr/Frau <Nachname>' ` +
+          `…"), not an observation about counts, and under 280 characters.`,
+      }),
+      signature: Type.String({
+        description:
+          `The exact recurring signature block the user puts under their sign-off, verbatim ` +
+          `including line breaks, WITHOUT the closing line itself ("Best," / "Beste Grüße," ` +
+          `belongs to the body, not the signature). Use "" if there is no consistent block.`,
+      }),
     },
-    execute: async (_id, params) => {
-      const report = validateReportStyleParams(params);
-      onReport(report);
-      return {
-        content: [{ type: "text", text: "Style report recorded." }],
-        details: undefined,
-        terminate: true,
-      };
+    execute: async ({ style, signature }) => {
+      const trimmedStyle = style.map((entry) => entry.trim()).filter(Boolean);
+      onReport({ style: trimmedStyle, signature });
+      return { ...textResult("Style report recorded."), terminate: true };
     },
   });
 }
@@ -199,7 +167,7 @@ async function learnAccountVoice(accountId: string): Promise<AccountVoice> {
   return next;
 }
 
-export const voiceLearnTool: AgentTool = defineTool({
+export const voiceLearnTool: AgentTool = tool({
   name: "voice_learn",
   label: "Learn account voice",
   description:
@@ -207,43 +175,30 @@ export const voiceLearnTool: AgentTool = defineTool({
     `signature, then save the style as memories scoped to that account and the signature on ` +
     `its voice (visible in Settings and used for every future draft). Use when the user asks ` +
     `to learn or mimic their style, or set up their signature from past emails.`,
-  parameters: {
-    type: "object",
-    properties: {
-      account: {
-        type: "string",
-        description: "The connected account's email address to learn from.",
-      },
-    },
-    required: ["account"],
-  },
-  execute: async (_id, params) => {
-    const { account } = params as { account: string };
-    try {
-      const resolved = await resolveRequiredAccountParam(account);
-      if (!resolved.account) return textResult(resolved.error);
-      const voice = await learnAccountVoice(resolved.account.id);
+  account: "required",
+  accountDescription: "The connected account's email address to learn from.",
+  params: {},
+  catchToText: true,
+  execute: async (_params, { account }) => {
+    const voice = await learnAccountVoice(account.id);
 
-      // Look the saved directives back up by id so the reply can quote them
-      // — learnAccountVoice only returns the voice record, not their text.
-      const memories = await listMemories();
-      const byId = new Map(memories.map((m) => [m.id, m.content]));
-      const styleLines = (voice.styleMemoryIds ?? [])
-        .map((id) => byId.get(id))
-        .filter((content): content is string => !!content)
-        .map((content) => `- ${content}`);
-      const styleText =
-        styleLines.length > 0
-          ? `Learned ${resolved.account.name}'s writing style, saved as memories for this account ` +
-            `(review or edit them on the Knowledge page):\n${styleLines.join("\n")}`
-          : `No consistent writing-style pattern was found for ${resolved.account.name}.`;
-      const signatureText = voice.signature?.trim()
-        ? `\n\nSignature saved:\n\n${voice.signature.trim()}`
-        : "\n\nNo consistent signature block was found.";
+    // Look the saved directives back up by id so the reply can quote them
+    // — learnAccountVoice only returns the voice record, not their text.
+    const memories = await listMemories();
+    const byId = new Map(memories.map((m) => [m.id, m.content]));
+    const styleLines = (voice.styleMemoryIds ?? [])
+      .map((id) => byId.get(id))
+      .filter((content): content is string => !!content)
+      .map((content) => `- ${content}`);
+    const styleText =
+      styleLines.length > 0
+        ? `Learned ${account.name}'s writing style, saved as memories for this account ` +
+          `(review or edit them on the Knowledge page):\n${styleLines.join("\n")}`
+        : `No consistent writing-style pattern was found for ${account.name}.`;
+    const signatureText = voice.signature?.trim()
+      ? `\n\nSignature saved:\n\n${voice.signature.trim()}`
+      : "\n\nNo consistent signature block was found.";
 
-      return textResult(`${styleText}${signatureText}`);
-    } catch (error) {
-      return textResult(errorMessage(error));
-    }
+    return textResult(`${styleText}${signatureText}`);
   },
 });

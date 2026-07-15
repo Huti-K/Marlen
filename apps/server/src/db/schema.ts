@@ -117,6 +117,10 @@ export const memories = sqliteTable("memories", {
    * facts reach the agent when it works with that correspondent.
    */
   contactId: text("contact_id"),
+  /** Times the agent reported relying on this entry (memory_used) — feeds the prune-candidate hints. */
+  usedCount: integer("used_count").notNull().default(0),
+  /** ISO timestamp of the most recent reported use; null until first used. */
+  lastUsedAt: text("last_used_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

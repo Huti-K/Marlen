@@ -82,7 +82,7 @@ function TooltipContent({ tooltip }: { tooltip: { text: string; x: number; y: nu
   return (
     <div
       ref={ref}
-      className="pointer-events-none fixed left-0 top-0 z-[100] rounded-md bg-foreground px-2 py-1.5 text-xs font-medium text-background shadow-md whitespace-nowrap"
+      className="pointer-events-none fixed left-0 top-0 z-[100] rounded-md bg-foreground px-2 py-1.5 text-xs font-medium text-background whitespace-nowrap"
     >
       {tooltip.text}
     </div>

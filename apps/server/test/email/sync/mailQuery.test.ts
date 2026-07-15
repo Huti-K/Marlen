@@ -308,6 +308,48 @@ describe("listThreadOverviews", () => {
   });
 });
 
+describe("listThreadOverviews sinceDays", () => {
+  const acct = "acct-since";
+  const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+
+  seed(acct, [
+    message({
+      providerMessageId: "m-since-fresh",
+      providerThreadId: "t-since-fresh",
+      subject: "Two days old",
+      date: daysAgo(2),
+      isUnread: true,
+    }),
+  ]);
+  seed(acct, [
+    message({
+      providerMessageId: "m-since-old",
+      providerThreadId: "t-since-old",
+      subject: "Thirty days old",
+      date: daysAgo(30),
+      isUnread: true,
+    }),
+  ]);
+
+  it("keeps threads within the window and drops older ones", () => {
+    const overviews = listThreadOverviews({
+      filter: "unread",
+      accountId: acct,
+      sinceDays: 7,
+      limit: 50,
+    });
+    expect(overviews.map((o) => o.providerThreadId)).toEqual(["t-since-fresh"]);
+  });
+
+  it("without sinceDays, returns threads of any age", () => {
+    const ids = listThreadOverviews({ filter: "unread", accountId: acct, limit: 50 }).map(
+      (o) => o.providerThreadId,
+    );
+    expect(ids).toContain("t-since-fresh");
+    expect(ids).toContain("t-since-old");
+  });
+});
+
 describe("getThreadDetail", () => {
   const acctA = "acct-detail-a";
   const acctB = "acct-detail-b";

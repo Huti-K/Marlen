@@ -1,6 +1,7 @@
 import { Loader2, X } from "lucide-react";
 import type * as React from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 
@@ -9,11 +10,30 @@ export function ErrorBanner({ children }: { children: React.ReactNode }) {
   return <p className="tint-danger rounded-lg px-3 py-2 text-xs">{children}</p>;
 }
 
-/** Inline row shown while a panel's first fetch is in flight. */
-export function LoadingRow({ label }: { label?: string }) {
+/** ErrorBanner plus a quiet retry — the one shape for a failed panel fetch. */
+export function RetryableError({
+  children,
+  onRetry,
+}: {
+  children: React.ReactNode;
+  onRetry: () => void;
+}) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+    <div className="flex flex-col items-start gap-2">
+      <ErrorBanner>{children}</ErrorBanner>
+      <Button variant="ghost" size="sm" onClick={onRetry}>
+        {t("common.retry")}
+      </Button>
+    </div>
+  );
+}
+
+/** Inline row shown while a panel's first fetch is in flight. */
+export function LoadingRow({ label, className }: { label?: string; className?: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className={cn("flex items-center gap-2 py-2 text-sm text-muted-foreground", className)}>
       <Loader2 className="h-4 w-4 animate-spin" /> {label ?? t("common.loading")}
     </div>
   );

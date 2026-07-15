@@ -10,12 +10,12 @@
     "build": "pnpm -r build",
     "start": "pnpm --filter @trailin/server start",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @trailin/server test",
+    "test": "pnpm --filter @trailin/server test && pnpm --filter @trailin/web test",
     "format": "biome format --write .",
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
     "conventions": "node scripts/check-conventions.mjs",
-    "check": "biome check --error-on-warnings . && node scripts/check-conventions.mjs && pnpm -r typecheck && pnpm --filter @trailin/server test",
+    "check": "biome check --error-on-warnings . && node scripts/check-conventions.mjs && pnpm -r typecheck && pnpm --filter @trailin/server test && pnpm --filter @trailin/web test",
     "prepare": "simple-git-hooks"
   },
   "simple-git-hooks": {

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentCard, EmailRef, MessageCard } from "@trailin/shared";
+import { type EnsureConversationInput, ensureConversation } from "../db/conversationStore.js";
 import { linkDraftConversation } from "../db/draftStore.js";
 import { db, schema, sqlite } from "../db/index.js";
 import { emitServerEvent } from "../events.js";
@@ -18,11 +19,15 @@ import type { RunHandlers, TurnLogger } from "./run.js";
 /**
  * Writes turns: one user message and the assistant reply that ends it, with
  * its cards. This is the ONLY module that writes turn rows — the chat route
- * (routes/chat.ts) and the automation scheduler (automations/scheduler.ts)
- * are its two adapters, each supplying a prompt, a session flavor, and
- * whatever streaming/timeout concerns are theirs alone (SSE for chat, a
- * deadline AbortController for the scheduler). See CONTEXT.md for the
- * vocabulary this file is written against: turn, run, card, draft link.
+ * (routes/chat.ts) and the automation run recorder (automations/
+ * runRecorder.ts) are its two adapters, each supplying a prompt, a session
+ * flavor, and whatever streaming/timeout concerns are theirs alone (SSE for
+ * chat, a deadline AbortSignal for a run). Turn.run() also ensures the
+ * turn's parent Conversation row (db/conversationStore.ts) before writing
+ * to it, using the type/title its caller supplies — the one place either
+ * adapter has to remember is what to call the conversation, not when to
+ * create it. See CONTEXT.md for the vocabulary this file is written
+ * against: turn, run, card, draft link.
  */
 
 const log = moduleLogger("turnRecorder");
@@ -113,12 +118,18 @@ export function _setSessionsForTest(override: TurnSessions | null): void {
   sessions = override ?? realSessions;
 }
 
-export interface TurnRunOptions {
+interface TurnRunOptions {
   prompt: string;
   /** Composer @-mentions attached to this turn's user message; see agent/emailRefs.ts. */
   refs?: EmailRef[];
   session: "pooled" | "ephemeral";
-  /** The caller's own streaming pass-through (chat's SSE handlers); the scheduler passes none. */
+  /**
+   * Type/title for this turn's parent Conversation row (db/conversationStore.ts,
+   * ensureConversation). Every caller computes its own title — chat.ts uses the
+   * opening words of the user's message, runRecorder.ts uses "Run: <automation name>".
+   */
+  conversation: EnsureConversationInput;
+  /** The caller's own streaming pass-through (chat's SSE handlers); a run passes none. */
   handlers?: RunHandlers;
   signal?: AbortSignal;
   log: TurnLogger;
@@ -162,6 +173,11 @@ export function beginTurn(conversationId: string): Turn {
 
       let session: AgentSession;
       try {
+        // Ensured first and unconditionally: even a turn that never starts
+        // (the session below fails to build) must leave the conversation
+        // visible for the user to retry, the same guarantee routes/chat.ts
+        // gave by inserting the row before ever calling into a turn.
+        await ensureConversation(conversationId, opts.conversation);
         session =
           opts.session === "pooled"
             ? await sessions.pooled(conversationId)

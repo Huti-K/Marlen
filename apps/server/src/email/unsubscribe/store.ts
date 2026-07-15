@@ -1,5 +1,5 @@
 import { lazyStatement } from "../../db/index.js";
-import { escapeLikeInput } from "../../util.js";
+import { escapeLikeInput } from "../../db/like.js";
 import { decodeStringArray } from "../sync/rows.js";
 
 /**

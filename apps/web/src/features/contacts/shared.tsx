@@ -1,7 +1,6 @@
 import type { ContactCategory } from "@trailin/shared";
-import { Search, X } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { Input } from "@/components/ui/input";
+import type { useTranslation } from "react-i18next";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,6 +18,17 @@ export const LANE_SEARCH_THRESHOLD = 8;
 
 /** Cap the cascade so a full page of rows doesn't take a second to finish arriving. */
 export const stagger = (i: number) => ({ animationDelay: `${Math.min(i, 8) * 45}ms` });
+
+/** The lanes' first-load placeholder — one skeleton per above-the-fold row. */
+export function LaneSkeletons() {
+  return (
+    <div className="flex flex-col gap-2">
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-16 w-full rounded-lg" />
+      ))}
+    </div>
+  );
+}
 
 /** `contacts.category.<value>` — the one place a category enum value becomes display text. */
 export function categoryLabel(
@@ -45,42 +55,5 @@ export function ContactAvatar({ label, className }: { label: string; className?:
     >
       {initial}
     </span>
-  );
-}
-
-/** Leading magnifier, trailing clear — the same shape used across the app's list filters. */
-export function LaneSearchField({
-  value,
-  onChange,
-  placeholder,
-  className,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  placeholder: string;
-  className?: string;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className={cn("relative", className)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        className="pl-9 pr-8"
-      />
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          aria-label={t("common.clearSearch")}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </div>
   );
 }

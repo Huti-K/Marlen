@@ -14,8 +14,13 @@ const tempDir = mkdtempSync(join(tmpdir(), "trailin-contacts-service-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(tempDir, "test.db");
 
+// runContactsCycle resolves its model via llm/registry.js's
+// resolveCheapModel directly, mocked below to a fixed fake model — it is
+// never called for a real credential; runContactsCycle only calls it when
+// there is at least one stale candidate, and that path is exercised below.
 vi.mock("../../../src/llm/registry.js", () => ({
   activeModelConfigured: async () => true,
+  resolveCheapModel: async () => fakeModel,
 }));
 
 const { sqlite } = await import("../../../src/db/index.js");
@@ -25,12 +30,7 @@ const { getContact, setContactCategory } = await import(
   "../../../src/email/contacts/contactsStore.js"
 );
 
-// contactsLLM.ts's resolveContactsModel also lives behind llm/registry.js,
-// so it is never called — runContactsCycle only calls it when there is at
-// least one stale candidate, and that path is exercised below with a fake
-// model object standing in for its return value.
 vi.mock("../../../src/email/contacts/contactsLLM.js", () => ({
-  resolveContactsModel: async () => fakeModel,
   judgeContact: async () => {
     throw new Error("judgeContact should never be called directly; tests inject their own judge");
   },
@@ -248,5 +248,30 @@ describe("runContactsCycle", () => {
     }));
     await runContactsCycle(retry);
     expect(retry).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed contact once the backoff elapses, even with unchanged content", async () => {
+    // ivy is still in `error` state from the previous test, its recent-message
+    // content unchanged (so its input hash still matches the stored one).
+    // Backdate enriched_at past the 10-minute error backoff so the candidate
+    // query surfaces it again. An errored row must NOT be treated as a valid
+    // "content still current" enrichment and touch-skipped — it has to retry.
+    sqlite
+      .prepare("UPDATE contacts SET enriched_at = '2020-01-01T00:00:00.000Z' WHERE address = ?")
+      .run("ivy@example.com");
+
+    const recovered = vi.fn(async () => ({
+      kind: "bulk" as const,
+      category: "other" as const,
+      gist: "recovered gist",
+    }));
+    const result = await runContactsCycle(recovered);
+
+    expect(recovered).toHaveBeenCalledTimes(1);
+    expect(result.enriched).toBe(1);
+
+    const contact = getContact("ivy@example.com");
+    expect(contact?.error).toBeNull();
+    expect(contact?.gist).toBe("recovered gist");
   });
 });

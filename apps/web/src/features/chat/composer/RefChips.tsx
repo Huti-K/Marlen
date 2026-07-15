@@ -1,5 +1,6 @@
 import type { AccountColor, EmailRef } from "@trailin/shared";
 import { X } from "lucide-react";
+import type * as React from "react";
 import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";
 import { IconButton } from "@/components/ui/icon-button";
@@ -16,6 +17,29 @@ function refKey(ref: EmailRef): string {
 
 function colorFor(ref: EmailRef, colors?: AccountColor[]): string | undefined {
   return colors?.find((c) => c.accountId === ref.accountId)?.hex;
+}
+
+/** The chip itself — dot + truncated label; tone and the optional trailing affordance vary per variant. */
+function RefChip({
+  item,
+  colors,
+  toneClass,
+  trailing,
+}: {
+  item: EmailRef;
+  colors?: AccountColor[];
+  toneClass: string;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn("flex max-w-56 items-center gap-1.5 rounded-md px-2 py-1 text-xs", toneClass)}
+    >
+      <AccountDot color={colorFor(item, colors)} className="shrink-0" />
+      <span className="min-w-0 truncate">{refLabel(item)}</span>
+      {trailing}
+    </span>
+  );
 }
 
 /**
@@ -42,20 +66,21 @@ export function RefChips({
       {refs.map((ref) => {
         const label = refLabel(ref);
         return (
-          <span
+          <RefChip
             key={refKey(ref)}
-            className="flex max-w-56 items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground"
-          >
-            <AccountDot color={colorFor(ref, colors)} className="shrink-0" />
-            <span className="min-w-0 truncate">{label}</span>
-            <IconButton
-              onClick={() => onRemove(ref)}
-              aria-label={t("chat.refs.remove", { label })}
-              title={t("chat.refs.remove", { label })}
-            >
-              <X className="h-3 w-3" />
-            </IconButton>
-          </span>
+            item={ref}
+            colors={colors}
+            toneClass="bg-secondary text-secondary-foreground"
+            trailing={
+              <IconButton
+                onClick={() => onRemove(ref)}
+                aria-label={t("chat.refs.remove", { label })}
+                title={t("chat.refs.remove", { label })}
+              >
+                <X className="h-3 w-3" />
+              </IconButton>
+            }
+          />
         );
       })}
     </div>
@@ -63,11 +88,10 @@ export function RefChips({
 }
 
 /**
- * Read-only pinned-email chips for a sent user bubble — same shape as
- * `RefChips` minus the remove action. Tinted off `accent-foreground` rather
- * than `bg-secondary`: it sits inside the ink/accent-filled user bubble, not
- * on the composer's `surface-2`, so the neutral tonal fill would have no
- * contrast there.
+ * Read-only pinned-email chips for a sent message — same shape as `RefChips`
+ * minus the remove action. Rendered on the canvas beside the bubble (not inside
+ * the accent fill), so it keeps the same neutral `bg-secondary` tone the chip
+ * had in the composer: a selected email reads the same before and after sending.
  */
 export function RefChipsReadOnly({
   refs,
@@ -82,13 +106,12 @@ export function RefChipsReadOnly({
   return (
     <div className={cn("flex flex-wrap gap-1.5", className)}>
       {refs.map((ref) => (
-        <span
+        <RefChip
           key={refKey(ref)}
-          className="flex max-w-56 items-center gap-1.5 rounded-md bg-accent-foreground/12 px-2 py-1 text-xs text-accent-foreground"
-        >
-          <AccountDot color={colorFor(ref, colors)} className="shrink-0" />
-          <span className="min-w-0 truncate">{refLabel(ref)}</span>
-        </span>
+          item={ref}
+          colors={colors}
+          toneClass="bg-secondary text-secondary-foreground"
+        />
       ))}
     </div>
   );

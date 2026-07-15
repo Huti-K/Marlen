@@ -18,8 +18,10 @@ import { draftRoutes } from "./routes/drafts.js";
 import { eventRoutes } from "./routes/events.js";
 import { libraryRoutes } from "./routes/library.js";
 import { llmRoutes } from "./routes/llm.js";
+import { mailRoutes } from "./routes/mail.js";
 import { memoryRoutes } from "./routes/memories.js";
 import { newsletterRoutes } from "./routes/newsletters.js";
+import { onOfficeRoutes } from "./routes/onoffice.js";
 import { pipedreamRoutes } from "./routes/pipedream.js";
 import { searchRoutes } from "./routes/search.js";
 import { settingsRoutes } from "./routes/settings.js";
@@ -64,7 +66,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.addHook("onRequest", async (req, reply) => {
     if (!isAllowedHost(req.headers.host, env.host)) {
       const body: ErrorResponse = { error: "host not allowed", requestId: String(req.id) };
-      reply.code(403).send(body);
+      // Returning the reply is what marks the hook as having handled the
+      // request — the send alone only works while it stays synchronous.
+      return reply.code(403).send(body);
     }
   });
 
@@ -74,12 +78,14 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(automationRoutes);
   await app.register(llmRoutes);
   await app.register(pipedreamRoutes);
+  await app.register(onOfficeRoutes);
   await app.register(settingsRoutes);
   await app.register(draftRoutes);
   await app.register(waitingRoutes);
   await app.register(memoryRoutes);
   await app.register(newsletterRoutes);
   await app.register(libraryRoutes);
+  await app.register(mailRoutes);
   await app.register(eventRoutes);
   await app.register(searchRoutes);
   await app.register(backupRoutes);
@@ -91,7 +97,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     await app.register(fastifyStatic, { root: webDist });
     app.setNotFoundHandler((req, reply) => {
       if (req.raw.url?.startsWith("/api/")) {
-        reply.code(404).send({ error: "not found" });
+        const body: ErrorResponse = { error: "not found", requestId: String(req.id) };
+        reply.code(404).send(body);
         return;
       }
       reply.sendFile("index.html");
@@ -99,8 +106,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   } else {
     // Dev (web is served by Vite): still answer 404s in the API's `{ error }`
     // shape instead of Fastify's default `{ statusCode, error, message }`.
-    app.setNotFoundHandler((_req, reply) => {
-      reply.code(404).send({ error: "not found" });
+    app.setNotFoundHandler((req, reply) => {
+      const body: ErrorResponse = { error: "not found", requestId: String(req.id) };
+      reply.code(404).send(body);
     });
   }
 

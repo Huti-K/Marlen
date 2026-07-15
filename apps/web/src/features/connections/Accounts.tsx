@@ -21,6 +21,12 @@ import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignatureEditor } from "@/features/connections/SignatureEditor";
+import {
+  OnOfficeAccountRow,
+  OnOfficeForm,
+  OnOfficePickerButton,
+  useOnOfficeStatus,
+} from "@/features/settings/OnOffice";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
@@ -56,7 +62,7 @@ function PickerRow({
       type="button"
       onClick={() => onConnect(app.slug)}
       disabled={busy !== null}
-      className="group flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2.5 text-left transition hover:brightness-95 disabled:opacity-50 dark:hover:brightness-110"
+      className="group flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2.5 text-left transition-colors hover:bg-secondary disabled:opacity-50"
     >
       <AppIcon src={app.imgSrc} className="h-5 w-5" />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{app.name}</span>
@@ -143,6 +149,11 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [noteDraft, setNoteDraft] = React.useState("");
   const noteHandled = React.useRef(false);
+  // onOffice is a native (non-Pipedream) CRM connection surfaced in the same
+  // picker and accounts list; it authenticates with a token + secret, so its
+  // picker entry opens the credential form instead of the Connect popup.
+  const { status: onOffice, refresh: refreshOnOffice } = useOnOfficeStatus();
+  const [onOfficeFormOpen, setOnOfficeFormOpen] = React.useState(false);
 
   // Debounced catalog search; empty query shows the e-mail suggestions.
   React.useEffect(() => {
@@ -369,6 +380,21 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const emailResults = (results ?? []).filter((a) => isEmailApp(a.slug));
   const moreResults = (results ?? []).filter((a) => !isEmailApp(a.slug));
 
+  // Offer onOffice in the picker only until it's connected — after that it's
+  // managed through its connected row below. Match its free-text search the way
+  // Pipedream matches an app name.
+  const onOfficeQueryMatch = (() => {
+    const q = query.trim().toLowerCase();
+    return q === "" || "onoffice".includes(q) || "crm".includes(q);
+  })();
+  const showOnOfficePick = onOffice !== null && !onOffice.configured && onOfficeQueryMatch;
+
+  const openOnOfficeForm = () => {
+    setPickerOpen(false);
+    setQuery("");
+    setOnOfficeFormOpen(true);
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
@@ -394,12 +420,13 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                   <Skeleton key={i} className="h-11 w-full rounded-lg" />
                 ))}
               </div>
-            ) : results.length === 0 ? (
+            ) : results.length === 0 && !showOnOfficePick ? (
               <p className="px-1 py-2 text-xs text-muted-foreground">
                 {t("connections.noProvidersFound", { q: query.trim() })}
               </p>
             ) : query.trim() ? (
               <div className="flex max-h-80 flex-col gap-1.5 overflow-y-auto py-0.5">
+                {showOnOfficePick && <OnOfficePickerButton onClick={openOnOfficeForm} />}
                 {results.map((app) => (
                   <PickerRow key={app.slug} app={app} busy={busy} onConnect={connect} />
                 ))}
@@ -412,6 +439,14 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                   busy={busy}
                   onConnect={connect}
                 />
+                {showOnOfficePick && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="px-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {t("connections.crmHeading")}
+                    </p>
+                    <OnOfficePickerButton onClick={openOnOfficeForm} />
+                  </div>
+                )}
                 {moreResults.length > 0 && (
                   <PickerSection
                     heading={t("connections.moreAppsHeading")}
@@ -432,6 +467,18 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
           <p className="text-xs text-muted-foreground">{t("connections.finishConnecting")}</p>
         )}
 
+        {onOfficeFormOpen && onOffice && (
+          <OnOfficeForm
+            status={onOffice}
+            onSaved={async () => {
+              setOnOfficeFormOpen(false);
+              await refreshOnOffice();
+              onChanged?.();
+            }}
+            onClose={() => setOnOfficeFormOpen(false)}
+          />
+        )}
+
         {!accounts ? (
           <div className="flex flex-col gap-2">
             {[0, 1].map((i) => (
@@ -447,10 +494,22 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
               </ListRow>
             ))}
           </div>
-        ) : accounts.length === 0 ? (
+        ) : accounts.length === 0 && !onOffice?.configured ? (
           <EmptyState icon={Inbox} description={t("connections.noAccounts")} />
         ) : (
           <div className="flex flex-col gap-2">
+            {onOffice?.configured && (
+              <div className="animate-in-up flex flex-col gap-1.5">
+                <OnOfficeAccountRow
+                  status={onOffice}
+                  onEdit={() => setOnOfficeFormOpen(true)}
+                  onDisconnected={async () => {
+                    await refreshOnOffice();
+                    onChanged?.();
+                  }}
+                />
+              </div>
+            )}
             {accounts.map((account, i) => (
               <div
                 key={account.id}
@@ -507,11 +566,11 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                     </Badge>
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon-sm"
                       onClick={() => startEditingNote(account.id)}
                       title={t("connections.editNote")}
                     >
-                      <Pencil className="h-4 w-4 text-muted-foreground" />
+                      <Pencil />
                     </Button>
                     <Button
                       variant="ghost"
@@ -525,11 +584,11 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                     </Button>
                     <Button
                       variant="ghost"
-                      size="icon"
+                      size="icon-sm"
                       onClick={() => setConfirmId(account.id)}
                       title={t("connections.disconnect")}
                     >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      <Trash2 />
                     </Button>
                   </div>
                 </ListRow>
@@ -561,7 +620,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
         title={t("connections.disconnect")}
         description={t("connections.disconnectConfirm")}
         confirmLabel={t("connections.disconnect")}
-        variant="destructive"
         busy={removing}
         onConfirm={() => confirmId && void remove(confirmId)}
       />

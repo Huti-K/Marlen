@@ -157,9 +157,10 @@ async function fetchStreamPage(
   stream: StreamKey,
   state: StreamState,
   opts: SyncOptions,
+  signal?: AbortSignal,
 ): Promise<GraphDeltaResponse> {
   if (state.link) {
-    return (await proxyRequest(account.id, "get", state.link)) as GraphDeltaResponse;
+    return (await proxyRequest(account.id, "get", state.link, { signal })) as GraphDeltaResponse;
   }
   const since = new Date(Date.now() - opts.backfillDays * 24 * 60 * 60 * 1000).toISOString();
   return (await proxyRequest(
@@ -172,6 +173,7 @@ async function fetchStreamPage(
         $top: String(opts.pageSize),
         $filter: `receivedDateTime ge ${since}`,
       },
+      signal,
     },
   )) as GraphDeltaResponse;
 }
@@ -190,13 +192,14 @@ async function fetchChanges(
   account: ConnectedAccount,
   cursor: string | null,
   opts: SyncOptions,
+  signal?: AbortSignal,
 ): Promise<SyncPage> {
   const state = parseCursor(cursor);
   try {
     if (!state.inbox.done || !state.sent.done) {
       // Advance exactly one not-done stream per call, inbox first.
       const stream: StreamKey = !state.inbox.done ? "inbox" : "sent";
-      const res = await fetchStreamPage(account, stream, state[stream], opts);
+      const res = await fetchStreamPage(account, stream, state[stream], opts, signal);
       const { upserts, deletes } = splitPage(res, stream);
       const updated = nextStreamState(res, state[stream]);
       const next: OutlookCursor =
@@ -216,8 +219,8 @@ async function fetchChanges(
 
     // Steady state: one deltaLink sweep per stream, merged into a single page.
     const [inboxRes, sentRes] = await Promise.all([
-      fetchStreamPage(account, "inbox", state.inbox, opts),
-      fetchStreamPage(account, "sent", state.sent, opts),
+      fetchStreamPage(account, "inbox", state.inbox, opts, signal),
+      fetchStreamPage(account, "sent", state.sent, opts, signal),
     ]);
     const inboxSplit = splitPage(inboxRes, "inbox");
     const sentSplit = splitPage(sentRes, "sent");

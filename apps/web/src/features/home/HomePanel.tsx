@@ -2,6 +2,7 @@ import type {
   AccountColor,
   AccountDrafts,
   Automation,
+  MissedAutomation,
   OpenConversations,
   RunFeedItem,
 } from "@trailin/shared";
@@ -11,21 +12,21 @@ import {
   ChevronUp,
   FileText,
   Mail,
-  MessageSquareShare,
   Newspaper,
   Wrench,
 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { OpenRunInChatButton } from "@/components/OpenRunInChatButton";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { AccountDot } from "@/components/ui/account-dot";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
+import { ErrorBanner, LoadingRow, Notice } from "@/components/ui/feedback";
+import { IconChip } from "@/components/ui/icon-chip";
+import { Markdown } from "@/components/ui/markdown";
 import { Select } from "@/components/ui/select";
-import { DigestView, hasDigestShape, parseDigest } from "@/features/automations/DigestView";
 import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
 import { CollapsibleSectionTitle } from "@/features/home/CollapsibleSectionTitle";
 import { DraftRow } from "@/features/home/DraftRow";
@@ -39,9 +40,9 @@ import {
 } from "@/lib/dates";
 import type { View } from "@/lib/nav";
 import { takePendingDraftFocus } from "@/lib/paletteFocus";
-import { openRunInChat } from "@/lib/runNavigation";
 import { useServerEvents } from "@/lib/serverEvents";
-import { cn, errorMessage } from "@/lib/utils";
+import { subscribeTrailin } from "@/lib/trailinEvents";
+import { cn, errorMessage, toggleRowProps } from "@/lib/utils";
 
 /** Widening windows for the "Needs your review" drafts filter; defaults to "today". */
 type DraftRange = "today" | "7d" | "30d" | "all";
@@ -80,7 +81,16 @@ const cache: {
   colors: AccountColor[];
   waiting: OpenConversations | null;
   pinned: PinnedRun | null;
-} = { drafts: null, runs: null, automations: null, colors: [], waiting: null, pinned: null };
+  missed: MissedAutomation[];
+} = {
+  drafts: null,
+  runs: null,
+  automations: null,
+  colors: [],
+  waiting: null,
+  pinned: null,
+  missed: [],
+};
 
 /**
  * The default view: what the agent prepared for you (drafts to review) and
@@ -103,6 +113,7 @@ export function HomePanel({
   const [colors, setColors] = React.useState<AccountColor[]>(cache.colors);
   const [waiting, setWaiting] = React.useState<OpenConversations | null>(cache.waiting);
   const [pinned, setPinned] = React.useState<PinnedRun | null>(cache.pinned);
+  const [missed, setMissed] = React.useState<MissedAutomation[]>(cache.missed);
   const [error, setError] = React.useState<string | null>(null);
   // Set by the search palette (see SearchPalette.tsx) when a draft hit is opened.
   const [focusDraft, setFocusDraft] = React.useState<{ accountId: string; draftId: string } | null>(
@@ -120,7 +131,7 @@ export function HomePanel({
     const isCurrent = () => loadToken.current === token;
 
     // Applies each result to its state setter and the cache the instant its
-    // own promise settles, instead of waiting on the slowest of the six —
+    // own promise settles, instead of waiting on the slowest of the fan-out —
     // drafts fans out to live mailbox APIs and can take several seconds cold
     // while the rest are fast local-DB reads.
     const apply = <T,>(promise: Promise<T>, onFulfilled: (value: T) => void) =>
@@ -153,6 +164,10 @@ export function HomePanel({
         cache.pinned = v;
         setPinned(v);
       }),
+      apply(api.missedRuns(), (v) => {
+        cache.missed = v.items;
+        setMissed(v.items);
+      }),
     ]);
 
     if (!isCurrent()) return;
@@ -174,37 +189,27 @@ export function HomePanel({
   React.useEffect(() => {
     const pending = takePendingDraftFocus();
     if (pending) setFocusDraft(pending);
-    const onOpenDraft = (e: Event) => {
-      const detail = (e as CustomEvent<{ accountId: string; draftId: string }>).detail;
+    return subscribeTrailin("open-draft", (detail) => {
       if (detail) setFocusDraft(detail);
       // Already handled live — discard so a later remount doesn't replay it.
       takePendingDraftFocus();
-    };
-    window.addEventListener("trailin:open-draft", onOpenDraft);
-    return () => window.removeEventListener("trailin:open-draft", onOpenDraft);
+    });
   }, []);
 
   // The flagship output: the pinned automation's latest successful run, when
-  // one is pinned. Otherwise fall back to the most recent successful,
-  // briefing-shaped run across all automations, so installs with nothing
-  // pinned yet behave exactly as before pinning existed. Sorted explicitly
-  // rather than trusting feed order, since that's a server-side detail this
-  // component shouldn't depend on.
-  //
-  // A run qualifies two ways, matching BriefingHero's own render fallback: it
-  // carries a structured briefing card, or — for runs predating
-  // compose_briefing — its result text still parses as a markdown digest.
-  // Checking only the latter would hide every new briefing, whose closing
-  // text is now a couple of prose sentences rather than the digest itself.
+  // one is pinned. Otherwise fall back to the most recent successful run that
+  // carries a structured briefing card, so installs with nothing pinned yet
+  // behave exactly as before pinning existed. Sorted explicitly rather than
+  // trusting feed order, since that's a server-side detail this component
+  // shouldn't depend on. A run predating compose_briefing has no card and is
+  // never picked as the hero — it still shows up in the plain activity feed.
   const heroRun = React.useMemo(() => {
     if (pinned?.run) return pinned.run;
     if (!runs) return null;
     let best: RunFeedItem | null = null;
     for (const run of runs) {
       if (run.status !== "success") continue;
-      const isBriefing =
-        !!findBriefingCard(run) || (!!run.result && hasDigestShape(parseDigest(run.result)));
-      if (!isBriefing) continue;
+      if (!findBriefingCard(run)) continue;
       if (!best || new Date(run.startedAt).getTime() > new Date(best.startedAt).getTime()) {
         best = run;
       }
@@ -227,19 +232,21 @@ export function HomePanel({
       {error && !offline && <ErrorBanner>{error}</ErrorBanner>}
 
       {setupIncomplete ? (
-        <div className="tint-warning flex flex-wrap items-center justify-between gap-3 rounded-lg p-3.5">
+        <Notice tone="warning" className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm">{t("home.setupBanner")}</p>
           <Button size="sm" onClick={() => onNavigate("settings")}>
             {t("home.setupBannerCta")}
           </Button>
-        </div>
+        </Notice>
       ) : (
         offline && (
-          <div className="tint-warning flex items-center gap-3 rounded-lg p-3.5">
+          <Notice tone="warning" className="flex items-center gap-3">
             <p className="text-sm">{t("home.offlineBanner")}</p>
-          </div>
+          </Notice>
         )
       )}
+
+      {missed.length > 0 && <MissedRunsBanner missed={missed} />}
 
       <GlanceStrip drafts={drafts} heroRun={heroRun} waiting={waiting} automations={automations} />
 
@@ -270,6 +277,40 @@ export function HomePanel({
         hasHero={!!heroRun}
       />
     </div>
+  );
+}
+
+/* ---------------- Missed scheduled runs ---------------- */
+
+/**
+ * Shown only when the server reports automations whose latest scheduled slot
+ * elapsed without a covering run — i.e. boot catch-up couldn't run them. The
+ * button starts them; the resulting "runs" server event reloads Home, which
+ * recomputes the missed list to empty and unmounts this banner.
+ */
+function MissedRunsBanner({ missed }: { missed: MissedAutomation[] }) {
+  const { t } = useTranslation();
+  const [running, setRunning] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const run = async () => {
+    setRunning(true);
+    setError(null);
+    try {
+      await api.runMissed();
+    } catch (e) {
+      setError(errorMessage(e));
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Notice tone="warning" className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm">{error ?? t("home.missedBanner", { count: missed.length })}</p>
+      <Button size="sm" onClick={run} disabled={running}>
+        {running ? t("home.missedRunning") : t("home.missedRun")}
+      </Button>
+    </Notice>
   );
 }
 
@@ -344,9 +385,12 @@ function ReviewSection({
           {!drafts ? (
             <LoadingRow />
           ) : (unfilteredTotal === 0 || filteredTotal === 0) && !hasErroredAccount ? (
-            <p className="rounded-lg bg-surface-2 px-3.5 py-3 text-xs text-muted-foreground">
-              {t(unfilteredTotal === 0 ? "home.reviewEmpty" : "home.reviewEmptyFiltered")}
-            </p>
+            <EmptyState
+              icon={FileText}
+              description={t(
+                unfilteredTotal === 0 ? "home.reviewEmpty" : "home.reviewEmptyFiltered",
+              )}
+            />
           ) : (
             <div className="flex flex-col gap-8">
               {filteredAccounts
@@ -471,9 +515,9 @@ function ActivitySection({
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h2 className="flex items-center gap-2.5 text-base font-semibold tracking-tight">
-          <div className="tint-accent flex h-7 w-7 items-center justify-center rounded-md">
-            <Wrench className="h-4 w-4" />
-          </div>
+          <IconChip>
+            <Wrench />
+          </IconChip>
           {t("home.activityTitle")}
         </h2>
       </div>
@@ -535,27 +579,13 @@ function ActivityRunCard({
   const toggleExpanded = () => setExpanded(!expanded);
 
   return (
-    <Card
-      as="article"
-      className="animate-in-up flex flex-col gap-3"
+    <article
+      className="surface animate-in-up flex flex-col gap-3 rounded-lg p-4"
       style={{ animationDelay: `${index * 45}ms` }}
     >
       <div
         className={cn("flex items-center justify-between gap-3", hasResult && "cursor-pointer")}
-        {...(hasResult
-          ? {
-              role: "button" as const,
-              tabIndex: 0,
-              "aria-expanded": expanded,
-              onClick: toggleExpanded,
-              onKeyDown: (e: React.KeyboardEvent) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  toggleExpanded();
-                }
-              },
-            }
-          : {})}
+        {...(hasResult ? toggleRowProps(expanded, toggleExpanded) : {})}
       >
         <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
           <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -568,19 +598,7 @@ function ActivityRunCard({
             ))}
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            title={t("home.openInChat")}
-            aria-label={t("home.openInChat")}
-            onClick={(e) => {
-              e.stopPropagation();
-              openRunInChat(run.id, () => onNavigate("chat"));
-            }}
-          >
-            <MessageSquareShare className="h-3 w-3" />
-          </Button>
+          <OpenRunInChatButton runId={run.id} onNavigateToChat={() => onNavigate("chat")} />
           <RunStatusBadge status={run.status} />
           <span className="text-xs tabular-nums text-muted-foreground">
             {timeLabel(run.startedAt)}
@@ -589,14 +607,9 @@ function ActivityRunCard({
       </div>
       {expanded && hasResult && (
         <div className="mt-1 pt-3 border-t border-border">
-          <DigestView
-            content={run.result}
-            automationName={run.automationName}
-            runDate={run.startedAt}
-            className="text-sm text-foreground/90"
-          />
+          <Markdown content={run.result} className="text-sm text-foreground/90" />
         </div>
       )}
-    </Card>
+    </article>
   );
 }

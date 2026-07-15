@@ -6,33 +6,19 @@ import {
   type ContactCategory,
   type ContactKind,
 } from "@trailin/shared";
+import { streamViaModelRegistry } from "../../agent/oneShot.js";
 import { runPrompt } from "../../agent/run.js";
-import { env } from "../../env.js";
-import { getActiveModelIds, modelRegistry, resolveActiveModel } from "../../llm/registry.js";
+import { defineTool } from "../../agent/toolkit.js";
 import type { ContactJudgment, ContactSample } from "./contactsEnrichStore.js";
 
 /**
  * The one LLM call of the contacts pipeline (mirrors email/enrich/enrichLLM.ts's
  * thread-triage call): one address's recent message sample in, one
  * structured judgment out, via a terminating report tool on a one-shot
- * ephemeral Agent. Runs on the same cheap-tier model search as thread
- * enrichment — this fires for every changed contact, so cost discipline
- * matters more than eloquence.
+ * ephemeral Agent. The caller resolves the model (llm/registry.ts's
+ * resolveCheapModel) — this fires for every changed contact, so cost
+ * discipline matters more than eloquence.
  */
-
-const CHEAP_MODEL_CANDIDATES = ["claude-haiku-4-5", "claude-haiku-4-5-20251001"];
-
-export async function resolveContactsModel(): Promise<Model<Api>> {
-  const { provider } = await getActiveModelIds();
-  const candidates = env.contacts.model
-    ? [env.contacts.model, ...CHEAP_MODEL_CANDIDATES]
-    : CHEAP_MODEL_CANDIDATES;
-  for (const id of candidates) {
-    const model = modelRegistry.getModel(provider, id);
-    if (model) return model;
-  }
-  return resolveActiveModel();
-}
 
 const SYSTEM_PROMPT = `You are the contacts engine of Trailin, a personal email assistant. You read a
 sample of recent messages between the owner and ONE email address and report your judgment by
@@ -57,7 +43,7 @@ and, when it's distinctive, the tone. Write it in the language the messages are 
 leave it empty — write a short best guess even for a thin sample.`;
 
 function buildReportTool(onReport: (result: ContactJudgment) => void): AgentTool {
-  return {
+  return defineTool({
     name: "report_contact",
     label: "Report contact judgment",
     description: "Record the judgment for this address. Call exactly once.",
@@ -74,7 +60,7 @@ function buildReportTool(onReport: (result: ContactJudgment) => void): AgentTool
         },
       },
       required: ["kind", "category", "gist"],
-    } as AgentTool["parameters"],
+    },
     execute: async (_id, params) => {
       onReport(sanitizeReport(params as Record<string, unknown>));
       return {
@@ -83,7 +69,7 @@ function buildReportTool(onReport: (result: ContactJudgment) => void): AgentTool
         terminate: true,
       };
     },
-  };
+  });
 }
 
 /** Coerce whatever the model reported into a valid ContactJudgment. */
@@ -141,7 +127,7 @@ export async function judgeContact(
       model,
       tools: [buildReportTool((result) => (captured = result))],
     },
-    streamFn: (m, c, o) => modelRegistry.streamSimple(m, c, o),
+    streamFn: streamViaModelRegistry,
   });
   await runPrompt({ agent }, renderSample(sample), {}, AbortSignal.timeout(timeoutMs));
   if (!captured) throw new Error("model finished without calling report_contact");

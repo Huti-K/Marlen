@@ -11,7 +11,9 @@ const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(tempDir, "test.db");
 
 const { closeDb } = await import("../../src/db/index.js");
-const { createMemory, updateMemory, listMemories } = await import("../../src/db/memories.js");
+const { createMemory, updateMemory, listMemories, recordMemoryUse } = await import(
+  "../../src/db/memories.js"
+);
 
 afterAll(() => {
   closeDb();
@@ -134,5 +136,49 @@ describe("listMemories", () => {
     const all = await listMemories();
     const found = all.find((m) => m.id === entry.id);
     expect(found?.contactId).toBe("ida@example.com");
+  });
+
+  it("starts every new entry at zero uses with no last-used stamp", async () => {
+    const { entry } = await createMemory("Fresh usage fact", "user");
+    expect(entry.usedCount).toBe(0);
+    expect(entry.lastUsedAt).toBeNull();
+  });
+});
+
+describe("recordMemoryUse", () => {
+  it("increments the counter and stamps lastUsedAt for each cited id", async () => {
+    const { entry } = await createMemory("Recorded-use fact", "user");
+    const recorded = await recordMemoryUse([entry.id]);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.usedCount).toBe(1);
+    expect(recorded[0]?.lastUsedAt).not.toBeNull();
+
+    const after = (await listMemories()).find((m) => m.id === entry.id);
+    expect(after?.usedCount).toBe(1);
+    expect(after?.lastUsedAt).toBe(recorded[0]?.lastUsedAt);
+  });
+
+  it("resolves an id prefix and counts a repeated citation only once per call", async () => {
+    const { entry } = await createMemory("Prefix-use fact", "user");
+    const prefix = entry.id.slice(0, 8);
+    const recorded = await recordMemoryUse([prefix, entry.id]);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.id).toBe(entry.id);
+
+    const after = (await listMemories()).find((m) => m.id === entry.id);
+    expect(after?.usedCount).toBe(1);
+  });
+
+  it("accumulates across separate calls", async () => {
+    const { entry } = await createMemory("Accumulating-use fact", "user");
+    await recordMemoryUse([entry.id]);
+    await recordMemoryUse([entry.id]);
+    const after = (await listMemories()).find((m) => m.id === entry.id);
+    expect(after?.usedCount).toBe(2);
+  });
+
+  it("silently skips ids that resolve to nothing", async () => {
+    const recorded = await recordMemoryUse(["does-not-exist", "abc"]);
+    expect(recorded).toHaveLength(0);
   });
 });

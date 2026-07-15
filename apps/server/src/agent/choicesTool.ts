@@ -1,10 +1,12 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { AgentCard, ChoiceOption, ConnectedAccount, EmailRef } from "@trailin/shared";
+import { Type } from "@sinclair/typebox";
+import type { ChoiceOption, ConnectedAccount, EmailRef } from "@trailin/shared";
 import { getThreadDetail } from "../email/sync/mailQuery.js";
 import { listAccounts } from "../pipedream/connect.js";
-import { isNonEmptyString, isRecord } from "../util.js";
+import { isNonEmptyString } from "../util.js";
 import { findAccount } from "./accounts.js";
-import { defineTool, textResult } from "./toolResult.js";
+import { buildChoicesCard, CARD_KINDS, coerceChoiceOption } from "./card/kinds.js";
+import { textResult, tool } from "./toolkit.js";
 
 /**
  * Agent tool that asks the user to pick instead of the model guessing, for a
@@ -18,14 +20,6 @@ import { defineTool, textResult } from "./toolResult.js";
 
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 6;
-
-interface RawOption {
-  label?: unknown;
-  detail?: unknown;
-  reply?: unknown;
-  threadId?: unknown;
-  account?: unknown;
-}
 
 /**
  * Builds the option's EmailRef when it names a thread. Prefers the local
@@ -61,7 +55,7 @@ function buildRef(
   return undefined;
 }
 
-export const presentChoicesTool: AgentTool = defineTool({
+export const presentChoicesTool: AgentTool = tool({
   name: "present_choices",
   label: "Ask the user to choose",
   description:
@@ -71,55 +65,46 @@ export const presentChoicesTool: AgentTool = defineTool({
     `conversation. After calling this, end your turn with a short question restating what you ` +
     `need — do not act until the user replies. Do NOT use this when only one match is clear, or ` +
     `for pure read/summarize questions.`,
-  parameters: {
-    type: "object",
-    properties: {
-      question: {
-        type: "string",
-        description: 'What you need the user to decide, e.g. "Which email do you mean?".',
-      },
-      options: {
-        type: "array",
-        minItems: MIN_OPTIONS,
-        maxItems: MAX_OPTIONS,
+  params: {
+    question: Type.String({
+      description: 'What you need the user to decide, e.g. "Which email do you mean?".',
+    }),
+    // Options are validated and filtered by hand below (label presence,
+    // MIN_OPTIONS/MAX_OPTIONS bounds) rather than via schema constraints, so a
+    // model that omits a label on one option or over/undershoots the count
+    // still reaches that logic instead of bouncing as "Invalid parameters".
+    options: Type.Array(
+      Type.Object({
+        label: Type.Optional(
+          Type.Unknown({
+            description: 'Short button text, e.g. an account address or "Ayşe — Friday deadline".',
+          }),
+        ),
+        detail: Type.Optional(
+          Type.Unknown({ description: "One-line supporting detail (subject, date, account)." }),
+        ),
+        reply: Type.Optional(
+          Type.Unknown({
+            description: "Full-sentence reply sent when this option is picked; defaults to label.",
+          }),
+        ),
+        threadId: Type.Optional(
+          Type.Unknown({
+            description: "Provider thread id this option refers to, if it names one.",
+          }),
+        ),
+        account: Type.Optional(
+          Type.Unknown({
+            description: "The connected account this option refers to — email address or id.",
+          }),
+        ),
+      }),
+      {
         description: `Between ${MIN_OPTIONS} and ${MAX_OPTIONS} choices for the user to pick from.`,
-        items: {
-          type: "object",
-          properties: {
-            label: {
-              type: "string",
-              description:
-                'Short button text, e.g. an account address or "Ayşe — Friday deadline".',
-            },
-            detail: {
-              type: "string",
-              description: "One-line supporting detail (subject, date, account).",
-            },
-            reply: {
-              type: "string",
-              description:
-                "Full-sentence reply sent when this option is picked; defaults to label.",
-            },
-            threadId: {
-              type: "string",
-              description: "Provider thread id this option refers to, if it names one.",
-            },
-            account: {
-              type: "string",
-              description: "The connected account this option refers to — email address or id.",
-            },
-          },
-          required: ["label"],
-        },
       },
-    },
-    required: ["question", "options"],
+    ),
   },
-  execute: async (_id, params) => {
-    const input = isRecord(params) ? params : {};
-    const question = input.question;
-    const rawOptions = input.options;
-
+  execute: async ({ question, options: rawOptions }) => {
     if (!isNonEmptyString(question)) {
       return textResult("present_choices needs a non-empty question.");
     }
@@ -129,33 +114,27 @@ export const presentChoicesTool: AgentTool = defineTool({
     if (rawOptions.length > MAX_OPTIONS) {
       return textResult(`present_choices takes at most ${MAX_OPTIONS} options.`);
     }
-    const withLabels = (rawOptions as RawOption[]).filter((o) => isNonEmptyString(o.label));
+    const withLabels = rawOptions.filter((o) => isNonEmptyString(o.label));
     if (withLabels.length < MIN_OPTIONS) {
       return textResult(`present_choices needs at least ${MIN_OPTIONS} options with a label.`);
     }
 
     const accounts = await listAccounts();
-    const options: ChoiceOption[] = withLabels.map((raw) => {
-      const label = raw.label as string;
-      const resolvedAccount = isNonEmptyString(raw.account)
-        ? findAccount(accounts, raw.account)
-        : undefined;
-      const threadId = isNonEmptyString(raw.threadId) ? raw.threadId : undefined;
-      const ref = buildRef(threadId, resolvedAccount, accounts);
-      return {
-        label,
-        ...(isNonEmptyString(raw.detail) ? { detail: raw.detail } : {}),
-        ...(isNonEmptyString(raw.reply) ? { reply: raw.reply } : {}),
-        ...(ref ? { ref } : {}),
-      };
-    });
+    const options = withLabels
+      .map((raw) => {
+        const resolvedAccount = isNonEmptyString(raw.account)
+          ? findAccount(accounts, raw.account)
+          : undefined;
+        const threadId = isNonEmptyString(raw.threadId) ? raw.threadId : undefined;
+        const ref = buildRef(threadId, resolvedAccount, accounts);
+        return coerceChoiceOption(raw, ref);
+      })
+      .filter((o): o is ChoiceOption => o !== undefined);
 
-    const card: AgentCard = { kind: "choices", question, options };
+    const card = buildChoicesCard(question, options);
     const labels = options.map((o) => o.label).join(", ");
     return textResult(
-      `Presented ${options.length} choices to the user: ${labels}. End your turn with a short ` +
-        `question restating what you need — the user's pick arrives as their next message. Do ` +
-        `not act until then.`,
+      `Presented ${options.length} choices to the user: ${labels}.${CARD_KINDS.choices.note}`,
       card,
     );
   },

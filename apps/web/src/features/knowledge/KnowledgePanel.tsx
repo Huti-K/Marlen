@@ -3,10 +3,11 @@ import type {
   ConnectedAccount,
   Contact,
   LibraryDocument,
+  LibrarySearchHit,
   LibraryStatus,
   MemoryEntry,
 } from "@trailin/shared";
-import { formatFileSize, MEMORY_MAX_LENGTH } from "@trailin/shared";
+import { formatFileSize, MEMORY_MAX_COUNT, MEMORY_MAX_LENGTH } from "@trailin/shared";
 import {
   Brain,
   Check,
@@ -19,11 +20,9 @@ import {
   FolderOpen,
   Loader2,
   Plus,
-  Search,
   SearchX,
   Trash2,
   Upload,
-  X,
 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -34,14 +33,19 @@ import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorBanner } from "@/components/ui/feedback";
+import { Notice, RetryableError } from "@/components/ui/feedback";
+import { IconChip } from "@/components/ui/icon-chip";
 import { Input } from "@/components/ui/input";
+import { SearchField } from "@/components/ui/search-field";
+import { ShowMoreButton } from "@/components/ui/show-more-button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, type LibrarySearchHit } from "@/lib/api";
+import { api } from "@/lib/api";
 import { relativeTime } from "@/lib/dates";
 import { takePendingKnowledgeFocus } from "@/lib/paletteFocus";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
+import { subscribeTrailin } from "@/lib/trailinEvents";
+import { usePagedVisible } from "@/lib/usePagedVisible";
 import { cn, errorMessage, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
 
 /** Connected accounts whose name looks like an email address — the only ones
@@ -99,15 +103,12 @@ export function KnowledgePanel() {
     };
     const pending = takePendingKnowledgeFocus();
     if (pending) applyFocus(pending);
-    const onOpen = (e: Event) => {
-      const detail = (e as CustomEvent<{ type: "document" | "memory"; id: string }>).detail;
+    return subscribeTrailin("open-knowledge", (detail) => {
       if (!detail) return;
       applyFocus(detail);
       // Already handled live — discard so a later remount doesn't replay it.
       takePendingKnowledgeFocus();
-    };
-    window.addEventListener("trailin:open-knowledge", onOpen);
-    return () => window.removeEventListener("trailin:open-knowledge", onOpen);
+    });
   }, []);
 
   // Let the highlight fade once it has done its job. Clearing it also means
@@ -149,8 +150,8 @@ function SectionHead({
   children,
 }: {
   icon: typeof Brain;
-  /** Accent for memory, ink for documents — the two tones already paired on Home. */
-  tone: string;
+  /** Accent for memory, neutral for documents — always a `tint-*` token, never a hand-mixed fill. */
+  tone: "tint-accent" | "tint-neutral";
   title: string;
   /** `null` while the first fetch is in flight, so the badge doesn't flash a zero. */
   count: number | null;
@@ -161,9 +162,9 @@ function SectionHead({
   return (
     <>
       <div className="flex items-center gap-2.5">
-        <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-md", tone)}>
-          <Icon className="h-4 w-4" />
-        </span>
+        <IconChip tone={tone}>
+          <Icon />
+        </IconChip>
         <h2 className="text-base font-semibold tracking-tight">{title}</h2>
         {count !== null && count > 0 && (
           <Badge variant="muted" className="tabular">
@@ -176,43 +177,6 @@ function SectionHead({
         <p className="max-w-prose text-pretty text-sm text-muted-foreground">{description}</p>
       )}
     </>
-  );
-}
-
-/** Leading magnifier, trailing clear — the same shape as the chat history search. */
-function SearchField({
-  value,
-  onChange,
-  placeholder,
-  className,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  placeholder: string;
-  className?: string;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className={cn("relative", className)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        className="pl-9 pr-8"
-      />
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          aria-label={t("common.clearSearch")}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </div>
   );
 }
 
@@ -257,6 +221,11 @@ const MEMORY_SEARCH_THRESHOLD = 4;
 const MEMORY_INITIAL_VISIBLE = 20;
 const MEMORY_VISIBLE_STEP = 40;
 
+/** At 90% of the hard cap the strip starts nudging the user to prune rarely-used entries. */
+const MEMORY_NEAR_CAP = Math.floor(MEMORY_MAX_COUNT * 0.9);
+/** The rarely-used example named in the prune notice is truncated to keep the banner one line. */
+const PRUNE_EXAMPLE_MAX = 48;
+
 /** The three states of the account filter: everything, global-only, or one account. */
 /**
  * "all", "general", one account, or "contacts" — all contact-scoped entries
@@ -299,7 +268,11 @@ function MemoryStrip({
   const [filter, setFilter] = React.useState<MemoryFilter>("all");
   const [query, setQuery] = React.useState("");
   const [adding, setAdding] = React.useState(false);
-  const [visible, setVisible] = React.useState(MEMORY_INITIAL_VISIBLE);
+  const { visible, showMore, revealIndex } = usePagedVisible(
+    MEMORY_INITIAL_VISIBLE,
+    MEMORY_VISIBLE_STEP,
+    `${filter}|${query}`,
+  );
   const listRef = React.useRef<HTMLDivElement>(null);
   // Refocused once the editor collapses back into the single-line composer.
   const composerInputRef = React.useRef<HTMLInputElement>(null);
@@ -392,14 +365,6 @@ function MemoryStrip({
     }
     return list;
   }, [memories, query, filter, accountLabel, contactLabel]);
-
-  // Reset the cap whenever the visible set changes shape, so a narrower
-  // filter or search doesn't leave "show more" sitting past the end. query
-  // and filter aren't read in the body — they're the reset triggers.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: query/filter drive the reset, not the effect body
-  React.useEffect(() => {
-    setVisible(MEMORY_INITIAL_VISIBLE);
-  }, [query, filter]);
 
   const toggleAccountFilter = (accountId: string) => {
     setFilter((f) => (f === `account:${accountId}` ? "all" : `account:${accountId}`));
@@ -503,9 +468,8 @@ function MemoryStrip({
   // cap opens exactly as far as the rendered groups actually need.
   React.useEffect(() => {
     if (!focusId) return;
-    const index = orderedEntries.findIndex((m) => m.id === focusId);
-    if (index >= 0 && index >= visible) setVisible(index + 1);
-  }, [focusId, orderedEntries, visible]);
+    revealIndex(orderedEntries.findIndex((m) => m.id === focusId));
+  }, [focusId, orderedEntries, revealIndex]);
 
   // `open` is a dependency, not just a guard: opening happens in the effect
   // above, so on the commit where a hit arrives at a collapsed strip the row is
@@ -539,6 +503,17 @@ function MemoryStrip({
   const shown = orderedEntries.slice(0, visible);
   const remaining = orderedEntries.length - shown.length;
 
+  // Nearing the hard cap, point at the entry the agent leans on least (lowest
+  // use count, oldest last-use as the tiebreak) as a concrete prune candidate.
+  const leastUsed = React.useMemo(() => {
+    if (memories.length < MEMORY_NEAR_CAP) return null;
+    return [...memories].sort(
+      (a, b) =>
+        a.usedCount - b.usedCount ||
+        (a.lastUsedAt ?? a.createdAt).localeCompare(b.lastUsedAt ?? b.createdAt),
+    )[0];
+  }, [memories]);
+
   return (
     <Card as="section" padding="lg" className="flex flex-col gap-4">
       <SectionHead
@@ -552,8 +527,7 @@ function MemoryStrip({
       >
         <Button
           variant="ghost"
-          size="icon"
-          className="h-8 w-8"
+          size="icon-sm"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls="knowledge-memory-body"
@@ -567,6 +541,19 @@ function MemoryStrip({
       </SectionHead>
 
       <div id="knowledge-memory-body" hidden={!open} className="flex flex-col gap-3">
+        {/* Nearing the cap, nudge toward pruning and name the least-used entry
+            as a candidate — the per-row use counts below make the rest visible. */}
+        {leastUsed && (
+          <Notice tone="warning">
+            {t("memory.nearCap", { count: memories.length, max: MEMORY_MAX_COUNT })}{" "}
+            {t("memory.pruneHint", {
+              example:
+                leastUsed.content.length > PRUNE_EXAMPLE_MAX
+                  ? `${leastUsed.content.slice(0, PRUNE_EXAMPLE_MAX)}…`
+                  : leastUsed.content,
+            })}
+          </Notice>
+        )}
         {/* Top row: search only — scope assignment lives inside the
             editor card itself, both for the composer and for row edits. */}
         {memories.length > MEMORY_SEARCH_THRESHOLD && (
@@ -649,13 +636,13 @@ function MemoryStrip({
               className="cursor-text pr-10"
             />
             <Button
-              size="icon"
+              size="icon-xs"
               variant="ghost"
-              className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+              className="absolute right-1 top-1/2 -translate-y-1/2"
               onClick={() => setComposerOpen(true)}
               aria-label={t("memory.add")}
             >
-              <Plus className="h-4 w-4" />
+              <Plus />
             </Button>
           </div>
         )}
@@ -798,17 +785,7 @@ function MemoryStrip({
                 </ul>
               )}
             </div>
-            {remaining > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start"
-                onClick={() => setVisible((v) => v + MEMORY_VISIBLE_STEP)}
-              >
-                <ChevronDown />
-                {t("library.showMore", { count: remaining })}
-              </Button>
-            )}
+            {remaining > 0 && <ShowMoreButton count={remaining} onClick={showMore} />}
           </div>
         )}
       </div>
@@ -981,7 +958,7 @@ function MemoryEditor({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-surface-2 p-3 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-surface">
+    <div className="flex flex-col gap-2 rounded-lg bg-surface-2 p-3 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
       <textarea
         ref={textareaRef}
         value={value}
@@ -1199,7 +1176,7 @@ function MemoryRow({
    *  filterable ones are told apart from a strip with nothing to filter by. */
   showDotColumn: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
@@ -1323,15 +1300,33 @@ function MemoryRow({
               {contactLabel}
             </span>
           )}
+          {/* How often the agent has reported leaning on this fact — the signal
+              for which entries earn their place. Data-shaped, so tabular and
+              muted; the tooltip carries when it was last used. */}
+          <span
+            data-tooltip={
+              entry.usedCount > 0
+                ? t("memory.lastUsed", {
+                    time: relativeTime(entry.lastUsedAt as string, i18n.language),
+                  })
+                : t("memory.neverUsed")
+            }
+            className={cn(
+              "shrink-0 tabular text-2xs",
+              entry.usedCount > 0 ? "text-muted-foreground" : "text-muted-foreground/60",
+            )}
+          >
+            {t("memory.usedTimes", { count: entry.usedCount })}
+          </span>
           {/* Quick path that skips the edit card entirely — harmless next to
               the edit card's own delete button, since only one is ever on
               screen for a given row at a time. */}
           <Button
-            variant="ghost"
-            size="icon"
+            variant="ghost-danger"
+            size="icon-sm"
             onClick={() => setConfirmOpen(true)}
             aria-label={t("memory.delete")}
-            className="h-8 w-8 shrink-0 hover:bg-destructive/10 hover:text-destructive sm:opacity-0 sm:transition-opacity sm:focus-visible:opacity-100 sm:group-hover:opacity-100"
+            className="shrink-0 sm:opacity-0 sm:transition-opacity sm:focus-visible:opacity-100 sm:group-hover:opacity-100"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -1344,7 +1339,6 @@ function MemoryRow({
         title={t("memory.delete")}
         description={t("memory.deleteConfirm")}
         confirmLabel={t("memory.delete")}
-        variant="destructive"
         busy={deleting}
         onConfirm={() => void remove()}
       />
@@ -1368,7 +1362,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
   const [uploading, setUploading] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [visible, setVisible] = React.useState(INITIAL_VISIBLE);
+  const { visible, showMore, revealIndex } = usePagedVisible(INITIAL_VISIBLE, VISIBLE_STEP, query);
   const [docToDelete, setDocToDelete] = React.useState<LibraryDocument | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -1490,14 +1484,6 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
     return [...titleMatches, ...contentMatches];
   }, [status, query, snippetByDocId]);
 
-  // Reset the cap whenever the query changes shape, so a narrower search
-  // doesn't leave "show more" sitting past the end. query isn't read in the
-  // body — it's the reset trigger.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: query drives the reset, not the effect body
-  React.useEffect(() => {
-    setVisible(INITIAL_VISIBLE);
-  }, [query]);
-
   // Opened from the search palette: a live query might be hiding it, and it may
   // sit past the fold. Clear the one, reach past the other. Only focusId/status
   // should re-fire this — including query/snippetByDocId would re-run it right
@@ -1513,9 +1499,8 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
 
   React.useEffect(() => {
     if (!focusId) return;
-    const index = documents.findIndex((d) => d.id === focusId);
-    if (index >= 0 && index >= visible) setVisible(index + 1);
-  }, [focusId, documents, visible]);
+    revealIndex(documents.findIndex((d) => d.id === focusId));
+  }, [focusId, documents, revealIndex]);
 
   // documents/visible are re-run triggers, not read here: the effect above can
   // expand `visible` on a later commit, and the target row only exists in the
@@ -1532,12 +1517,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
 
   if (!status) {
     return loadError ? (
-      <section className="flex flex-col items-start gap-2">
-        <ErrorBanner>{loadError}</ErrorBanner>
-        <Button variant="ghost" size="sm" onClick={() => void refresh()}>
-          {t("common.retry")}
-        </Button>
-      </section>
+      <RetryableError onRetry={() => void refresh()}>{loadError}</RetryableError>
     ) : (
       <Card as="section" padding="lg" className="flex flex-col gap-5">
         <Skeleton className="h-7 w-44" />
@@ -1595,7 +1575,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
       <div className="flex flex-col gap-4">
         <SectionHead
           icon={FolderOpen}
-          tone="bg-primary/10 text-primary"
+          tone="tint-neutral"
           title={t("knowledge.sections.library.title")}
           count={status.documents.length}
           description={t("knowledge.sections.library.description")}
@@ -1630,6 +1610,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
           icon={FolderOpen}
           title={t("library.emptyTitle")}
           description={t("library.emptyBody")}
+          surface={false}
           action={
             <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               <Upload />
@@ -1642,6 +1623,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
           icon={SearchX}
           title={t("common.noResults")}
           description={t("common.noResultsBody", { query })}
+          surface={false}
           action={
             <Button variant="outline" size="sm" onClick={() => setQuery("")}>
               {t("common.clearSearch")}
@@ -1662,17 +1644,7 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
               </li>
             ))}
           </ul>
-          {remaining > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="self-start"
-              onClick={() => setVisible((v) => v + VISIBLE_STEP)}
-            >
-              <ChevronDown />
-              {t("library.showMore", { count: remaining })}
-            </Button>
-          )}
+          {remaining > 0 && <ShowMoreButton count={remaining} onClick={showMore} />}
         </div>
       )}
 
@@ -1682,7 +1654,6 @@ function LibrarySection({ focusId }: { focusId: string | null }) {
         title={t("library.delete")}
         description={docToDelete ? t("library.deleteConfirm", { title: docToDelete.title }) : ""}
         confirmLabel={t("library.delete")}
-        variant="destructive"
         busy={deleting}
         onConfirm={() => void confirmRemove()}
       />
@@ -1926,7 +1897,7 @@ function DocumentTile({
       <button
         type="button"
         className={cn(
-          "flex min-w-0 flex-col gap-1.5 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+          "flex min-w-0 flex-col gap-1.5 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           canOpen ? "cursor-pointer" : "cursor-default",
         )}
         onClick={() => canOpen && api.openLibraryDocument(doc.id)}
@@ -1966,7 +1937,7 @@ function DocumentTile({
           ) : (
             <span className="flex min-w-0 items-center gap-1 text-2xs text-muted-foreground">
               <span
-                className="tint-file shrink-0 rounded px-1 py-0.5 font-mono text-[9px] uppercase leading-none"
+                className="tint-file shrink-0 rounded px-1 py-0.5 font-mono text-3xs uppercase leading-none"
                 style={hueStyle(doc.ext)}
               >
                 {doc.ext}
@@ -1994,22 +1965,22 @@ function DocumentTile({
         {canOpen && (
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-xs"
             onClick={() => api.openLibraryDocument(doc.id)}
             aria-label={t("library.openDocument")}
-            className="h-6 w-6 bg-surface shadow-sm hover:text-foreground"
+            className="bg-surface"
           >
-            <ExternalLink className="h-3 w-3" />
+            <ExternalLink />
           </Button>
         )}
         <Button
-          variant="ghost"
-          size="icon"
+          variant="ghost-danger"
+          size="icon-xs"
           onClick={onDelete}
           aria-label={t("library.delete")}
-          className="h-6 w-6 bg-surface shadow-sm hover:bg-destructive/10 hover:text-destructive"
+          className="bg-surface"
         >
-          <Trash2 className="h-3 w-3" />
+          <Trash2 />
         </Button>
       </div>
     </div>

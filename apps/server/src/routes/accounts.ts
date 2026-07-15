@@ -1,10 +1,10 @@
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { AppStatus } from "@trailin/shared";
 import { EMAIL_APPS } from "@trailin/shared";
-import type { FastifyInstance } from "fastify";
 import { activeModelConfigured, getActiveModelIds } from "../llm/registry.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 
-export async function accountRoutes(app: FastifyInstance): Promise<void> {
+export const accountRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/status", async (): Promise<AppStatus> => {
     const { provider, model } = await getActiveModelIds();
     const configured = await pipedreamConfigured();
@@ -33,4 +33,4 @@ export async function accountRoutes(app: FastifyInstance): Promise<void> {
       model,
     };
   });
-}
+};

@@ -7,11 +7,8 @@ import {
   resolveAccountUnsubscribe,
 } from "../email/unsubscribe/resolve.js";
 import { badRequest, notFound, upstreamError } from "../errors.js";
-import { moduleLogger } from "../logger.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
-
-const log = moduleLogger("newsletters-routes");
 
 const unsubscribeBody = Type.Object({
   address: Type.String(),
@@ -63,7 +60,10 @@ export const newsletterRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
       const result = await executeAndMarkUnsubscribe(address, resolved.oneClickUrl);
       if (!result.ok) {
-        log.warn({ address, accountId, err: result.error }, "one-click unsubscribe request failed");
+        req.log.warn(
+          { address, accountId, err: result.error },
+          "one-click unsubscribe request failed",
+        );
         throw upstreamError(result.error ?? "unsubscribe request failed");
       }
       return { ok: true, state: "requested" };

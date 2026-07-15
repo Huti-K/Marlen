@@ -152,6 +152,14 @@
         "discardedLabel": "Discarded",
         "goneLabel": "This draft no longer exists"
       },
+      "attachments": {
+        "title": "Attachments",
+        "count_one": "{{count}} file",
+        "count_other": "{{count}} files",
+        "empty": "No attachments on this message.",
+        "open": "Open",
+        "download": "Download"
+      },
       "briefing": {
         "label": "Briefing",
         "itemCount_one": "{{count}} item",
@@ -178,17 +186,19 @@
           "reply_other": "{{count}} need a reply",
           "draftsReady_one": "{{count}} draft ready",
           "draftsReady_other": "{{count}} drafts ready",
-          "rolledUp_one": "{{count}} rolled up",
-          "rolledUp_other": "{{count}} rolled up",
           "scanned_one": "{{count}} reviewed",
           "scanned_other": "{{count}} reviewed"
-        },
-        "rollup": "{{count}} {{label}}"
+        }
       }
     },
     "showcase": {
       "intro": "Here is a sample of everything I can show in chat — tool activity, one of every card, a formatted reply, and the thinking state.",
       "toolsNote": "While tools run, each one appears as a chip: finished, still running, or failed."
+    },
+    "attachmentViewer": {
+      "openInBrowser": "Open in browser",
+      "save": "Save to library",
+      "saved": "Saved “{{name}}” to your library."
     }
   },
   "search": {
@@ -227,6 +237,22 @@
       "memory": "Memories"
     }
   },
+  "onoffice": {
+    "crmLabel": "CRM",
+    "setupTitle": "Connect onOffice",
+    "setupIntro": "Create an API user in onOffice, generate an access token, and paste the token and secret below. They stay on this computer and are never included in a backup.",
+    "openApiDocs": "onOffice API docs",
+    "token": "API token",
+    "secret": "API secret",
+    "keepPlaceholder": "Leave empty to keep the saved value",
+    "save": "Save",
+    "removeSaved": "Remove credentials",
+    "removeSavedConfirm": "Remove the saved onOffice credentials from this computer? The assistant will lose access to your CRM until you add them again.",
+    "configuredFooter": "Connected · credentials from <code>{{source}}</code>",
+    "sourceSettings": "this app",
+    "sourceEnv": "environment",
+    "edit": "Edit credentials"
+  },
   "connections": {
     "customToggle": "Use my own Pipedream project",
     "customToggleOn": "Email runs through the Pipedream project configured below.",
@@ -237,6 +263,7 @@
     "noProvidersFound": "No apps found for “{{q}}”.",
     "suggestedHeading": "Popular email apps",
     "moreAppsHeading": "Popular integrations",
+    "crmHeading": "CRM",
     "anyAppHint": "These are just a few, search above to connect any of 2,000+ apps, from other mail services to your calendar, notes and chat.",
     "setupTitle": "One-time setup: connect Trailin to Pipedream",
     "setupIntro": "Trailin uses <pd>Pipedream</pd>, a free service, to link your email accounts safely, as many as you like, also several from the same provider. It needs three values from your own Pipedream workspace, copied once:",
@@ -275,6 +302,10 @@
     "setupBanner": "Trailin isn't fully set up, the agent can't reach your mail yet.",
     "setupBannerCta": "Finish setup",
     "offlineBanner": "Can't reach your email provider right now, check your connection.",
+    "missedBanner_one": "1 automation didn't run while the app was closed.",
+    "missedBanner_other": "{{count}} automations didn't run while the app was closed.",
+    "missedRun": "Run now",
+    "missedRunning": "Running…",
     "reviewTitle": "Needs your review",
     "reviewEmpty": "No drafts waiting. When you or the agent prepare replies, they show up here.",
     "reviewEmptyFiltered": "No drafts in this period.",
@@ -389,14 +420,6 @@
       "running": "running",
       "success": "success",
       "error": "error"
-    },
-    "digest": {
-      "askAbout": "Ask about this",
-      "askAboutPrompt": "In the \"{{automation}}\" run from {{date}}, you flagged \"{{sender}}, {{subject}}\" — \"{{gist}}\". What is this about, and does anything need me?",
-      "thisAutomation": "this automation",
-      "draftReply": "Draft a reply",
-      "draftReplyPrompt": "Draft a reply to {{sender}}'s email \"{{subject}}\" in {{account}}. The briefing summarized it as: {{gist}}",
-      "draftReplyPromptNoAccount": "Draft a reply to {{sender}}'s email \"{{subject}}\". The briefing summarized it as: {{gist}}"
     }
   },
   "contacts": {
@@ -452,7 +475,12 @@
     "delete": "Delete",
     "deleteConfirm": "Delete this memory?",
     "collapse": "Collapse memory",
-    "expand": "Expand memory"
+    "expand": "Expand memory",
+    "usedTimes": "{{count}}×",
+    "lastUsed": "Last used {{time}}",
+    "neverUsed": "Never used yet",
+    "nearCap": "Memory is almost full ({{count}}/{{max}}).",
+    "pruneHint": "Consider removing entries the agent rarely uses — least used: “{{example}}”."
   },
   "library": {
     "folderLabel": "Library folder path",
@@ -529,6 +557,10 @@
         "chipConnected_one": "{{count}} connected",
         "chipConnected_other": "{{count}} connected",
         "chipNoAccounts": "No accounts yet"
+      },
+      "onoffice": {
+        "title": "onOffice",
+        "description": "Connect your onOffice CRM so the assistant can read and manage estates, leads, appointments, and tasks."
       },
       "permissions": {
         "title": "Permissions",

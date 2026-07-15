@@ -5,20 +5,17 @@ import {
   markDraftLearned,
 } from "../../db/draftStore.js";
 import { createMemory } from "../../db/memories.js";
+import { resolveCheapModel } from "../../llm/registry.js";
 import { moduleLogger } from "../../logger.js";
+import { collapseWhitespace } from "../../search/snippets.js";
 import { errorMessage } from "../../util.js";
 import { extractLessons } from "./extractLLM.js";
-import { resolveLearnModel } from "./learnModel.js";
 import { findSentMessageBody } from "./learnStore.js";
 
 const log = moduleLogger("learn-extract");
 
 /** One account's LLM call covers at most this many pending pairs a night; any excess waits for the next sweep. */
 const MAX_PAIRS_PER_CALL = 10;
-
-function normalizeWhitespace(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
 
 /**
  * Whitespace-normalized body with the account's compose-time signature
@@ -28,10 +25,10 @@ function normalizeWhitespace(text: string): string {
  * than mis-stripped).
  */
 function stripSignature(body: string, signature: string | null): string {
-  const normalized = normalizeWhitespace(body);
-  const normalizedSignature = signature ? normalizeWhitespace(signature) : "";
+  const normalized = collapseWhitespace(body);
+  const normalizedSignature = signature ? collapseWhitespace(signature) : "";
   if (!normalizedSignature || !normalized.endsWith(normalizedSignature)) return normalized;
-  return normalizeWhitespace(normalized.slice(0, normalized.length - normalizedSignature.length));
+  return collapseWhitespace(normalized.slice(0, normalized.length - normalizedSignature.length));
 }
 
 interface PendingPair {
@@ -50,7 +47,7 @@ async function defaultExtract(input: {
   pairs: Array<{ draftBody: string; sentBody: string }>;
   accountName: string;
 }): Promise<string[]> {
-  const model = await resolveLearnModel();
+  const model = await resolveCheapModel();
   return extractLessons(input.pairs, input.accountName, model);
 }
 

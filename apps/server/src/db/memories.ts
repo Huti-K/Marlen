@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MEMORY_MAX_LENGTH, type MemoryEntry } from "@trailin/shared";
+import { MEMORY_MAX_COUNT, MEMORY_MAX_LENGTH, type MemoryEntry } from "@trailin/shared";
 import { eq } from "drizzle-orm";
 import { emitServerEvent } from "../events.js";
 import { db, schema } from "./index.js";
@@ -11,10 +11,6 @@ import { db, schema } from "./index.js";
  * sentence — anything longer-form (background, summaries, research) belongs
  * in the document library as a note instead (see library_write).
  */
-
-// The cap is defined in @trailin/shared (the UI enforces it too); re-exported for server callers.
-export { MEMORY_MAX_LENGTH };
-export const MEMORY_MAX_COUNT = 200;
 
 export async function listMemories(): Promise<MemoryEntry[]> {
   const rows = await db.select().from(schema.memories).orderBy(schema.memories.createdAt);
@@ -87,6 +83,8 @@ export async function createMemory(
     source,
     accountId: normalizedAccountId,
     contactId: normalizedContactId,
+    usedCount: 0,
+    lastUsedAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -100,7 +98,7 @@ export async function createMemory(
  * bracketed in the system prompt) to a full id. Null when not found or when
  * a short prefix matches more than one entry.
  */
-export async function resolveMemoryId(idOrPrefix: string): Promise<string | null> {
+async function resolveMemoryId(idOrPrefix: string): Promise<string | null> {
   const trimmed = idOrPrefix.trim();
   if (!trimmed) return null;
   const rows = await db.select({ id: schema.memories.id }).from(schema.memories);
@@ -167,4 +165,32 @@ export async function deleteMemory(idOrPrefix: string): Promise<boolean> {
   await db.delete(schema.memories).where(eq(schema.memories.id, id));
   emitServerEvent("memories");
   return true;
+}
+
+/**
+ * Bump the usage counter (and stamp lastUsedAt) for each memory the agent
+ * reported relying on this turn via the memory_used tool. Accepts full ids or
+ * the ≥6-char prefixes shown bracketed in the prompt; unresolved or duplicate
+ * ids are skipped silently — a miscited id must never fail the turn. Returns
+ * the entries actually recorded.
+ */
+export async function recordMemoryUse(idsOrPrefixes: string[]): Promise<MemoryEntry[]> {
+  const now = new Date().toISOString();
+  const seen = new Set<string>();
+  const recorded: MemoryEntry[] = [];
+  for (const raw of idsOrPrefixes) {
+    const id = await resolveMemoryId(raw);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const [current] = await db.select().from(schema.memories).where(eq(schema.memories.id, id));
+    if (!current) continue;
+    const usedCount = current.usedCount + 1;
+    await db
+      .update(schema.memories)
+      .set({ usedCount, lastUsedAt: now })
+      .where(eq(schema.memories.id, id));
+    recorded.push({ ...(current as MemoryEntry), usedCount, lastUsedAt: now });
+  }
+  if (recorded.length > 0) emitServerEvent("memories");
+  return recorded;
 }

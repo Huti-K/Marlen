@@ -1,6 +1,7 @@
 import type { AccountVoice } from "@trailin/shared";
 import { getAccountVoices } from "../db/settings.js";
 import { moduleLogger } from "../logger.js";
+import { collapseWhitespace } from "../search/snippets.js";
 import { fetchAccountNameMap } from "./accounts.js";
 import { runOneShot } from "./oneShot.js";
 
@@ -112,14 +113,13 @@ export async function composeDraftBody(
   const humanized = await humanizeDraftBody(input);
 
   const voice = await getVoiceFor(accountId);
-  const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
   let body = humanized.body;
   let signatureAppended = false;
   const signature = voice?.signature?.trim();
   const signatureHtml = voice?.signatureHtml?.trim();
   if (
     (signature || signatureHtml) &&
-    (!signature || !normalize(body).includes(normalize(signature)))
+    (!signature || !collapseWhitespace(body).includes(collapseWhitespace(signature)))
   ) {
     body = `${body}\n\n${
       signature ??
@@ -145,7 +145,7 @@ export async function composeDraftBody(
 }
 
 /** Convenience lookup for one account's voice, or undefined if none is set. */
-export async function getVoiceFor(accountId: string): Promise<AccountVoice | undefined> {
+async function getVoiceFor(accountId: string): Promise<AccountVoice | undefined> {
   const voices = await getAccountVoices();
   return voices.find((v) => v.accountId === accountId);
 }

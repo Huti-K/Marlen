@@ -19,10 +19,13 @@ import { useNavigate } from "react-router-dom";
 import { AccountDot } from "@/components/ui/account-dot";
 import { Chip } from "@/components/ui/chip";
 import { IconButton } from "@/components/ui/icon-button";
+import { IconChip } from "@/components/ui/icon-chip";
+import { Kbd } from "@/components/ui/kbd";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { NAV_ITEMS, type NavItem } from "@/lib/nav";
 import { setPendingDraftFocus, setPendingKnowledgeFocus } from "@/lib/paletteFocus";
+import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 import { cn, MOD_LABEL, openExternal } from "@/lib/utils";
 
 /**
@@ -147,19 +150,6 @@ interface Section {
   rows: Row[];
 }
 
-export function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <kbd
-      className={cn(
-        "inline-flex h-4.5 min-w-4.5 items-center justify-center rounded bg-surface-2 px-1 font-sans text-3xs font-medium text-muted-foreground",
-        className,
-      )}
-    >
-      {children}
-    </kbd>
-  );
-}
-
 export function SearchPalette() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -197,12 +187,11 @@ export function SearchPalette() {
         setOpen((o) => !o);
       }
     };
-    const onOpenRequest = () => setOpen(true);
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("trailin:open-search", onOpenRequest);
+    const unsubscribeOpenSearch = subscribeTrailin("open-search", () => setOpen(true));
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("trailin:open-search", onOpenRequest);
+      unsubscribeOpenSearch();
     };
   }, []);
 
@@ -363,18 +352,17 @@ export function SearchPalette() {
 
   const openHit = (hit: SearchResult) => {
     if (hit.type === "chat" || hit.type === "run") {
-      window.dispatchEvent(new CustomEvent("trailin:open-chat", { detail: hit.id }));
-      window.dispatchEvent(new CustomEvent("trailin:show-chat"));
+      dispatchTrailin("open-chat", hit.id);
+      dispatchTrailin("show-chat");
     } else if (hit.type === "draft") {
       // Stashed before navigate: HomePanel may not be mounted yet to catch the
       // CustomEvent below (see lib/paletteFocus.ts).
       if (hit.accountId) setPendingDraftFocus({ accountId: hit.accountId, draftId: hit.id });
       navigate("/");
-      window.dispatchEvent(
-        new CustomEvent("trailin:open-draft", {
-          detail: { accountId: hit.accountId, draftId: hit.id },
-        }),
-      );
+      // SearchResult.accountId is optional in general, but every draft hit
+      // carries one (drafts always belong to an account) — the same
+      // invariant the setPendingDraftFocus guard above relies on.
+      dispatchTrailin("open-draft", { accountId: hit.accountId as string, draftId: hit.id });
     } else if (hit.type === "mail") {
       // No in-app thread viewer yet — same "open in webmail" affordance as
       // the Waiting-on list and draft rows.
@@ -382,9 +370,7 @@ export function SearchPalette() {
     } else {
       setPendingKnowledgeFocus({ type: hit.type, id: hit.id });
       navigate("/knowledge");
-      window.dispatchEvent(
-        new CustomEvent("trailin:open-knowledge", { detail: { type: hit.type, id: hit.id } }),
-      );
+      dispatchTrailin("open-knowledge", { type: hit.type, id: hit.id });
     }
     setOpen(false);
   };
@@ -464,7 +450,7 @@ export function SearchPalette() {
           onMouseDown={(e) => {
             if (!(e.target as HTMLElement).closest("input")) e.preventDefault();
           }}
-          className="palette-panel fixed left-1/2 top-1/2 z-[120] flex w-[calc(100%-1.75rem)] max-w-xl flex-col overflow-hidden rounded-2xl bg-surface md:max-w-3xl"
+          className="palette-panel surface fixed left-1/2 top-1/2 z-[120] flex w-[calc(100%-1.75rem)] max-w-xl flex-col overflow-hidden rounded-2xl md:max-w-3xl"
         >
           <DialogPrimitive.Title className="sr-only">{t("search.title")}</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
@@ -684,14 +670,9 @@ function PaletteRow({
         active ? "bg-accent/10" : "hover:bg-secondary",
       )}
     >
-      <span
-        className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors",
-          active ? "tint-accent" : "tint-neutral",
-        )}
-      >
-        <Icon className="size-[15px]" />
-      </span>
+      <IconChip tone={active ? "tint-accent" : "tint-neutral"} className="transition-colors">
+        <Icon />
+      </IconChip>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">
           {hit ? <Highlight text={title} query={query} /> : title}

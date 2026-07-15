@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ContactCategory, ContactKind } from "@trailin/shared";
 import { lazyStatement } from "../../db/index.js";
-import { escapeLikeInput } from "../../util.js";
+import { likeContains } from "../../db/like.js";
 import { decodeStringArray } from "../sync/rows.js";
 import { parseAddressEntry } from "./addressMatch.js";
 
@@ -41,7 +41,7 @@ export function findStaleContacts(limit: number): StaleContact[] {
   return selectStale().all({ limit, errorCutoff }) as StaleContact[];
 }
 
-export interface ContactSampleMessage {
+interface ContactSampleMessage {
   subject: string;
   snippet: string;
   date: string;
@@ -105,7 +105,7 @@ export function buildContactSample(address: string): ContactSample | null {
     | undefined;
   if (!meta || meta.messageCount === 0) return null;
 
-  const like = `%${escapeLikeInput(address)}%`;
+  const like = likeContains(address);
   const rows = selectSampleRows().all({ like, overfetch: SAMPLE_OVERFETCH }) as RawSampleRow[];
   const matched: RawSampleRow[] = [];
   for (const row of rows) {

@@ -1,6 +1,7 @@
 import type { ConnectedAccount, SearchResult } from "@trailin/shared";
 import { and, desc, eq, ne, or } from "drizzle-orm";
 import { db, lazyStatement, schema } from "../db/index.js";
+import { likePattern } from "../db/like.js";
 import { listMemories } from "../db/memories.js";
 import { buildFtsMatch } from "../db/sql.js";
 import "../email/registerProviders.js";
@@ -11,7 +12,6 @@ import { threadWebUrl } from "../email/webLinks.js";
 import { listDocuments, searchChunks } from "../library/store.js";
 import { moduleLogger } from "../logger.js";
 import { listAccounts } from "../pipedream/connect.js";
-import { likePattern } from "../util.js";
 import { buildSnippet, plainText } from "./snippets.js";
 
 const log = moduleLogger("search");

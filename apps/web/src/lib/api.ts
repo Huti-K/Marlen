@@ -19,13 +19,17 @@ import type {
   EmailRef,
   EmailThread,
   Language,
+  LibrarySearchHit,
   LibraryStatus,
   LlmProviderInfo,
   LoginFlowStatus,
   MailSuggestion,
   MemoryEntry,
+  MissedAutomation,
   ModelSettings,
   NewsletterSender,
+  OnOfficeConfigInput,
+  OnOfficeStatus,
   OpenConversations,
   PipedreamApp,
   PipedreamConfigInput,
@@ -35,15 +39,7 @@ import type {
   UnsubscribeResult,
 } from "@trailin/shared";
 import i18n from "@/lib/i18n";
-
-/** One document match from GET /api/library/search. */
-export interface LibrarySearchHit {
-  id: string;
-  title: string;
-  path: string;
-  ext: string;
-  snippet: string;
-}
+import { openExternal } from "@/lib/utils";
 
 /** A draft's recorded fate, from GET /api/drafts/:accountId/:draftId/status. */
 export interface DraftStatusResult {
@@ -202,6 +198,10 @@ export const api = {
   deletePipedreamAccount: (id: string) =>
     http<{ ok: boolean }>("DELETE", `/api/pipedream/accounts/${encodeURIComponent(id)}`),
 
+  onOfficeStatus: () => get<OnOfficeStatus>("/api/onoffice"),
+  saveOnOffice: (body: OnOfficeConfigInput) => http<OnOfficeStatus>("PUT", "/api/onoffice", body),
+  clearOnOffice: () => http<OnOfficeStatus>("DELETE", "/api/onoffice"),
+
   /** Global search across chats, digests, drafts, documents and memories (command palette). */
   search: (q: string) => get<{ results: SearchResult[] }>(`/api/search?q=${encodeURIComponent(q)}`),
 
@@ -217,6 +217,11 @@ export const api = {
   // Unlike runsFeed, never filtered by showInActivity and never paginated away.
   pinnedRun: () =>
     get<{ run: RunFeedItem | null; automation: Automation | null }>("/api/runs/pinned"),
+  // Automations whose latest scheduled slot elapsed without a covering run —
+  // empty once boot catch-up has run them, so Home shows its button only when
+  // catch-up couldn't.
+  missedRuns: () => get<{ items: MissedAutomation[] }>("/api/runs/missed"),
+  runMissed: () => http<{ started: MissedAutomation[] }>("POST", "/api/runs/catch-up"),
   drafts: (opts?: { refresh?: boolean }) =>
     get<AccountDrafts[]>(`/api/drafts${opts?.refresh ? "?refresh=1" : ""}`),
   draftDetail: (accountId: string, draftId: string) =>
@@ -380,11 +385,22 @@ export const api = {
   },
   /** Open a library document in a new browser tab (or trigger a download). */
   openLibraryDocument: (id: string): void => {
-    window.open(`/api/library/documents/${encodeURIComponent(id)}/open`, "_blank");
+    openExternal(`/api/library/documents/${encodeURIComponent(id)}/open`);
   },
+  /** URL that streams an email attachment's bytes — inline for viewable types, download otherwise. */
+  mailAttachmentUrl: (accountId: string, messageId: string, filename: string): string =>
+    `/api/mail/attachments/open?accountId=${encodeURIComponent(accountId)}` +
+    `&messageId=${encodeURIComponent(messageId)}&filename=${encodeURIComponent(filename)}`,
+  /** Save an email attachment into the document library, where it is indexed. */
+  saveMailAttachment: (accountId: string, messageId: string, filename: string) =>
+    http<{ saved: string }>("POST", "/api/mail/attachments/save", {
+      accountId,
+      messageId,
+      filename,
+    }),
   /** Download a SQLite snapshot of the local database (streamed as an attachment). */
   downloadBackup: (): void => {
-    window.open("/api/backup", "_blank");
+    openExternal("/api/backup");
   },
 };
 

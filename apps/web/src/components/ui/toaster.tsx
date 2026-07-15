@@ -19,7 +19,7 @@ export function Toaster() {
         unstyled: true,
         classNames: {
           toast:
-            "group pointer-events-auto flex w-full items-start gap-2 rounded-lg px-3 py-2.5 font-sans text-xs shadow-lg",
+            "group pointer-events-auto flex w-full items-start gap-2 rounded-lg px-3 py-2.5 font-sans text-xs",
           content: "min-w-0 flex-1",
           title: "text-pretty",
           actionButton:

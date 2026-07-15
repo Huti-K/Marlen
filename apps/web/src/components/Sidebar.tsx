@@ -51,16 +51,16 @@ function SidebarNavLink({
         "group relative flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition-colors",
         isCollapsed ? "md:px-0 md:w-10 md:justify-center px-3" : isWarning ? "px-3 w-full" : "px-3",
         isWarning
-          ? "text-warning hover:bg-secondary"
+          ? "text-warning hover:bg-accent/[0.08]"
           : active
             ? "tint-accent"
-            : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+            : "text-muted-foreground hover:bg-accent/[0.08] hover:text-foreground",
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className={cn(isCollapsed && "md:hidden")}>{label}</span>
       {isCollapsed && (
-        <div className="absolute left-full top-1/2 ml-2 -translate-y-1/2 rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-sm transition-all group-hover:translate-x-1 group-hover:opacity-100 pointer-events-none z-50 md:block hidden whitespace-nowrap">
+        <div className="absolute left-full top-1/2 ml-2 -translate-y-1/2 rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100 pointer-events-none z-50 md:block hidden whitespace-nowrap">
           {label}
         </div>
       )}
@@ -76,7 +76,7 @@ export function Sidebar({ status, onClose, isCollapsed, onCollapsedChange }: Sid
   return (
     <aside
       className={cn(
-        "flex h-dvh shrink-0 flex-col bg-sidebar transition-[width] duration-200",
+        "surface-fills flex h-dvh shrink-0 flex-col bg-sidebar transition-[width] duration-200",
         isCollapsed ? "w-64 md:w-16" : "w-64",
       )}
     >

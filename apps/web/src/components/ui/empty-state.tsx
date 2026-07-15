@@ -9,6 +9,7 @@ export function EmptyState({
   description,
   action,
   size = "default",
+  surface = true,
   className,
 }: {
   icon: LucideIcon;
@@ -16,6 +17,10 @@ export function EmptyState({
   description: string;
   action?: React.ReactNode;
   size?: "default" | "lg";
+  /** Draw the raised card behind the state. Turn off when it already sits inside
+   *  a card — the borderless "no card-in-card" rule — leaving a bare, padded block
+   *  whose grey tile recesses against the card it lands on. */
+  surface?: boolean;
   className?: string;
 }) {
   const lg = size === "lg";
@@ -23,14 +28,16 @@ export function EmptyState({
     <div
       className={cn(
         "flex flex-col items-center gap-3 text-center",
-        !lg && "rounded-xl bg-surface-2 py-12",
+        !lg && (surface ? "surface rounded-xl py-12" : "py-10"),
         className,
       )}
     >
       <div
         className={cn(
-          "grid place-items-center rounded-xl bg-surface text-accent",
-          lg ? "h-14 w-14 rounded-2xl" : "h-11 w-11",
+          "grid place-items-center rounded-xl text-accent",
+          // Recessed grey inside the white box; a raised white tile when the
+          // state is bare on the canvas (lg).
+          lg ? "bg-surface h-14 w-14 rounded-2xl" : "bg-surface-2 h-11 w-11",
         )}
       >
         <Icon className={lg ? "h-7 w-7" : "h-5 w-5"} />

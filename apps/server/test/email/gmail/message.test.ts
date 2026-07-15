@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  decodeHeaderText,
   decodeHtmlEntities,
   headerLookup,
   type MessagePart,
@@ -109,5 +110,38 @@ describe("decodeHtmlEntities", () => {
 
   it("leaves plain text untouched", () => {
     expect(decodeHtmlEntities("plain text")).toBe("plain text");
+  });
+});
+
+describe("decodeHeaderText", () => {
+  it("passes plain values through untouched", () => {
+    expect(decodeHeaderText("Quarterly report")).toBe("Quarterly report");
+    expect(decodeHeaderText("Ada Lovelace <ada@example.com>")).toBe(
+      "Ada Lovelace <ada@example.com>",
+    );
+    expect(decodeHeaderText("")).toBe("");
+  });
+
+  it("decodes UTF-8 B-encoded words", () => {
+    expect(decodeHeaderText("=?UTF-8?B?R3LDvG5lciBCZXJpY2h0?=")).toBe("Grüner Bericht");
+  });
+
+  it("decodes Q-encoded words, with underscores as spaces", () => {
+    expect(decodeHeaderText("=?ISO-8859-1?Q?M=FCller?=")).toBe("Müller");
+    expect(decodeHeaderText("=?UTF-8?Q?Ay=C5=9Fe_Kaya?=")).toBe("Ayşe Kaya");
+  });
+
+  it("joins adjacent encoded words without the separating whitespace", () => {
+    expect(decodeHeaderText("=?UTF-8?B?R3LDvG4=?= =?UTF-8?B?ZXI=?=")).toBe("Grüner");
+  });
+
+  it("decodes only the encoded display name of an address entry", () => {
+    expect(decodeHeaderText("=?UTF-8?Q?Ay=C5=9Fe_Kaya?= <ayse@example.com>")).toBe(
+      "Ayşe Kaya <ayse@example.com>",
+    );
+  });
+
+  it("returns the raw value when the encoding is unknown or malformed", () => {
+    expect(decodeHeaderText("=?UTF-8?X?abc?=")).toBe("=?UTF-8?X?abc?=");
   });
 });

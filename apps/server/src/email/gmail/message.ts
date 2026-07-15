@@ -1,4 +1,5 @@
 import { decodeHTML } from "entities";
+import libmime from "libmime";
 import { stripHtml } from "../textUtils.js";
 
 /**
@@ -58,4 +59,22 @@ export function plainTextBody(payload: MessagePart | undefined): string {
  * numeric alike; non-breaking spaces come back as plain spaces. */
 export function decodeHtmlEntities(text: string): string {
   return decodeHTML(text).replace(/\u00a0/g, " ");
+}
+
+/**
+ * Decode RFC 2047 encoded-words (`=?UTF-8?B?…?=`). Gmail's API returns
+ * header values verbatim from the RFC 822 source, so a non-ASCII display
+ * name or subject arrives encoded and would otherwise be mirrored as
+ * gibberish. Values without an encoded-word marker pass through untouched;
+ * a malformed encoding falls back to the raw value rather than failing the
+ * message it rode in on. Display-path only — code that reuses headers to
+ * rebuild raw MIME (drafts.ts) must keep them verbatim.
+ */
+export function decodeHeaderText(value: string): string {
+  if (!value.includes("=?")) return value;
+  try {
+    return libmime.decodeWords(value);
+  } catch {
+    return value;
+  }
 }

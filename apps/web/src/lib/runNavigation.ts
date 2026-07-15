@@ -1,3 +1,5 @@
+import { dispatchTrailin } from "@/lib/trailinEvents";
+
 /**
  * Navigates to the Chat tab, then opens a specific run's conversation once
  * it has mounted. The short delay bridges the gap between the route
@@ -8,6 +10,6 @@
 export function openRunInChat(runId: string, goToChat: () => void): void {
   goToChat();
   setTimeout(() => {
-    window.dispatchEvent(new CustomEvent("trailin:open-chat", { detail: runId }));
+    dispatchTrailin("open-chat", runId);
   }, 100);
 }

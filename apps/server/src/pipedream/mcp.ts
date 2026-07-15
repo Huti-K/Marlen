@@ -2,17 +2,18 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { AccountDescription, AgentCard, ConnectedAccount } from "@trailin/shared";
-import { toCardAccount } from "../agent/cards.js";
+import type { AccountDescription, ConnectedAccount } from "@trailin/shared";
+import { toCardAccount } from "../agent/card/common.js";
+import { buildEmailDraftCard, CARD_KINDS } from "../agent/card/kinds.js";
 import { composeDraftBody } from "../agent/composition.js";
-import { defineTool, textResult } from "../agent/toolResult.js";
+import { defineTool, textResult } from "../agent/toolkit.js";
 import { appendDraftVersion, createDraftSnapshot, getDraftCardDetails } from "../db/draftStore.js";
 import { getAccountDescriptions, getWriteAccessAccounts } from "../db/settings.js";
 import "../email/registerProviders.js";
 import "../email/registerAttachmentProviders.js";
 import "../email/sync/registerSyncProviders.js";
 import { getAttachmentProvider } from "../email/attachmentProviders.js";
-import { buildSaveAttachmentTool } from "../email/attachmentTool.js";
+import { buildListAttachmentsTool, buildSaveAttachmentTool } from "../email/attachmentTool.js";
 import { type CreateDraftInput, type DraftProvider, getDraftProvider } from "../email/providers.js";
 import { getSyncProvider } from "../email/sync/syncProviders.js";
 import { buildUnsubscribeTool } from "../email/unsubscribe/tool.js";
@@ -115,13 +116,35 @@ function actionOf(mcpToolName: string): string {
 }
 
 /** Short per-account tool-name suffix, e.g. "kadim" from kadim@gmail.com. */
-export function accountSlug(account: ConnectedAccount): string {
+function accountSlug(account: ConnectedAccount): string {
   const local = account.name.split("@")[0] ?? account.name;
   const slug = local
     .replace(/[^a-zA-Z0-9]/g, "")
     .slice(0, 24)
     .toLowerCase();
   return slug || account.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6);
+}
+
+/**
+ * Claim a unique name for one account's local (non-MCP) tool. Mirrors the MCP
+ * naming in buildAccountTools: try the app-slug suffix first, fall back to the
+ * account id when two accounts of the same app share an address local-part and
+ * the slug collides (e.g. john@gmail.com and a Workspace john@acme.com). Returns
+ * null — claiming nothing — only if even the id-suffixed name is taken, so the
+ * caller skips the tool rather than letting one account's draft tool act as
+ * another's.
+ */
+function claimLocalToolName(
+  base: string,
+  suffix: string,
+  account: ConnectedAccount,
+  seenNames: Set<string>,
+): string | null {
+  let name = sanitizeToolName(`${base}${suffix}`);
+  if (seenNames.has(name)) name = sanitizeToolName(`${base}__${account.id}`);
+  if (seenNames.has(name)) return null;
+  seenNames.add(name);
+  return name;
 }
 
 function mcpContentToText(content: unknown): string {
@@ -235,7 +258,7 @@ function buildAccountTools(
  * with the same kind of tool, so prompts stay natural. Drafts never send
  * anything — allowed even on a read-only account.
  */
-export function buildDraftTool(
+function buildDraftTool(
   account: ConnectedAccount,
   name: string,
   provider: DraftProvider,
@@ -304,10 +327,7 @@ export function buildDraftTool(
         log.warn({ err: error, draftId: result.draftId }, "recording draft snapshot failed");
       }
 
-      let text =
-        `Draft created in ${account.name} (draft id ${result.draftId}). It is unsent, and the ` +
-        `full draft is shown to the user as a card in this conversation — don't repeat its ` +
-        `subject or body in your reply.`;
+      let text = `Draft created in ${account.name} (draft id ${result.draftId}). It is unsent.`;
 
       // Show the saved body once, whenever it differs from what the model
       // submitted — whether that's the humanizer, the signature, or both.
@@ -318,9 +338,9 @@ export function buildDraftTool(
         const reasonText = reasons.length > 0 ? ` (${reasons.join(" and ")})` : "";
         text += `\n\nThe saved draft reads${reasonText}:\n\n${finalBody}`;
       }
+      text += CARD_KINDS.email_draft.note;
 
-      const card: AgentCard = {
-        kind: "email_draft",
+      const card = buildEmailDraftCard({
         account: toCardAccount(account),
         draft: {
           draftId: result.draftId,
@@ -333,7 +353,7 @@ export function buildDraftTool(
           webUrl: result.webUrl,
           signatureAppended: composed.signatureAppended,
         },
-      };
+      });
 
       return textResult(text, card);
     },
@@ -348,7 +368,7 @@ export function buildDraftTool(
  * agent-authored version to the draft's snapshot history. Only built for
  * accounts whose provider implements updateDraft.
  */
-export function buildUpdateDraftTool(
+function buildUpdateDraftTool(
   account: ConnectedAccount,
   name: string,
   provider: DraftProvider,
@@ -414,8 +434,7 @@ export function buildUpdateDraftTool(
       // the card from the create turn keeps its old body forever.
       const details = await getDraftCardDetails(account.id, draftId);
       if (details) {
-        const card: AgentCard = {
-          kind: "email_draft",
+        const card = buildEmailDraftCard({
           account: toCardAccount(account),
           draft: {
             draftId,
@@ -427,11 +446,9 @@ export function buildUpdateDraftTool(
             body: finalBody ?? details.body,
             signatureAppended,
           },
-        };
+        });
         return textResult(
-          `Draft ${draftId} updated in ${account.name}. It remains unsent, and the updated ` +
-            `draft is shown to the user as a card in this conversation — don't repeat its ` +
-            `subject or body in your reply.`,
+          `Draft ${draftId} updated in ${account.name}. It remains unsent.${CARD_KINDS.email_draft.note}`,
           card,
         );
       }
@@ -590,43 +607,45 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
     const suffix = needsSuffix ? `__${accountSlug(account)}` : "";
     const draftProvider = getDraftProvider(account.app);
     if (draftProvider) {
-      const name = sanitizeToolName(`${account.app}-create-draft${suffix}`);
-      if (!seenNames.has(name)) {
-        seenNames.add(name);
-        // Never handed to background workers (delegate builds its toolset
-        // from the mirror read tools only), so workers cannot create drafts.
-        tools.push(buildDraftTool(account, name, draftProvider));
-      }
+      // Never handed to background workers (delegate builds its toolset from
+      // the mirror read tools only), so workers cannot create drafts.
+      const name = claimLocalToolName(`${account.app}-create-draft`, suffix, account, seenNames);
+      if (name) tools.push(buildDraftTool(account, name, draftProvider));
       if (draftProvider.updateDraft) {
-        const updateName = sanitizeToolName(`${account.app}-update-draft${suffix}`);
-        if (!seenNames.has(updateName)) {
-          seenNames.add(updateName);
-          // Same footing as create-draft: rewrites an unsent draft, never
-          // dispatches mail, so it stays available on read-only accounts.
-          tools.push(buildUpdateDraftTool(account, updateName, draftProvider));
-        }
+        // Same footing as create-draft: rewrites an unsent draft, never
+        // dispatches mail, so it stays available on read-only accounts.
+        const updateName = claimLocalToolName(
+          `${account.app}-update-draft`,
+          suffix,
+          account,
+          seenNames,
+        );
+        if (updateName) tools.push(buildUpdateDraftTool(account, updateName, draftProvider));
       }
     }
     const attachmentProvider = getAttachmentProvider(account.app);
     if (attachmentProvider) {
-      const name = sanitizeToolName(`${account.app}-save-attachment${suffix}`);
-      if (!seenNames.has(name)) {
-        seenNames.add(name);
-        // Reads mail but writes only into the local document library, so it's
-        // fine on a read-only account.
-        tools.push(buildSaveAttachmentTool(account, name, attachmentProvider));
-      }
+      // Reads mail but writes only into the local document library, so it's
+      // fine on a read-only account.
+      const name = claimLocalToolName(`${account.app}-save-attachment`, suffix, account, seenNames);
+      if (name) tools.push(buildSaveAttachmentTool(account, name, attachmentProvider));
+      // Read-only: lists attachments and publishes the interactive card whose
+      // rows open the viewer or save — no mailbox write.
+      const listName = claimLocalToolName(
+        `${account.app}-list-attachments`,
+        suffix,
+        account,
+        seenNames,
+      );
+      if (listName) tools.push(buildListAttachmentsTool(account, listName, attachmentProvider));
     }
     // Fires a real HTTP request to a third party (RFC 8058 one-click POST) —
     // same write-arming bar as an MCP send/reply/delete tool, and only for
     // accounts whose mailbox is actually mirrored (no SyncProvider means no
     // local mail to look an unsubscribe link up from).
     if (writeAccess.has(account.id) && getSyncProvider(account.app)) {
-      const name = sanitizeToolName(`${account.app}-unsubscribe${suffix}`);
-      if (!seenNames.has(name)) {
-        seenNames.add(name);
-        tools.push(buildUnsubscribeTool(account, name));
-      }
+      const name = claimLocalToolName(`${account.app}-unsubscribe`, suffix, account, seenNames);
+      if (name) tools.push(buildUnsubscribeTool(account, name));
     }
   }
 

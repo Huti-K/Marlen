@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { IconChip } from "@/components/ui/icon-chip";
 
 /** Title + description pair shared by top-level section/step headers. */
 export function SectionHeader({
@@ -15,9 +16,7 @@ export function SectionHeader({
     <div className="flex flex-col gap-1.5">
       <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
         {icon ? (
-          <span className="tint-accent flex h-6 w-6 shrink-0 items-center justify-center rounded-md [&_svg]:h-3.5 [&_svg]:w-3.5">
-            {icon}
-          </span>
+          <IconChip size="sm">{icon}</IconChip>
         ) : (
           <span className="h-4 w-1 shrink-0 rounded-full bg-accent/50" />
         )}

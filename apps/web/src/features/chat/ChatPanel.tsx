@@ -1,29 +1,9 @@
-import type {
-  AccountColor,
-  AgentCard,
-  ChatStreamEvent,
-  ChatToolCall,
-  Conversation,
-  EmailRef,
-  MailSuggestion,
-} from "@trailin/shared";
+import type { AccountColor, ChatToolCall, EmailRef, MailSuggestion } from "@trailin/shared";
 import type { ParseKeys } from "i18next";
-import {
-  Check,
-  Copy,
-  Loader2,
-  MessagesSquare,
-  Pencil,
-  Plus,
-  Search,
-  Send,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Check, Copy, Loader2, MessagesSquare, Search, Send, X } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingRow } from "@/components/ui/feedback";
 import { IconButton } from "@/components/ui/icon-button";
@@ -34,68 +14,17 @@ import { MentionPopover, type MentionPopoverHandle } from "@/features/chat/compo
 import { RefChips, RefChipsReadOnly } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
 import { spliceMentionPick, useMentionQuery } from "@/features/chat/composer/useMentionQuery";
-import { api, streamChat } from "@/lib/api";
-import { dateTimeLabel } from "@/lib/dates";
-import { useServerEvents } from "@/lib/serverEvents";
+import { HistoryList } from "@/features/chat/HistoryList";
+import type { DisplayMessage } from "@/features/chat/runState";
+import { useChatRuns } from "@/features/chat/useChatRuns";
+import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { subscribeTrailin } from "@/lib/trailinEvents";
 import { cn, errorMessage } from "@/lib/utils";
-
-/** Same-device continuity: the conversation to restore on the next load. */
-const LAST_CONVERSATION_KEY = "trailin-last-conversation";
 
 /** Renders one of every agent card locally. Never reaches the agent or the DB. */
 const SHOWCASE_COMMAND = "/showcase";
 const SYSTEM_PROMPT_COMMAND = "/sys";
-
-/** First page size for the history rail; "Load more" fetches in the same increments. */
-const CONVERSATIONS_PAGE_SIZE = 50;
-
-/** How far back a conversation's `createdAt` (local time) groups it in the rail. */
-type RecencyGroup = "today" | "yesterday" | "week" | "earlier";
-
-const RECENCY_ORDER: RecencyGroup[] = ["today", "yesterday", "week", "earlier"];
-// `as const` keeps these as literal keys so t() can type-check them below.
-const RECENCY_LABEL_KEY = {
-  today: "chat.groupToday",
-  yesterday: "chat.groupYesterday",
-  week: "chat.groupThisWeek",
-  earlier: "chat.groupEarlier",
-} as const satisfies Record<RecencyGroup, string>;
-
-function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function recencyGroup(createdAt: string, now: Date): RecencyGroup {
-  const diffDays = Math.round(
-    (startOfDay(now).getTime() - startOfDay(new Date(createdAt)).getTime()) / 86_400_000,
-  );
-  if (diffDays <= 0) return "today";
-  if (diffDays === 1) return "yesterday";
-  if (diffDays <= 7) return "week";
-  return "earlier";
-}
-
-interface DisplayMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  toolCalls: ChatToolCall[];
-  /** Structured tool results, keyed by tool call so a retried tool replaces its card. */
-  cards: { toolCallId: string; card: AgentCard }[];
-  streaming: boolean;
-  thinking?: boolean;
-  error?: string;
-  /** Local-only /sys result. */
-  systemPrompt?: string;
-  /** Emails the user pinned to this message (composer @-mentions or a card's "add to chat"); user messages only. */
-  refs?: EmailRef[];
-}
-
-interface ActiveRun {
-  conversationId?: string;
-  messages: DisplayMessage[];
-}
 
 /** A message queued by a window event, sent once the panel goes idle so it
  *  never races the reset (when requested) or a still-streaming turn. */
@@ -120,11 +49,7 @@ export function ChatPanel({
   onConversationChange?: (id: string | undefined) => void;
 }) {
   const { t } = useTranslation();
-  const [messages, setMessages] = React.useState<DisplayMessage[]>([]);
   const [input, setInput] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [restoring, setRestoring] = React.useState(true);
-  const [conversationId, setConversationId] = React.useState<string | undefined>();
   // A message queued by a window event — sent by the effect below once the
   // panel is idle, so it never races a conversation reset or a streaming turn.
   const [pendingSend, setPendingSend] = React.useState<PendingSend | null>(null);
@@ -137,11 +62,10 @@ export function ChatPanel({
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const mentionPopoverRef = React.useRef<MentionPopoverHandle>(null);
   const mention = useMentionQuery(textareaRef);
-  const activeConversationRef = React.useRef<string | undefined>(undefined);
-  const messagesRef = React.useRef<DisplayMessage[]>([]);
-  const activeRunRef = React.useRef<ActiveRun | null>(null);
-  const runByConversationRef = React.useRef(new Map<string, ActiveRun>());
-  const messageCacheRef = React.useRef(new Map<string, DisplayMessage[]>());
+  const focusComposer = React.useCallback(() => {
+    textareaRef.current?.focus();
+  }, []);
+  const runs = useChatRuns({ setHistoryOpen, onFocusComposer: focusComposer });
 
   React.useEffect(() => {
     let cancelled = false;
@@ -156,56 +80,15 @@ export function ChatPanel({
     };
   }, []);
 
-  // Pick up where this device left off. Text, cards, tool activity and turn
-  // errors are persisted together and restored here.
-  React.useEffect(() => {
-    const savedId = localStorage.getItem(LAST_CONVERSATION_KEY);
-    if (!savedId) {
-      setRestoring(false);
-      return;
-    }
-    let cancelled = false;
-    api
-      .conversationMessages(savedId)
-      .then((msgs) => {
-        if (cancelled || msgs.length === 0) return;
-        const restored: DisplayMessage[] = msgs.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          toolCalls: m.toolCalls ?? [],
-          cards: m.cards ?? [],
-          streaming: false,
-          error: m.error,
-          refs: m.refs,
-        }));
-        activeConversationRef.current = savedId;
-        messagesRef.current = restored;
-        messageCacheRef.current.set(savedId, restored);
-        setMessages(restored);
-        setConversationId(savedId);
-      })
-      .catch((err) => {
-        // Unreachable or gone — start fresh, but don't make the failure silent.
-        toast.error(err);
-      })
-      .finally(() => {
-        if (!cancelled) setRestoring(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: messages is the intentional re-run trigger (a new turn or streaming delta), not read in the body
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs.messages is the intentional re-run trigger (a new turn or streaming delta), not read in the body
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [runs.messages]);
 
   // Keep the host in sync with the open conversation (Chat tab highlights it).
   React.useEffect(() => {
-    onConversationChange?.(conversationId);
-  }, [conversationId, onConversationChange]);
+    onConversationChange?.(runs.conversationId);
+  }, [runs.conversationId, onConversationChange]);
 
   // Grow the textarea with its content, up to the CSS max-height cap (then it
   // scrolls internally). Empty is left to the CSS min-height instead of measured
@@ -222,153 +105,36 @@ export function ChatPanel({
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
 
-  const updateRunAssistant = (
-    run: ActiveRun,
-    updater: (message: DisplayMessage) => DisplayMessage,
-  ) => {
-    const next = [...run.messages];
-    const last = next[next.length - 1];
-    if (last && last.role === "assistant" && last.streaming) {
-      next[next.length - 1] = updater(last);
-    }
-    run.messages = next;
-    if (run.conversationId) messageCacheRef.current.set(run.conversationId, next);
-    if (
-      activeRunRef.current === run ||
-      (run.conversationId !== undefined && activeConversationRef.current === run.conversationId)
-    ) {
-      messagesRef.current = next;
-      setMessages(next);
-    }
-  };
-
-  const handleRunEvent = (run: ActiveRun, event: ChatStreamEvent) => {
-    switch (event.type) {
-      case "conversation":
-        run.conversationId = event.conversationId;
-        runByConversationRef.current.set(event.conversationId, run);
-        messageCacheRef.current.set(event.conversationId, run.messages);
-        if (activeRunRef.current === run) {
-          activeConversationRef.current = event.conversationId;
-          setConversationId(event.conversationId);
-          localStorage.setItem(LAST_CONVERSATION_KEY, event.conversationId);
-        }
-        // The conversation row has already been committed when this stream event
-        // arrives. Invalidate same-tab history directly rather than relying only
-        // on the separate SSE connection, which may still be connecting.
-        window.dispatchEvent(new CustomEvent("trailin:conversations-changed"));
-        break;
-      case "thinking":
-        updateRunAssistant(run, (m) => ({ ...m, thinking: true }));
-        break;
-      case "text_delta":
-        updateRunAssistant(run, (m) => ({
-          ...m,
-          content: m.content + event.delta,
-          thinking: false,
-        }));
-        break;
-      case "tool_start":
-        updateRunAssistant(run, (m) => ({
-          ...m,
-          thinking: false,
-          toolCalls: [
-            ...m.toolCalls,
-            {
-              id: event.toolCallId,
-              name: event.toolName,
-              isError: false,
-              done: false,
-              parameters: event.parameters,
-              contentOffset: event.contentOffset,
-            },
-          ],
-        }));
-        break;
-      case "tool_update":
-        updateRunAssistant(run, (m) => ({
-          ...m,
-          toolCalls: m.toolCalls.map((call) =>
-            call.id === event.toolCallId ? { ...call, detail: event.detail } : call,
-          ),
-        }));
-        break;
-      case "tool_end":
-        updateRunAssistant(run, (m) => ({
-          ...m,
-          toolCalls: m.toolCalls.map((call) =>
-            call.id === event.toolCallId
-              ? { ...call, done: true, isError: event.isError, result: event.result }
-              : call,
-          ),
-        }));
-        break;
-      case "card":
-        updateRunAssistant(run, (m) => ({
-          ...m,
-          thinking: false,
-          cards: [
-            ...m.cards.filter((c) => c.toolCallId !== event.toolCallId),
-            { toolCallId: event.toolCallId, card: event.card },
-          ],
-        }));
-        break;
-      case "done":
-        updateRunAssistant(run, (m) => ({
-          ...m,
-          content: event.text || m.content,
-          streaming: false,
-          thinking: false,
-        }));
-        break;
-      case "error":
-        toast.error(event.message);
-        updateRunAssistant(run, (m) => ({
-          ...m,
-          error: event.message,
-          streaming: false,
-          thinking: false,
-        }));
-        break;
-    }
-  };
-
   /** Answers `/showcase` client-side: one sample turn per thing the assistant can render. */
   const showcase = (message: string) => {
-    setMessages((prev) => {
-      const next: DisplayMessage[] = [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "user",
-          content: message,
-          toolCalls: [],
-          cards: [],
-          streaming: false,
-        },
-        ...SHOWCASE_TURNS.map((turn, turnIndex) => ({
-          id: crypto.randomUUID(),
-          role: "assistant" as const,
-          content: turn.contentKey ? String(t(turn.contentKey as ParseKeys)) : (turn.content ?? ""),
-          toolCalls: (turn.toolCalls ?? []).map((call, i) => ({
-            ...call,
-            id: `showcase-tool-${turnIndex}-${i}`,
-          })),
-          cards: (turn.cards ?? []).map((card, i) => ({
-            toolCallId: `showcase-${turnIndex}-${i}`,
-            card,
-          })),
-          streaming: turn.thinking ?? false,
-          thinking: turn.thinking,
-        })),
-      ];
-      messagesRef.current = next;
-      return next;
-    });
+    const userMessage: DisplayMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      toolCalls: [],
+      cards: [],
+      streaming: false,
+    };
+    const turns: DisplayMessage[] = SHOWCASE_TURNS.map((turn, turnIndex) => ({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: turn.contentKey ? String(t(turn.contentKey as ParseKeys)) : (turn.content ?? ""),
+      toolCalls: (turn.toolCalls ?? []).map((call, i) => ({
+        ...call,
+        id: `showcase-tool-${turnIndex}-${i}`,
+      })),
+      cards: (turn.cards ?? []).map((card, i) => ({
+        toolCallId: `showcase-${turnIndex}-${i}`,
+        card,
+      })),
+      streaming: turn.thinking ?? false,
+      thinking: turn.thinking,
+    }));
+    runs.appendMessages([userMessage, ...turns]);
   };
 
   const showSystemPrompt = async (message: string) => {
-    setBusy(true);
+    runs.setBusy(true);
     const userMessage: DisplayMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -386,37 +152,32 @@ export function ChatPanel({
       streaming: true,
       thinking: true,
     };
-    const next = [...messagesRef.current, userMessage, loadingMessage];
-    messagesRef.current = next;
-    setMessages(next);
+    runs.appendMessages([userMessage, loadingMessage]);
     try {
       const { prompt } = await api.systemPrompt();
-      const done = next.map((item) =>
-        item.id === loadingMessage.id
-          ? { ...item, streaming: false, thinking: false, systemPrompt: prompt }
-          : item,
-      );
-      messagesRef.current = done;
-      setMessages(done);
+      runs.updateMessage(loadingMessage.id, {
+        streaming: false,
+        thinking: false,
+        systemPrompt: prompt,
+      });
     } catch (err) {
       const messageText = errorMessage(err);
       toast.error(err);
-      const failed = next.map((item) =>
-        item.id === loadingMessage.id
-          ? { ...item, streaming: false, thinking: false, error: messageText }
-          : item,
-      );
-      messagesRef.current = failed;
-      setMessages(failed);
+      runs.updateMessage(loadingMessage.id, {
+        streaming: false,
+        thinking: false,
+        error: messageText,
+      });
     } finally {
-      setBusy(false);
+      runs.setBusy(false);
       requestAnimationFrame(() => textareaRef.current?.focus());
     }
   };
 
-  /** Sends a message in the open conversation (or starts one server-side). */
+  /** Sends a message in the open conversation (or starts one server-side); routes
+   *  /showcase and /sys to their local, agent-free handlers instead. */
   const sendText = async (message: string, sendRefs?: EmailRef[]) => {
-    if (!message || busy) return;
+    if (!message || runs.busy) return;
     setHistoryOpen(false);
 
     if (message.toLowerCase() === SHOWCASE_COMMAND) {
@@ -427,59 +188,7 @@ export function ChatPanel({
       await showSystemPrompt(message);
       return;
     }
-
-    setBusy(true);
-    const next: DisplayMessage[] = [
-      ...messagesRef.current,
-      {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: message,
-        toolCalls: [],
-        cards: [],
-        streaming: false,
-        refs: sendRefs,
-      },
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: "",
-        toolCalls: [],
-        cards: [],
-        streaming: true,
-      },
-    ];
-    const run: ActiveRun = { conversationId: activeConversationRef.current, messages: next };
-    activeRunRef.current = run;
-    if (run.conversationId) {
-      runByConversationRef.current.set(run.conversationId, run);
-      messageCacheRef.current.set(run.conversationId, next);
-    }
-    messagesRef.current = next;
-    setMessages(next);
-
-    try {
-      await streamChat(
-        { conversationId: activeConversationRef.current, message, refs: sendRefs },
-        (event) => handleRunEvent(run, event),
-      );
-    } catch (err) {
-      const messageText = errorMessage(err);
-      toast.error(err);
-      updateRunAssistant(run, (m) => ({
-        ...m,
-        error: messageText,
-        streaming: false,
-        thinking: false,
-      }));
-    } finally {
-      if (run.conversationId) runByConversationRef.current.delete(run.conversationId);
-      if (activeRunRef.current === run) {
-        activeRunRef.current = null;
-        setBusy(false);
-      }
-      requestAnimationFrame(() => textareaRef.current?.focus());
-    }
+    await runs.send(message, sendRefs);
   };
 
   const pickMention = React.useCallback(
@@ -509,67 +218,12 @@ export function ChatPanel({
 
   const send = async () => {
     const message = input.trim();
-    if (!message || busy) return;
+    if (!message || runs.busy) return;
     setInput("");
     const sendRefs = composerRefs.refs.length > 0 ? composerRefs.refs : undefined;
     composerRefs.clear();
     await sendText(message, sendRefs);
   };
-
-  // Stable identity (only refs and setState setters in its body) so effects
-  // that open a conversation in response to an event can depend on it directly.
-  const openConversation = React.useCallback(
-    async (id: string) => {
-      activeConversationRef.current = id;
-      setConversationId(id);
-      localStorage.setItem(LAST_CONVERSATION_KEY, id);
-      setHistoryOpen(false);
-      const liveRun = runByConversationRef.current.get(id) ?? null;
-      activeRunRef.current = liveRun;
-      setBusy(Boolean(liveRun));
-      const cached = messageCacheRef.current.get(id);
-      if (cached) {
-        messagesRef.current = cached;
-        setMessages(cached);
-        textareaRef.current?.focus();
-        return;
-      }
-      try {
-        const msgs = await api.conversationMessages(id);
-        if (activeConversationRef.current !== id) return;
-        const restored: DisplayMessage[] = msgs.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          toolCalls: m.toolCalls ?? [],
-          cards: m.cards ?? [],
-          streaming: false,
-          error: m.error,
-          refs: m.refs,
-        }));
-        messageCacheRef.current.set(id, restored);
-        messagesRef.current = restored;
-        setMessages(restored);
-        // Opening a conversation means continuing it — put the caret where the
-        // user's next message goes (e.g. the Drafts page's refine jump).
-        textareaRef.current?.focus();
-      } catch (err) {
-        toast.error(err);
-      }
-    },
-    [setHistoryOpen],
-  );
-
-  const newConversation = React.useCallback(() => {
-    activeConversationRef.current = undefined;
-    activeRunRef.current = null;
-    setBusy(false);
-    messagesRef.current = [];
-    setConversationId(undefined);
-    setMessages([]);
-    setHistoryOpen(false);
-    localStorage.removeItem(LAST_CONVERSATION_KEY);
-  }, [setHistoryOpen]);
 
   // Deferred one render on purpose: waits for the panel to go idle (any
   // streaming turn to finish) before resetting the conversation (when
@@ -577,66 +231,61 @@ export function ChatPanel({
   // stream into a closed-over previous conversation.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => {
-    if (!pendingSend || busy || restoring) return;
+    if (!pendingSend || runs.busy || runs.restoring) return;
     const { text, refs: sendRefs, newConversation: reset } = pendingSend;
     setPendingSend(null);
-    if (reset) newConversation();
+    if (reset) runs.newConversation();
     void sendText(text, sendRefs);
   });
 
   React.useEffect(() => {
-    const handleOpenChat = (e: Event) => {
-      const id = (e as CustomEvent<string>).detail;
-      void openConversation(id);
+    const handleOpenChat = (id: string) => {
+      void runs.openConversation(id);
     };
     // Starts a fresh conversation with the composer pre-filled (not sent) —
     // how other panels hand a suggested question to the chat (dispatch
     // together with "trailin:show-chat" so the panel is actually visible).
-    const handlePrefill = (e: Event) => {
-      const text = (e as CustomEvent<{ text: string }>).detail?.text;
+    const handlePrefill = (detail: { text: string }) => {
+      const text = detail?.text;
       if (!text) return;
-      newConversation();
+      runs.newConversation();
       setInput(text);
       textareaRef.current?.focus();
     };
     // Like prefill, but sends immediately — for actions where the composed
     // message is complete as-is (e.g. the digest's "draft a reply" buttons).
-    const handleSendEvent = (e: Event) => {
-      const text = (e as CustomEvent<{ text: string }>).detail?.text;
+    const handleSendEvent = (detail: { text: string }) => {
+      const text = detail?.text;
       if (!text) return;
       setPendingSend({ text, newConversation: true });
     };
     // A choices-card option answering the agent's clarifying question — sent
     // in the SAME conversation (never resets it) so it lands as the next
     // turn of the exchange that asked the question.
-    const handleAnswerChat = (e: Event) => {
-      const detail = (e as CustomEvent<{ text: string; refs?: EmailRef[] }>).detail;
+    const handleAnswerChat = (detail: { text: string; refs?: EmailRef[] }) => {
       if (!detail?.text) return;
       setPendingSend({ text: detail.text, refs: detail.refs, newConversation: false });
     };
     // A card's "add to chat" action (or a picked @-mention) pinning an email
     // to the composer's next message — never resets the conversation.
-    const handleAddChatRef = (e: Event) => {
-      const ref = (e as CustomEvent<{ ref: EmailRef }>).detail?.ref;
+    const handleAddChatRef = (detail: { ref: EmailRef }) => {
+      const ref = detail?.ref;
       if (!ref) return;
       composerRefs.add(ref);
       textareaRef.current?.focus();
     };
-    window.addEventListener("trailin:new-chat", newConversation);
-    window.addEventListener("trailin:open-chat", handleOpenChat);
-    window.addEventListener("trailin:prefill-chat", handlePrefill);
-    window.addEventListener("trailin:send-chat", handleSendEvent);
-    window.addEventListener("trailin:answer-chat", handleAnswerChat);
-    window.addEventListener("trailin:add-chat-ref", handleAddChatRef);
+    const unsubscribers = [
+      subscribeTrailin("new-chat", runs.newConversation),
+      subscribeTrailin("open-chat", handleOpenChat),
+      subscribeTrailin("prefill-chat", handlePrefill),
+      subscribeTrailin("send-chat", handleSendEvent),
+      subscribeTrailin("answer-chat", handleAnswerChat),
+      subscribeTrailin("add-chat-ref", handleAddChatRef),
+    ];
     return () => {
-      window.removeEventListener("trailin:new-chat", newConversation);
-      window.removeEventListener("trailin:open-chat", handleOpenChat);
-      window.removeEventListener("trailin:prefill-chat", handlePrefill);
-      window.removeEventListener("trailin:send-chat", handleSendEvent);
-      window.removeEventListener("trailin:answer-chat", handleAnswerChat);
-      window.removeEventListener("trailin:add-chat-ref", handleAddChatRef);
+      for (const unsubscribe of unsubscribers) unsubscribe();
     };
-  }, [newConversation, openConversation, composerRefs.add]);
+  }, [runs.newConversation, runs.openConversation, composerRefs.add]);
 
   const isPage = layout === "page";
 
@@ -645,10 +294,13 @@ export function ChatPanel({
       <div className="min-h-0 flex-1 overflow-y-auto scroll-stable">
         {/* In page mode the history rail is external, so the internal toggle is inert. */}
         {!isPage && historyOpen ? (
-          <HistoryList activeId={conversationId} onPick={(id) => void openConversation(id)} />
-        ) : restoring ? (
+          <HistoryList
+            activeId={runs.conversationId}
+            onPick={(id) => void runs.openConversation(id)}
+          />
+        ) : runs.restoring ? (
           <LoadingRow />
-        ) : messages.length === 0 ? (
+        ) : runs.messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <EmptyState
               icon={MessagesSquare}
@@ -659,7 +311,7 @@ export function ChatPanel({
           </div>
         ) : (
           <div className={cn("flex flex-col gap-4 py-1", isPage && "mx-auto w-full max-w-4xl")}>
-            {messages.map((m) => (
+            {runs.messages.map((m) => (
               <div
                 key={m.id}
                 className={cn(
@@ -676,6 +328,12 @@ export function ChatPanel({
                     ))}
                   </div>
                 )}
+                {/* Pinned emails sit outside the bubble, like cards: a neutral chip
+                    on the canvas rather than baked into the accent fill, so the
+                    selected email reads as quiet reference, not high-contrast. */}
+                {m.role === "user" && m.refs && m.refs.length > 0 && (
+                  <RefChipsReadOnly refs={m.refs} colors={accountColors} />
+                )}
                 {(m.content ||
                   m.streaming ||
                   m.toolCalls.length > 0 ||
@@ -686,7 +344,7 @@ export function ChatPanel({
                       "text-sm",
                       m.role === "user"
                         ? "max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-accent-foreground"
-                        : "w-full py-1 text-foreground",
+                        : "max-w-[85%] rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5 text-foreground",
                     )}
                   >
                     {m.systemPrompt ? (
@@ -694,16 +352,7 @@ export function ChatPanel({
                     ) : m.role === "assistant" ? (
                       <AssistantSequence message={m} thinkingLabel={t("chat.thinking")} />
                     ) : (
-                      <>
-                        {m.refs && m.refs.length > 0 && (
-                          <RefChipsReadOnly
-                            refs={m.refs}
-                            colors={accountColors}
-                            className="mb-1.5"
-                          />
-                        )}
-                        <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
-                      </>
+                      <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
                     )}
                     {m.error && (
                       <div
@@ -793,16 +442,16 @@ export function ChatPanel({
             placeholder={t("chat.placeholder")}
             rows={1}
             className="max-h-40 min-h-9 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-base md:text-sm leading-relaxed [scrollbar-width:none] [-webkit-scrollbar]:hidden placeholder:text-muted-foreground focus:outline-none"
-            aria-busy={busy}
+            aria-busy={runs.busy}
           />
           <Button
             onClick={() => void send()}
-            disabled={busy || !input.trim()}
-            size="icon"
-            className="mb-1 h-8 w-8 shrink-0 rounded-xl"
+            disabled={runs.busy || !input.trim()}
+            size="icon-sm"
+            className="mb-1 shrink-0 rounded-xl"
             aria-label={t("chat.send")}
           >
-            {busy ? (
+            {runs.busy ? (
               <Loader2 className="animate-spin" />
             ) : (
               <Send className="-translate-x-px translate-y-px" />
@@ -826,7 +475,7 @@ function formatToolValue(value: unknown): string {
 
 function ToolActivity({ call }: { call: ChatToolCall }) {
   return (
-    <details className="group my-1 text-xs text-muted-foreground">
+    <details className="my-1 text-xs text-muted-foreground">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 py-0.5 hover:text-foreground">
         {!call.done && <Loader2 className="h-3 w-3 animate-spin" />}
         <span>{call.name}</span>
@@ -948,14 +597,13 @@ function SystemPromptView({ prompt }: { prompt: string }) {
             className="field h-8 w-full pl-8 pr-8 text-xs"
           />
           {query && (
-            <button
-              type="button"
+            <IconButton
               onClick={() => setQuery("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
               aria-label={t("common.close")}
             >
               <X className="h-3.5 w-3.5" />
-            </button>
+            </IconButton>
           )}
         </div>
         {normalized && (
@@ -972,333 +620,5 @@ function SystemPromptView({ prompt }: { prompt: string }) {
         <HighlightedPrompt text={prompt} query={query.trim()} />
       </pre>
     </section>
-  );
-}
-
-/** Past conversations, newest first; fetched fresh each time it opens. Search and
- * pagination are server-backed — this only ever holds one loaded "window". */
-export function HistoryList({
-  activeId,
-  onPick,
-  query = "",
-}: {
-  activeId: string | undefined;
-  onPick: (id: string) => void;
-  query?: string;
-}) {
-  const { t, i18n } = useTranslation();
-  const [items, setItems] = React.useState<Conversation[] | null>(null);
-  const [total, setTotal] = React.useState(0);
-  const [loadingMore, setLoadingMore] = React.useState(false);
-  const [debouncedQuery, setDebouncedQuery] = React.useState(query.trim());
-  const [renamingId, setRenamingId] = React.useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = React.useState("");
-  const [deleteId, setDeleteId] = React.useState<string | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
-  const renameHandled = React.useRef(false);
-
-  // Server-backed search: wait ~250ms after typing stops before hitting the endpoint.
-  React.useEffect(() => {
-    const trimmed = query.trim();
-    const timer = setTimeout(() => setDebouncedQuery(trimmed), 250);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  const load = React.useCallback(() => {
-    api
-      .conversations({ q: debouncedQuery || undefined, limit: CONVERSATIONS_PAGE_SIZE, offset: 0 })
-      .then((res) => {
-        setItems(res.items);
-        setTotal(res.total);
-      })
-      .catch((err) => {
-        toast.error(err);
-        setItems([]);
-        setTotal(0);
-      });
-  }, [debouncedQuery]);
-
-  React.useEffect(() => {
-    setItems(null);
-    load();
-  }, [load]);
-
-  // New chats and automation runs appear in the list as they happen. Simplest
-  // correct behavior for an invalidation: refetch and reset to the first page.
-  useServerEvents(["conversations"], load);
-
-  // Chat creation is reported on the request's stream as well as the global
-  // server-event stream. Listen to the local invalidation so a newly submitted
-  // chat appears even if EventSource had not connected when it was created.
-  React.useEffect(() => {
-    window.addEventListener("trailin:conversations-changed", load);
-    return () => window.removeEventListener("trailin:conversations-changed", load);
-  }, [load]);
-
-  const loadMore = async () => {
-    if (!items) return;
-    setLoadingMore(true);
-    try {
-      const res = await api.conversations({
-        q: debouncedQuery || undefined,
-        limit: CONVERSATIONS_PAGE_SIZE,
-        offset: items.length,
-      });
-      setItems([...items, ...res.items]);
-      setTotal(res.total);
-    } catch (err) {
-      toast.error(err);
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  const startRename = (c: Conversation) => {
-    // Enter/Escape set this true and unmount the input without firing blur
-    // (browsers don't dispatch focusout for a removed element), so a stale
-    // true would swallow the next rename's blur-commit. Clear it up front.
-    renameHandled.current = false;
-    setRenamingId(c.id);
-    setRenameDraft(c.title || "");
-  };
-
-  const commitRename = async (id: string) => {
-    setRenamingId(null);
-    const title = renameDraft.trim();
-    if (!title) return; // empty edit — silently cancel rather than 400 the server
-    setItems((prev) => prev?.map((c) => (c.id === id ? { ...c, title } : c)) ?? prev);
-    try {
-      await api.renameConversation(id, title);
-    } catch (err) {
-      toast.error(err);
-      load();
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteId) return;
-    setDeleting(true);
-    try {
-      await api.deleteConversation(deleteId);
-      if (deleteId === activeId) {
-        // Same reset the "New chat" button triggers: clears messages, the open
-        // conversation id, and the last-open-conversation localStorage key.
-        window.dispatchEvent(new CustomEvent("trailin:new-chat"));
-      }
-      setItems((prev) => prev?.filter((c) => c.id !== deleteId) ?? prev);
-      setTotal((n) => Math.max(0, n - 1));
-    } catch (err) {
-      toast.error(err);
-    } finally {
-      setDeleting(false);
-      setDeleteId(null);
-    }
-  };
-
-  const dateLabel = (iso: string) => dateTimeLabel(iso, i18n.language);
-
-  const renderRow = (c: Conversation) => (
-    <div
-      key={c.id}
-      className={cn(
-        "group flex items-center gap-1 rounded-lg transition-colors",
-        c.id === activeId ? "bg-accent/10" : "hover:bg-secondary",
-      )}
-    >
-      {renamingId === c.id ? (
-        <input
-          // biome-ignore lint/a11y/noAutofocus: renaming replaces the row with this input in place — focusing it is the point, so typing can start immediately
-          autoFocus
-          value={renameDraft}
-          onChange={(e) => setRenameDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              renameHandled.current = true;
-              void commitRename(c.id);
-            } else if (e.key === "Escape") {
-              renameHandled.current = true;
-              setRenamingId(null);
-            }
-          }}
-          onBlur={() => {
-            if (renameHandled.current) {
-              renameHandled.current = false;
-              return;
-            }
-            void commitRename(c.id);
-          }}
-          className="field mx-1 my-1 h-7 min-w-0 flex-1 px-2 text-sm"
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={() => onPick(c.id)}
-          className="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-3 py-2 text-left"
-        >
-          <span className="flex w-full min-w-0 items-center gap-1.5">
-            {c.running && (
-              <Loader2
-                className="h-3.5 w-3.5 shrink-0 animate-spin text-accent"
-                aria-label={t("chat.working")}
-              />
-            )}
-            <span
-              className={cn(
-                "min-w-0 flex-1 truncate text-sm",
-                c.id === activeId ? "font-medium text-accent" : "text-foreground",
-              )}
-            >
-              {c.title || t("chat.untitled")}
-            </span>
-          </span>
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {dateLabel(c.createdAt)}
-          </span>
-        </button>
-      )}
-      {renamingId !== c.id && (
-        <div className="flex shrink-0 items-center gap-0.5 pr-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {c.type !== "automation" && (
-            <IconButton
-              onClick={(e) => {
-                e.stopPropagation();
-                startRename(c);
-              }}
-              aria-label={t("chat.rename")}
-              title={t("chat.rename")}
-              className="rounded-md p-1 hover:bg-secondary"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </IconButton>
-          )}
-          <IconButton
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteId(c.id);
-            }}
-            aria-label={t("chat.delete")}
-            title={t("chat.delete")}
-            className="rounded-md p-1 hover:bg-destructive/10 hover:text-destructive"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </IconButton>
-        </div>
-      )}
-    </div>
-  );
-
-  const dialog = (
-    <ConfirmDialog
-      open={deleteId !== null}
-      onOpenChange={(next) => !next && setDeleteId(null)}
-      title={t("chat.deleteConfirmTitle")}
-      description={t("chat.deleteConfirmBody")}
-      confirmLabel={t("chat.delete")}
-      variant="destructive"
-      busy={deleting}
-      onConfirm={() => void confirmDelete()}
-    />
-  );
-
-  if (!items) {
-    return (
-      <>
-        <LoadingRow />
-        {dialog}
-      </>
-    );
-  }
-
-  const loadMoreButton = items.length < total && (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => void loadMore()}
-      disabled={loadingMore}
-      className="w-full text-muted-foreground"
-    >
-      {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-      {t("chat.loadMore")}
-    </Button>
-  );
-
-  if (items.length === 0) {
-    if (debouncedQuery) {
-      return (
-        <>
-          <p className="px-1 py-2 text-xs text-muted-foreground">{t("chat.noSearchResults")}</p>
-          {dialog}
-        </>
-      );
-    }
-    return (
-      <>
-        <div className="flex flex-col items-center justify-center gap-3 py-8 px-2 text-center">
-          <p className="text-sm text-muted-foreground">{t("chat.noConversations")}</p>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => window.dispatchEvent(new CustomEvent("trailin:new-chat"))}
-          >
-            <Plus className="h-4 w-4 mr-1.5" />
-            {t("chat.newConversation")}
-          </Button>
-        </div>
-        {dialog}
-      </>
-    );
-  }
-
-  // While searching: one flat, ungrouped, unsectioned result list (chats + automations mixed).
-  if (debouncedQuery) {
-    return (
-      <>
-        <div className="flex flex-col gap-4 py-2 px-1">
-          <div className="flex flex-col gap-1">{items.map(renderRow)}</div>
-          {loadMoreButton}
-        </div>
-        {dialog}
-      </>
-    );
-  }
-
-  const chats = items.filter((c) => c.type !== "automation");
-  const automations = items.filter((c) => c.type === "automation");
-  const now = new Date();
-  const grouped = RECENCY_ORDER.map((group) => ({
-    group,
-    items: chats.filter((c) => recencyGroup(c.createdAt, now) === group),
-  })).filter((g) => g.items.length > 0);
-
-  return (
-    <>
-      <div className="flex flex-col gap-4 py-2 px-1">
-        {chats.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t("chat.chats")}
-            </h3>
-            {grouped.map(({ group, items: groupItems }) => (
-              <div key={group} className="flex flex-col gap-1">
-                <h4 className="px-2 text-xs font-medium text-muted-foreground">
-                  {t(RECENCY_LABEL_KEY[group])}
-                </h4>
-                {groupItems.map(renderRow)}
-              </div>
-            ))}
-          </div>
-        )}
-        {automations.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t("chat.automations")}
-            </h3>
-            {automations.map(renderRow)}
-          </div>
-        )}
-        {loadMoreButton}
-      </div>
-      {dialog}
-    </>
   );
 }

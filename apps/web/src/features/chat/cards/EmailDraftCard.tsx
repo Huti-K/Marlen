@@ -186,9 +186,8 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
                 {t("chat.cards.draft.keep")}
               </Button>
               <Button
-                variant="ghost"
+                variant="ghost-danger"
                 size="sm"
-                className="hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setPendingAction("discard")}
                 disabled={busy}
               >

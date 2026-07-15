@@ -14,11 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
+import { LoadingRow } from "@/components/ui/feedback";
 import { Input } from "@/components/ui/input";
+import { ListRow } from "@/components/ui/list-row";
 import { Textarea } from "@/components/ui/textarea";
 import { ThreadHistory } from "@/features/home/ThreadHistory";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { dispatchTrailin } from "@/lib/trailinEvents";
 import { errorMessage, openExternal } from "@/lib/utils";
 
 /** One action pending confirmation in the shared armed-confirm dialog below. */
@@ -180,13 +183,13 @@ export function DraftRow({
   // quiet terminal line instead of live controls.
   if (sent) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-lg bg-surface-2 px-3.5 py-3">
+      <ListRow>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{subjectDraft || t("drafts.noSubject")}</p>
           {draft.to && <p className="truncate text-xs text-muted-foreground">{draft.to}</p>}
         </div>
         <Badge variant="success">{t("drafts.sent")}</Badge>
-      </div>
+      </ListRow>
     );
   }
 
@@ -231,21 +234,17 @@ export function DraftRow({
             className="hover:bg-accent/10 hover:text-accent"
             onClick={(e) => {
               e.stopPropagation();
-              window.dispatchEvent(new CustomEvent("trailin:show-chat"));
+              dispatchTrailin("show-chat");
               if (draft.conversationId) {
                 // The agent wrote this draft — reopen that conversation, with
                 // its context and draft card, instead of starting cold.
-                window.dispatchEvent(
-                  new CustomEvent("trailin:open-chat", { detail: draft.conversationId }),
-                );
+                dispatchTrailin("open-chat", draft.conversationId);
               } else {
                 // Draft from outside Trailin (or an unlinked older one): a
                 // fresh chat with a prefilled ask is the best we can do.
-                window.dispatchEvent(
-                  new CustomEvent("trailin:prefill-chat", {
-                    detail: { text: t("drafts.refinePrompt", { subject: draft.subject }) },
-                  }),
-                );
+                dispatchTrailin("prefill-chat", {
+                  text: t("drafts.refinePrompt", { subject: draft.subject }),
+                });
               }
             }}
             title={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
@@ -268,11 +267,10 @@ export function DraftRow({
             )}
           </Button>
           <Button
-            variant="ghost"
+            variant="ghost-danger"
             size="icon-sm"
             onClick={() => setPendingAction("discard")}
             disabled={busy}
-            className="hover:bg-destructive/10 hover:text-destructive"
             title={t("drafts.discard")}
             aria-label={t("drafts.discard")}
           >
@@ -288,9 +286,7 @@ export function DraftRow({
       {open && (
         <div className="flex flex-col gap-3 px-3.5 pb-3.5 pt-1">
           {!detail ? (
-            <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("common.loading")}
-            </div>
+            <LoadingRow className="py-1 text-xs" />
           ) : (
             <div className="flex flex-col gap-2.5 pt-2 text-sm">
               <div className="flex flex-col gap-1 text-[13px] text-muted-foreground">

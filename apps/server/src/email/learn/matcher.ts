@@ -4,9 +4,9 @@ import {
   markDraftStatus,
 } from "../../db/draftStore.js";
 import { emitServerEvent } from "../../events.js";
+import { resolveCheapModel } from "../../llm/registry.js";
 import { moduleLogger } from "../../logger.js";
 import { normalizeAddressSet, normalizeSubject, sameAddressSet } from "./addressSubject.js";
-import { resolveLearnModel } from "./learnModel.js";
 import { findSentAfter, type SentCandidate } from "./learnStore.js";
 import { resolveTiebreak } from "./matchLLM.js";
 
@@ -45,7 +45,7 @@ async function defaultTiebreak(input: {
   latestBody: string;
   candidates: Array<{ providerMessageId: string; body: string }>;
 }): Promise<string | null> {
-  const model = await resolveLearnModel();
+  const model = await resolveCheapModel();
   return resolveTiebreak(input.latestBody, input.candidates, model);
 }
 

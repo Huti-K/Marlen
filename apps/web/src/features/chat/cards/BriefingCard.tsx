@@ -8,7 +8,6 @@ import type {
 import { BRIEFING_PRIORITIES } from "@trailin/shared";
 import {
   AlertTriangle,
-  ChevronDown,
   Clock,
   ExternalLink,
   Eye,
@@ -21,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { dispatchQuickAction } from "@/lib/quickActions";
 import { cn, openExternal } from "@/lib/utils";
 import { CardShell } from "./CardShell";
@@ -32,9 +32,18 @@ type BriefingData = Extract<AgentCard, { kind: "briefing" }>;
  * (see apps/web/DESIGN.md and the `kind: "briefing"` doc comment on
  * AgentCard). Priority is the grouping axis, not the inbox: an account only
  * ever shows up as a colour dot on a row. A run whose turn produced no card
- * renders as markdown via DigestView instead (see BriefingHero's degrade).
+ * renders as plain markdown instead (see BriefingHero's degrade).
  */
-export function BriefingCard({ card, colors }: { card: BriefingData; colors?: AccountColor[] }) {
+export function BriefingCard({
+  card,
+  colors,
+  bare,
+}: {
+  card: BriefingData;
+  colors?: AccountColor[];
+  /** Skip the CardShell frame — for embedding in an already-elevated panel (BriefingHero), never nest surfaces. */
+  bare?: boolean;
+}) {
   const { t } = useTranslation();
   const { headline, periodLabel, accounts, items, rollups, scanned } = card;
   const [fyiOpen, setFyiOpen] = React.useState(false);
@@ -53,20 +62,122 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
   const urgentCount = grouped.get("urgent")?.length ?? 0;
   const replyCount = grouped.get("reply")?.length ?? 0;
   const draftsReadyCount = items.filter((i) => i.draftId).length;
-  const rolledUpCount = rollups?.reduce((n, r) => n + r.count, 0) ?? 0;
 
   const otherStats: string[] = [];
   if (replyCount > 0) otherStats.push(t("chat.cards.briefing.stats.reply", { count: replyCount }));
   if (draftsReadyCount > 0) {
     otherStats.push(t("chat.cards.briefing.stats.draftsReady", { count: draftsReadyCount }));
   }
-  if (rolledUpCount > 0)
-    otherStats.push(t("chat.cards.briefing.stats.rolledUp", { count: rolledUpCount }));
+  // Rolled-up mail isn't tallied here — each kind renders as its own headed
+  // group below, with its own count, so a top-line total would just duplicate.
   if (typeof scanned === "number") {
     otherStats.push(t("chat.cards.briefing.stats.scanned", { count: scanned }));
   }
 
   const hasStats = urgentCount > 0 || otherStats.length > 0;
+
+  const body = (
+    <div className={cn("flex flex-col gap-4", !bare && "px-4 pb-4 pt-0.5")}>
+      {(headline || periodLabel) && (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          {headline && <p className="text-sm font-semibold tracking-tight">{headline}</p>}
+          {periodLabel && <p className="text-xs text-muted-foreground">{periodLabel}</p>}
+        </div>
+      )}
+
+      {hasStats && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {urgentCount > 0 && (
+            <Badge variant="warning">{t("home.briefingUrgent", { count: urgentCount })}</Badge>
+          )}
+          {otherStats.length > 0 && (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {otherStats.join(" · ")}
+            </span>
+          )}
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("chat.cards.briefing.empty")}</p>
+      ) : (
+        BRIEFING_PRIORITIES.map((priority) => {
+          const groupItems = grouped.get(priority) ?? [];
+          if (groupItems.length === 0) return null;
+          const isFyi = priority === "fyi";
+          const expanded = !isFyi || fyiOpen;
+
+          return (
+            <div key={priority} className="flex flex-col gap-1.5">
+              {isFyi ? (
+                <DisclosureToggle
+                  open={fyiOpen}
+                  onToggle={() => setFyiOpen((v) => !v)}
+                  className="px-0.5 py-0.5 font-semibold uppercase tracking-wide"
+                >
+                  {fyiOpen
+                    ? t("chat.cards.briefing.groups.fyi")
+                    : t("chat.cards.briefing.showMore", { count: groupItems.length })}
+                </DisclosureToggle>
+              ) : (
+                <div className="flex items-center gap-1.5 px-0.5">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t(`chat.cards.briefing.groups.${priority}`)}
+                  </h4>
+                  <span className="font-mono text-2xs tabular-nums text-muted-foreground/70">
+                    {groupItems.length}
+                  </span>
+                </div>
+              )}
+
+              {expanded && (
+                <div className="flex flex-col gap-1">
+                  {groupItems.map((item, index) => (
+                    <BriefingRow
+                      key={`${item.threadId}-${item.messageId ?? index}`}
+                      item={item}
+                      accounts={accounts}
+                      colors={colors}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+
+      {/* Rolled-up low-value mail: one headed group per kind (Newsletters,
+          Receipts…). Deliberately quieter than the tiers — each message is a
+          compact one-line RollupRow, not a full BriefingRow, so the noise never
+          competes with the mail that needs the user. Its one action is opening
+          the message in webmail. */}
+      {rollups?.map((rollup) => (
+        <div key={rollup.label} className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5 px-0.5">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {rollup.label}
+            </h4>
+            <span className="font-mono text-2xs tabular-nums text-muted-foreground/70">
+              {rollup.items.length}
+            </span>
+          </div>
+          <div className="flex flex-col">
+            {rollup.items.map((item, index) => (
+              <RollupRow
+                key={`${item.threadId}-${item.messageId ?? index}`}
+                item={item}
+                accounts={accounts}
+                colors={colors}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  if (bare) return body;
 
   return (
     <CardShell
@@ -76,111 +187,7 @@ export function BriefingCard({ card, colors }: { card: BriefingData; colors?: Ac
         items.length > 0 ? t("chat.cards.briefing.itemCount", { count: items.length }) : undefined
       }
     >
-      <div className="flex flex-col gap-4 px-4 pb-4 pt-0.5">
-        {(headline || periodLabel) && (
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            {headline && <p className="text-sm font-semibold tracking-tight">{headline}</p>}
-            {periodLabel && <p className="text-xs text-muted-foreground">{periodLabel}</p>}
-          </div>
-        )}
-
-        {hasStats && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            {urgentCount > 0 && (
-              <Badge variant="destructive">
-                {t("home.briefingUrgent", { count: urgentCount })}
-              </Badge>
-            )}
-            {otherStats.length > 0 && (
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {otherStats.join(" · ")}
-              </span>
-            )}
-          </div>
-        )}
-
-        {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("chat.cards.briefing.empty")}</p>
-        ) : (
-          BRIEFING_PRIORITIES.map((priority) => {
-            const groupItems = grouped.get(priority) ?? [];
-            if (groupItems.length === 0) return null;
-            const isFyi = priority === "fyi";
-            const expanded = !isFyi || fyiOpen;
-
-            return (
-              <div key={priority} className="flex flex-col gap-1.5">
-                {isFyi ? (
-                  <button
-                    type="button"
-                    onClick={() => setFyiOpen((v) => !v)}
-                    aria-expanded={fyiOpen}
-                    className="flex w-fit items-center gap-1.5 rounded-md px-0.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    <ChevronDown
-                      className={cn(
-                        "h-3 w-3 shrink-0 transition-transform",
-                        !fyiOpen && "-rotate-90",
-                      )}
-                      aria-hidden
-                    />
-                    {fyiOpen
-                      ? t("chat.cards.briefing.groups.fyi")
-                      : t("chat.cards.briefing.showMore", { count: groupItems.length })}
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1.5 px-0.5">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t(`chat.cards.briefing.groups.${priority}`)}
-                    </h4>
-                    <span className="font-mono text-2xs tabular-nums text-muted-foreground/70">
-                      {groupItems.length}
-                    </span>
-                  </div>
-                )}
-
-                {expanded && (
-                  <div className="flex flex-col gap-1">
-                    {groupItems.map((item, index) => (
-                      <BriefingRow
-                        key={`${item.threadId}-${item.messageId ?? index}`}
-                        item={item}
-                        accounts={accounts}
-                        colors={colors}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-
-        {rollups && rollups.length > 0 && (
-          <div className="flex flex-col gap-0.5">
-            {rollups.map((rollup) => {
-              const hex = colors?.find((c) => c.accountId === rollup.accountId)?.hex;
-              return (
-                <p
-                  key={`${rollup.accountId ?? "none"}-${rollup.label}`}
-                  className="flex items-start gap-1.5 text-xs text-muted-foreground"
-                >
-                  {rollup.accountId && <AccountDot color={hex} className="mt-1.5" />}
-                  <span>
-                    {t("chat.cards.briefing.rollup", { count: rollup.count, label: rollup.label })}
-                    {rollup.examples && rollup.examples.length > 0 && (
-                      <span className="text-muted-foreground/70">
-                        {" "}
-                        ({rollup.examples.join(", ")})
-                      </span>
-                    )}
-                  </span>
-                </p>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {body}
     </CardShell>
   );
 }
@@ -325,6 +332,54 @@ function BriefingRow({
           <MessageCircleQuestion />
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * One rolled-up low-value message — a compact, quiet counterpart to
+ * BriefingRow: smaller type, tighter rows, no priority tint, deadline/draft
+ * badges or draft/ask actions. Its single action is the always-visible
+ * open-in-webmail button, so the noise stays scannable and one click away from
+ * the real thing without ever competing with a tier item.
+ */
+function RollupRow({
+  item,
+  accounts,
+  colors,
+}: {
+  item: BriefingItem;
+  accounts?: CardAccount[];
+  colors?: AccountColor[];
+}) {
+  const { t } = useTranslation();
+  const account = accounts?.find((a) => a.accountId === item.accountId);
+  const hex = colors?.find((c) => c.accountId === item.accountId)?.hex;
+  const subject = item.subject || t("chat.cards.noSubject");
+
+  return (
+    <div className="group -mx-2 flex items-center gap-2 rounded-md px-2 py-1">
+      <span className="shrink-0" data-tooltip={account?.name}>
+        <AccountDot color={hex} className="block h-1.5 w-1.5" />
+        {account && <span className="sr-only">{account.name}</span>}
+      </span>
+      <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+        <span className="font-medium text-foreground/75">{item.sender}</span>
+        <span className="mx-1.5 text-muted-foreground/40">·</span>
+        {subject}
+      </p>
+      {item.webUrl && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="h-5 w-5 shrink-0 text-muted-foreground"
+          onClick={() => item.webUrl && openExternal(item.webUrl)}
+          title={t("chat.cards.draft.open")}
+          aria-label={t("chat.cards.draft.open")}
+        >
+          <ExternalLink className="h-3 w-3" />
+        </Button>
+      )}
     </div>
   );
 }

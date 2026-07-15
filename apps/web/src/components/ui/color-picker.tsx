@@ -1,15 +1,12 @@
-import * as React from "react";
 import { HexColorPicker } from "react-colorful";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useAnchoredPopover } from "@/lib/useAnchoredPopover";
 
 interface ColorPickerProps {
   color: string; // current hex
   onSelect: (hex: string) => void;
 }
-
-const VIEWPORT_MARGIN = 8;
-const TRIGGER_GAP = 8;
 
 /**
  * A beautiful custom color picker using react-colorful.
@@ -22,63 +19,9 @@ const TRIGGER_GAP = 8;
  */
 export function ColorPicker({ color, onSelect }: ColorPickerProps) {
   const { t } = useTranslation();
-  const triggerRef = React.useRef<HTMLButtonElement>(null);
-  const popoverRef = React.useRef<HTMLDivElement>(null);
-  const [open, setOpen] = React.useState(false);
-  const [pos, setPos] = React.useState<{ left: number; top: number } | null>(null);
-
-  const updatePosition = React.useCallback(() => {
-    const trigger = triggerRef.current;
-    const popover = popoverRef.current;
-    if (!trigger || !popover) return;
-    const rect = trigger.getBoundingClientRect();
-    const { width, height } = popover.getBoundingClientRect();
-
-    const left = Math.min(
-      Math.max(rect.left + rect.width / 2 - width / 2, VIEWPORT_MARGIN),
-      window.innerWidth - width - VIEWPORT_MARGIN,
-    );
-
-    // Below the trigger; flip above when it doesn't fit but the top does.
-    let top = rect.bottom + TRIGGER_GAP;
-    if (top + height > window.innerHeight - VIEWPORT_MARGIN) {
-      const above = rect.top - TRIGGER_GAP - height;
-      if (above >= VIEWPORT_MARGIN) top = above;
-    }
-
-    setPos({ left, top });
-  }, []);
-
-  React.useLayoutEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
-    updatePosition();
-  }, [open, updatePosition]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const handlePointer = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointer);
-    document.addEventListener("keydown", handleKey);
-    // Capture phase so scrolling any ancestor container re-anchors the popover.
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
-    return () => {
-      document.removeEventListener("mousedown", handlePointer);
-      document.removeEventListener("keydown", handleKey);
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
-    };
-  }, [open, updatePosition]);
+  const { open, setOpen, pos, triggerRef, popoverRef } = useAnchoredPopover<HTMLButtonElement>({
+    align: "center",
+  });
 
   return (
     <>
@@ -89,7 +32,7 @@ export function ColorPicker({ color, onSelect }: ColorPickerProps) {
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className="h-4 w-4 shrink-0 rounded-full transition-transform hover:scale-110 border border-border shadow-sm"
+        className="h-4 w-4 shrink-0 rounded-full transition-transform hover:scale-110"
         style={{ backgroundColor: color }}
         title={t("connections.accountColor")}
       />

@@ -1,19 +1,22 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
-import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
 import {
+  findMissedAutomations,
   getNextRunAt,
   isValidCron,
   refreshSchedule,
   runAutomation,
+  runMissedAutomations,
   unschedule,
 } from "../automations/scheduler.js";
+import { deleteConversationCascade } from "../db/conversationStore.js";
 import { db, schema, sqlite } from "../db/index.js";
+import { likeContains, likePattern } from "../db/like.js";
 import { badRequest, requireRow } from "../errors.js";
 import { emitServerEvent } from "../events.js";
-import { likeContains, likePattern } from "../util.js";
 
 const runsQuery = Type.Object({
   q: Type.Optional(Type.String()),
@@ -166,6 +169,22 @@ export const automationRoutes: FastifyPluginAsyncTypebox = async (app) => {
     };
   });
 
+  /**
+   * Automations whose latest scheduled slot elapsed without a covering run
+   * (see automations/scheduler.ts). Empty once boot catch-up has run them, so
+   * the Home page shows its "run missed" button only when catch-up couldn't.
+   */
+  app.get("/api/runs/missed", async () => {
+    return { items: await findMissedAutomations() };
+  });
+
+  /** Run every automation with an uncovered past slot now — the Home button's
+   *  manual fallback when boot catch-up didn't (or couldn't). */
+  app.post("/api/runs/catch-up", async (_req, reply) => {
+    const started = await runMissedAutomations();
+    return reply.code(202).send({ started });
+  });
+
   app.post("/api/automations", { schema: { body: automationBody } }, async (req) => {
     const { name, instruction, schedule } = req.body;
     if (!name.trim() || !instruction.trim() || !schedule.trim()) {
@@ -248,25 +267,23 @@ export const automationRoutes: FastifyPluginAsyncTypebox = async (app) => {
     unschedule(req.params.id);
 
     // Each run also created a conversation (id = run id) plus its user/
-    // assistant message rows (see automations/scheduler.ts) — nothing else
+    // assistant message rows (see automations/runRecorder.ts) — nothing else
     // ever cleans those up, so without this they'd linger forever in the
     // chat sidebar's Automations section, orphaned from a deleted automation.
+    // Each cascade is its own transaction (db/conversationStore.ts) — the
+    // same atomicity guarantee routes/chat.ts gets for a single conversation,
+    // applied once per run here.
     const runs = await db
       .select({ id: schema.automationRuns.id })
       .from(schema.automationRuns)
       .where(eq(schema.automationRuns.automationId, req.params.id));
-    const runIds = runs.map((run) => run.id);
-    if (runIds.length > 0) {
-      await db.delete(schema.messages).where(inArray(schema.messages.conversationId, runIds));
-      await db.delete(schema.conversations).where(inArray(schema.conversations.id, runIds));
-    }
+    for (const run of runs) deleteConversationCascade(run.id);
 
     await db.delete(schema.automations).where(eq(schema.automations.id, req.params.id));
     await db
       .delete(schema.automationRuns)
       .where(eq(schema.automationRuns.automationId, req.params.id));
     emitServerEvent("automations");
-    if (runIds.length > 0) emitServerEvent("conversations");
     return { ok: true };
   });
 

@@ -1,10 +1,11 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { Type } from "@sinclair/typebox";
 import { mapWithConcurrency } from "../jobs.js";
 import { errorMessage } from "../util.js";
 import { buildKnowledgeContext, buildKnowledgeReadTools } from "./knowledgeTools.js";
 import { buildMailReadTools } from "./mailTools.js";
 import { runOneShot } from "./oneShot.js";
-import { defineTool, textResult } from "./toolResult.js";
+import { textResult, tool } from "./toolkit.js";
 
 /**
  * The fan-out tool: the main agent hands off several independent read-only
@@ -37,7 +38,7 @@ function truncateLabel(task: string, max = 80): string {
   return task.length > max ? `${task.slice(0, max - 1)}…` : task;
 }
 
-export const delegateTool: AgentTool = defineTool({
+export const delegateTool: AgentTool = tool({
   name: "delegate",
   label: "Delegate research tasks",
   description: `Fan out independent read-only research tasks to parallel background workers. Use this when a job
@@ -47,20 +48,13 @@ yourself. Each task must be fully self-contained — workers see nothing of this
 spell out exactly what to look up and what to report back. Workers can search and read email and
 the document library but cannot draft, send or change anything; you act on their reports. For a
 single quick lookup, call the email tools directly instead.`,
-  parameters: {
-    type: "object",
-    properties: {
-      tasks: {
-        type: "array",
-        items: { type: "string" },
-        description: "Self-contained task instructions, one per worker (max 8 per call).",
-      },
-    },
-    required: ["tasks"],
+  params: {
+    tasks: Type.Array(Type.String(), {
+      description: "Self-contained task instructions, one per worker (max 8 per call).",
+    }),
   },
-  execute: async (_toolCallId, params, signal, onUpdate) => {
-    const { tasks: rawTasks } = params as { tasks?: unknown[] };
-    const allTasks = (rawTasks ?? []).map((t) => String(t).trim()).filter(Boolean);
+  execute: async ({ tasks: rawTasks }, { signal, onUpdate }) => {
+    const allTasks = rawTasks.map((t) => t.trim()).filter(Boolean);
     if (allTasks.length === 0) {
       return textResult("The tasks array was empty. Nothing to delegate.");
     }

@@ -74,7 +74,7 @@ async function syncOptions(): Promise<SyncOptions> {
   return { backfillDays: await getSyncBackfillDaysSetting(), pageSize: env.sync.pageSize };
 }
 
-async function runSync(account: ConnectedAccount): Promise<void> {
+async function runSync(account: ConnectedAccount, signal?: AbortSignal): Promise<void> {
   const provider = getSyncProvider(account.app);
   if (!provider) return;
 
@@ -88,9 +88,10 @@ async function runSync(account: ConnectedAccount): Promise<void> {
   try {
     let pages = 0;
     for (; pages < MAX_PAGES_PER_SWEEP; pages++) {
+      signal?.throwIfAborted();
       let page: SyncPage;
       try {
-        page = await provider.fetchChanges(account, cursor, options);
+        page = await provider.fetchChanges(account, cursor, options, signal);
       } catch (error) {
         if (error instanceof SyncCursorExpiredError && cursor !== null) {
           logger.info({ account: account.id }, "sync cursor expired — restarting backfill");
@@ -109,6 +110,15 @@ async function runSync(account: ConnectedAccount): Promise<void> {
     markSyncStatus(account.id, "idle");
     recordSyncSuccess(account.id);
   } catch (error) {
+    // A caller-driven abort (cancelled chat turn, automation deadline) is not
+    // a provider failure: the persisted cursor already covers every applied
+    // page, so leave the account idle with no backoff and let the next sweep
+    // resume where this one stopped.
+    if (signal?.aborted) {
+      markSyncStatus(account.id, "idle");
+      logger.debug({ account: account.id }, "mail sync aborted by caller");
+      return;
+    }
     markSyncStatus(account.id, "error", errorMessage(error));
     const backoff = recordSyncFailure(account.id);
     logger.warn(
@@ -125,10 +135,13 @@ async function runSync(account: ConnectedAccount): Promise<void> {
 
 /**
  * Sync one account now; concurrent calls for the same account join the run
- * in flight. Bypasses backoff — an explicit request always attempts.
+ * in flight. Bypasses backoff — an explicit request always attempts. The
+ * signal only governs a run this call itself starts — a call that joins an
+ * in-flight run waits on that run untouched, since cancelling work someone
+ * else started would be wrong from a joiner.
  */
-export function syncAccount(account: ConnectedAccount): Promise<void> {
-  return accountJobs.join(account.id, () => runSync(account));
+export function syncAccount(account: ConnectedAccount, signal?: AbortSignal): Promise<void> {
+  return accountJobs.join(account.id, () => runSync(account, signal));
 }
 
 async function sweep(): Promise<void> {

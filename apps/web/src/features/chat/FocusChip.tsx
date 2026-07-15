@@ -8,10 +8,9 @@ import { Chip } from "@/components/ui/chip";
 import { api } from "@/lib/api";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
+import { useAnchoredPopover } from "@/lib/useAnchoredPopover";
 import { cn } from "@/lib/utils";
 
-const VIEWPORT_MARGIN = 8;
-const TRIGGER_GAP = 8;
 // The conversations endpoint has no by-id lookup, only the paginated list
 // (routes/chat.ts caps it at 200) — this reads the same page the history
 // rail's first load would, wide enough that the open conversation is
@@ -38,10 +37,7 @@ export function FocusChip({ conversationId }: { conversationId: string | undefin
   const [accounts, setAccounts] = React.useState<ConnectedAccount[]>([]);
   const [colors, setColors] = React.useState<AccountColor[]>([]);
   const [focus, setFocus] = React.useState<Focus>(NO_FOCUS);
-  const [open, setOpen] = React.useState(false);
-  const [pos, setPos] = React.useState<{ left: number; top: number } | null>(null);
-  const triggerRef = React.useRef<HTMLSpanElement>(null);
-  const popoverRef = React.useRef<HTMLDivElement>(null);
+  const { open, setOpen, pos, triggerRef, popoverRef } = useAnchoredPopover<HTMLSpanElement>();
 
   // Cosmetic (account list + colors for the popover rows) — a failed load
   // just leaves the picker showing fewer accounts, never surfaced as an error.
@@ -86,57 +82,6 @@ export function FocusChip({ conversationId }: { conversationId: string | undefin
   // both land here through the same topic the history rail refetches on.
   useServerEvents(["conversations"], loadFocus);
 
-  const updatePosition = React.useCallback(() => {
-    const trigger = triggerRef.current;
-    const popover = popoverRef.current;
-    if (!trigger || !popover) return;
-    const rect = trigger.getBoundingClientRect();
-    const { width, height } = popover.getBoundingClientRect();
-    // Left-aligned under the trigger (not centered): the list is wider than
-    // the chip, so centering would overhang both edges.
-    const left = Math.min(
-      Math.max(rect.left, VIEWPORT_MARGIN),
-      window.innerWidth - width - VIEWPORT_MARGIN,
-    );
-    let top = rect.bottom + TRIGGER_GAP;
-    if (top + height > window.innerHeight - VIEWPORT_MARGIN) {
-      const above = rect.top - TRIGGER_GAP - height;
-      if (above >= VIEWPORT_MARGIN) top = above;
-    }
-    setPos({ left, top });
-  }, []);
-
-  React.useLayoutEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
-    updatePosition();
-  }, [open, updatePosition]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const handlePointer = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointer);
-    document.addEventListener("keydown", handleKey);
-    // Capture phase so scrolling any ancestor container re-anchors the popover.
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
-    return () => {
-      document.removeEventListener("mousedown", handlePointer);
-      document.removeEventListener("keydown", handleKey);
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
-    };
-  }, [open, updatePosition]);
-
   const pick = async (accountId: string | null) => {
     if (!conversationId) return;
     setOpen(false);
@@ -175,7 +120,13 @@ export function FocusChip({ conversationId }: { conversationId: string | undefin
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className="min-w-0 max-w-56 disabled:pointer-events-none disabled:opacity-50"
+        className={cn(
+          "min-w-0 max-w-56 disabled:pointer-events-none disabled:opacity-50",
+          // A focus is a quiet status marker, not a filter toggle — override the
+          // shared Chip's ink fill with a neutral grey so the colored account dot
+          // and label carry the state instead of a heavy high-contrast pill.
+          hasFocus && "bg-secondary text-foreground hover:bg-secondary",
+        )}
       >
         {hasFocus && <AccountDot color={focusedColor} />}
         <span className="min-w-0 truncate">{label}</span>

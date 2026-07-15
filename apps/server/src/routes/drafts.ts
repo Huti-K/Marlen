@@ -18,11 +18,8 @@ import { listDraftsCached } from "../email/draftsService.js";
 import { type DraftProvider, getDraftProvider } from "../email/providers.js";
 import { getThreadDetail } from "../email/sync/mailQuery.js";
 import { AppError, badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
-import { moduleLogger } from "../logger.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 import { errorMessage } from "../util.js";
-
-const log = moduleLogger("drafts-routes");
 
 /** Resolve a connected account (any app with a draft provider) by its Pipedream account id. */
 async function findDraftAccount(
@@ -140,7 +137,8 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
         // so the request must report success even if the local mark fails. A
         // discarded draft is a learning signal in its own right.
         await markDraftStatus(req.params.accountId, req.params.draftId, "discarded").catch(
-          (error: unknown) => log.warn({ err: error }, "marking draft snapshot discarded failed"),
+          (error: unknown) =>
+            req.log.warn({ err: error }, "marking draft snapshot discarded failed"),
         );
         return { ok: true };
       } catch (error) {
@@ -174,7 +172,9 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
           req.params.draftId,
           "sent",
           result.sentMessageId,
-        ).catch((error: unknown) => log.warn({ err: error }, "marking draft snapshot sent failed"));
+        ).catch((error: unknown) =>
+          req.log.warn({ err: error }, "marking draft snapshot sent failed"),
+        );
         return { ok: true };
       } catch (error) {
         throw toProviderError(error, "draft not found");
@@ -224,7 +224,7 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
           body,
           subject,
         }).catch((error: unknown) =>
-          log.warn({ err: error }, "appending user draft version failed"),
+          req.log.warn({ err: error }, "appending user draft version failed"),
         );
         return { ok: true };
       } catch (error) {

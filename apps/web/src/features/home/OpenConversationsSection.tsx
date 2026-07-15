@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { ListRow } from "@/components/ui/list-row";
 import { CollapsibleSectionTitle } from "@/features/home/CollapsibleSectionTitle";
 import { api } from "@/lib/api";
+import { relativeTime } from "@/lib/dates";
 import { dispatchQuickAction } from "@/lib/quickActions";
 import { toast } from "@/lib/toast";
+import { dispatchTrailin } from "@/lib/trailinEvents";
 import { openExternal } from "@/lib/utils";
 
 /**
@@ -62,17 +64,6 @@ export function OpenConversationsSection({
     [waiting],
   );
 
-  const relativeTime = React.useMemo(
-    () => new Intl.RelativeTimeFormat(i18n.language, { numeric: "auto" }),
-    [i18n.language],
-  );
-  const relativeLabel = (iso: string) => {
-    const t0 = new Date(iso).getTime();
-    if (Number.isNaN(t0)) return "";
-    const days = Math.round((t0 - Date.now()) / (24 * 60 * 60 * 1000));
-    return relativeTime.format(days, "day");
-  };
-
   if (waiting === null || (youItems.length === 0 && otherItems.length === 0)) return null;
 
   const dismiss = async (accountId: string, threadId: string) => {
@@ -109,12 +100,10 @@ export function OpenConversationsSection({
   };
 
   const nudge = (counterpart: string, subject: string, account: string) => {
-    window.dispatchEvent(new CustomEvent("trailin:show-chat"));
-    window.dispatchEvent(
-      new CustomEvent("trailin:prefill-chat", {
-        detail: { text: t("home.waitingNudgePrompt", { counterpart, subject, account }) },
-      }),
-    );
+    dispatchTrailin("show-chat");
+    dispatchTrailin("prefill-chat", {
+      text: t("home.waitingNudgePrompt", { counterpart, subject, account }),
+    });
   };
 
   return (
@@ -214,7 +203,7 @@ export function OpenConversationsSection({
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{item.subject}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {item.counterpart} · {relativeLabel(item.lastSentAt)}
+                        {item.counterpart} · {relativeTime(item.lastSentAt, i18n.language)}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center">

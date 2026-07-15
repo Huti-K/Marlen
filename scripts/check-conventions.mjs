@@ -32,7 +32,6 @@ const COLOCATED_TEST = /\.(test|spec)\.(ts|tsx)$/;
 
 const REGISTER_CALL =
   /\b(registerDraftProvider|registerSyncProvider|registerAttachmentProvider)\s*\(/;
-const REGISTER_DEFINITION = /\bfunction\s+register(Draft|Sync|Attachment)Provider\b/;
 
 const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
   encoding: "utf8",
@@ -69,7 +68,7 @@ for (const file of files) {
   const basename = file.slice(file.lastIndexOf("/") + 1);
   if (!basename.startsWith("register")) {
     text.split("\n").forEach((line, i) => {
-      if (REGISTER_CALL.test(line) && !REGISTER_DEFINITION.test(line)) {
+      if (REGISTER_CALL.test(line)) {
         errors.push(
           `${file}:${i + 1}: provider registration belongs in a register*.ts file, not here`,
         );

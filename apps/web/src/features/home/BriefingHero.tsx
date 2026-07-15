@@ -6,12 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/feedback";
-import { DigestView, parseDigest } from "@/features/automations/DigestView";
+import { IconChip } from "@/components/ui/icon-chip";
+import { Markdown } from "@/components/ui/markdown";
 import { BriefingCard } from "@/features/chat/cards/BriefingCard";
 import { api } from "@/lib/api";
+import { dayTimeLabel } from "@/lib/dates";
 import type { View } from "@/lib/nav";
 import { openRunInChat } from "@/lib/runNavigation";
-import { cn, errorMessage } from "@/lib/utils";
+import { cn, errorMessage, toggleRowProps } from "@/lib/utils";
 
 type BriefingCardData = Extract<AgentCard, { kind: "briefing" }>;
 
@@ -23,25 +25,20 @@ export function findBriefingCard(run: RunFeedItem): BriefingCardData | undefined
 }
 
 /** Count of urgent items in a briefing run — exported so GlanceStrip's urgent
- *  figure never drifts from this card's own badge. Prefers the structured
- *  card's own `items`; a run without a card falls back to reverse-parsing
- *  the ⚠️-flagged bullets out of the markdown digest. */
+ *  figure never drifts from this card's own badge. Reads the structured
+ *  card's own `items`; a run without a card has no urgent count. */
 export function countUrgentItems(run: RunFeedItem): number {
   const briefing = findBriefingCard(run);
-  if (briefing) return briefing.items.filter((item) => item.priority === "urgent").length;
-  return parseDigest(run.result).accounts.reduce(
-    (n, section) => n + section.items.filter((item) => item.urgent).length,
-    0,
-  );
+  return briefing ? briefing.items.filter((item) => item.priority === "urgent").length : 0;
 }
 
 /**
  * The flagship "Today's briefing" card — the most recent successful,
- * digest-shaped automation run (see HomePanel's heroRun selection), shown
- * expanded above the rest of the activity feed. Three-tier degrade for the
- * body: a structured `BriefingCard` when the run's turn produced one, else
- * the `DigestView` markdown reverse-parse, else (inside DigestView) plain
- * markdown — so a run whose turn skipped compose_briefing still renders.
+ * card-carrying automation run (see HomePanel's heroRun selection), shown
+ * expanded above the rest of the activity feed. The body renders the
+ * structured `BriefingCard` when the run's turn produced one, else the
+ * generic plain-markdown render — a run whose turn skipped compose_briefing
+ * still renders, just without any briefing-shaped structure.
  */
 export function BriefingHero({
   run,
@@ -74,30 +71,15 @@ export function BriefingHero({
   );
   const isRefreshing = refreshing || !!feedRunning;
 
-  const started = new Date(run.startedAt);
-  const isToday = started.toDateString() === new Date().toDateString();
-  const timeLabel = started.toLocaleTimeString(i18n.language, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const isToday = new Date(run.startedAt).toDateString() === new Date().toDateString();
   let metaLabel = isToday
-    ? t("home.briefingToday", { time: timeLabel })
-    : `${started.toLocaleDateString(i18n.language, {
-        weekday: "long",
-        day: "numeric",
-        month: "short",
-      })} · ${timeLabel}`;
+    ? t("home.briefingToday", { time: dayTimeLabel(run.startedAt, i18n.language) })
+    : dayTimeLabel(run.startedAt, i18n.language, "long");
 
   // Only surface the next scheduled run when this one isn't from today — a
   // fresh today's briefing doesn't need a "next" hint next to it.
   if (!isToday && nextRunAt) {
-    const next = new Date(nextRunAt);
-    const nextTime = next.toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit" });
-    const nextIsToday = next.toDateString() === new Date().toDateString();
-    const when = nextIsToday
-      ? nextTime
-      : `${next.toLocaleDateString(i18n.language, { weekday: "short" })} · ${nextTime}`;
-    metaLabel += ` · ${t("home.briefingNext", { when })}`;
+    metaLabel += ` · ${t("home.briefingNext", { when: dayTimeLabel(nextRunAt, i18n.language) })}`;
   }
 
   const refresh = async (e: React.MouseEvent) => {
@@ -121,24 +103,16 @@ export function BriefingHero({
 
   return (
     <Card as="section" padding="lg" className="animate-in-up flex flex-col gap-3">
-      {/* biome-ignore lint/a11y/useSemanticElements: toggles the card but wraps the real refresh/open-in-chat buttons below — a native <button> can't contain them */}
+      {/* Toggles the card but wraps the real refresh/open-in-chat buttons below —
+          a native <button> can't contain them, hence the ARIA toggle-row spread. */}
       <div
         className="flex items-center justify-between gap-3 cursor-pointer"
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        onClick={() => setExpanded(!expanded)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setExpanded(!expanded);
-          }
-        }}
+        {...toggleRowProps(expanded, () => setExpanded(!expanded))}
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="tint-accent flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
-            <Sunrise className="h-4 w-4" />
-          </div>
+          <IconChip>
+            <Sunrise />
+          </IconChip>
           <div className="flex min-w-0 flex-col">
             <span className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <span className="truncate">{run.automationName ?? t("home.deletedAutomation")}</span>
@@ -156,7 +130,7 @@ export function BriefingHero({
               the header badge would double it up. Keep it while collapsed —
               there it's the only urgency signal on screen. */}
           {urgentCount > 0 && !(expanded && briefingCard) && (
-            <Badge variant="destructive">{t("home.briefingUrgent", { count: urgentCount })}</Badge>
+            <Badge variant="warning">{t("home.briefingUrgent", { count: urgentCount })}</Badge>
           )}
           <Button
             variant="ghost"
@@ -184,13 +158,9 @@ export function BriefingHero({
       {expanded && (
         <div className="mt-1 border-t border-border pt-3">
           {briefingCard ? (
-            <BriefingCard card={briefingCard} colors={colors} />
+            <BriefingCard card={briefingCard} colors={colors} bare />
           ) : (
-            <DigestView
-              content={run.result}
-              automationName={run.automationName}
-              runDate={run.startedAt}
-            />
+            <Markdown content={run.result} />
           )}
         </div>
       )}

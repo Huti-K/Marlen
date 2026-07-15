@@ -1,4 +1,5 @@
 import * as React from "react";
+import { dispatchTrailin } from "@/lib/trailinEvents";
 
 /**
  * What one-tap chat actions (the digest's "Draft reply" / "Ask about this"
@@ -16,9 +17,9 @@ function getQuickActionMode(): QuickActionMode {
 
 /** Hand a composed message to the chat panel, honoring the Settings preference. */
 export function dispatchQuickAction(text: string): void {
-  const event = getQuickActionMode() === "prefill" ? "trailin:prefill-chat" : "trailin:send-chat";
-  window.dispatchEvent(new CustomEvent(event, { detail: { text } }));
-  window.dispatchEvent(new CustomEvent("trailin:show-chat"));
+  if (getQuickActionMode() === "prefill") dispatchTrailin("prefill-chat", { text });
+  else dispatchTrailin("send-chat", { text });
+  dispatchTrailin("show-chat");
 }
 
 export function useQuickActionMode() {

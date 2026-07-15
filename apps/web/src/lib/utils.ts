@@ -22,6 +22,26 @@ export function openExternal(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+/**
+ * Spread-props that make a non-button row behave as an expand/collapse toggle
+ * (role, Enter/Space activation, aria-expanded) — for header rows that contain
+ * real buttons and therefore can't be a native <button> themselves.
+ */
+export function toggleRowProps(expanded: boolean, onToggle: () => void) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    "aria-expanded": expanded,
+    onClick: onToggle,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onToggle();
+      }
+    },
+  };
+}
+
 /** The modifier the Cmd/Ctrl shortcuts listen for, spelled the way this keyboard prints it. */
 export const MOD_LABEL =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)

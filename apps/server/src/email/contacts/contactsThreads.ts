@@ -31,10 +31,11 @@ const selectGist = lazyStatement("SELECT gist FROM mail_thread_state WHERE threa
  * The newest threads whose participants include `address` (capped by the
  * contact-threads-limit setting), for GET /api/contacts/:address.
  * mail_threads carries no per-address index, so this walks the mirror's
- * thread rollups newest-first and stops once enough matches are found;
- * participants entries are re-parsed with parseAddressEntry (not
- * substring-matched) so "eve@x.com" can't match "steve@x.com". A Pipedream
- * outage drops every hit's webUrl, not the hits.
+ * thread rollups newest-first (a lazy .iterate(), so the DB read stops with
+ * the loop) until enough matches are found; participants entries are
+ * re-parsed with parseAddressEntry (not substring-matched) so "eve@x.com"
+ * can't match "steve@x.com". A Pipedream outage drops every hit's webUrl,
+ * not the hits.
  */
 export async function recentThreadsForContact(address: string): Promise<ContactThread[]> {
   const limit = await getContactThreadsLimitSetting();
@@ -44,9 +45,8 @@ export async function recentThreadsForContact(address: string): Promise<ContactT
   });
   const accountById = new Map(accounts.map((account) => [account.id, account]));
 
-  const rows = selectThreadsByRecency().all() as RawThreadRow[];
   const matches: ContactThread[] = [];
-  for (const row of rows) {
+  for (const row of selectThreadsByRecency().iterate() as IterableIterator<RawThreadRow>) {
     if (matches.length >= limit) break;
     const participants = decodeStringArray(row.participants);
     if (!participants.some((entry) => parseAddressEntry(entry).address === address)) continue;

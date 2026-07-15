@@ -1,8 +1,9 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { MEMORY_MAX_LENGTH } from "@trailin/shared";
+import { streamViaModelRegistry } from "../../agent/oneShot.js";
 import { runPrompt } from "../../agent/run.js";
-import { modelRegistry } from "../../llm/registry.js";
+import { defineTool } from "../../agent/toolkit.js";
 
 /**
  * The nightly extraction LLM call (extractor.ts): one account's pending
@@ -30,7 +31,7 @@ export interface ExtractionPair {
 }
 
 function buildLessonsReportTool(onReport: (directives: string[]) => void): AgentTool {
-  return {
+  return defineTool({
     name: "report_lessons",
     label: "Report style lessons",
     description: "Record the general style directives learned from these pairs. Call exactly once.",
@@ -47,7 +48,7 @@ function buildLessonsReportTool(onReport: (directives: string[]) => void): Agent
         },
       },
       required: ["directives"],
-    } as AgentTool["parameters"],
+    },
     execute: async (_id, params) => {
       const raw = (params as Record<string, unknown>).directives;
       const directives = Array.isArray(raw)
@@ -63,7 +64,7 @@ function buildLessonsReportTool(onReport: (directives: string[]) => void): Agent
         terminate: true,
       };
     },
-  };
+  });
 }
 
 function renderPairs(pairs: ExtractionPair[], accountName: string): string {
@@ -96,7 +97,7 @@ export async function extractLessons(
       model,
       tools: [buildLessonsReportTool((directives) => (captured = directives))],
     },
-    streamFn: (m, c, o) => modelRegistry.streamSimple(m, c, o),
+    streamFn: streamViaModelRegistry,
   });
   await runPrompt({ agent }, renderPairs(pairs, accountName), {}, AbortSignal.timeout(timeoutMs));
   if (!captured) throw new Error("model finished without calling report_lessons");

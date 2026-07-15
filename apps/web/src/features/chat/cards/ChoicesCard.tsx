@@ -2,6 +2,7 @@ import type { AccountColor, AgentCard, ChoiceOption } from "@trailin/shared";
 import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";
+import { dispatchTrailin } from "@/lib/trailinEvents";
 import { CardShell } from "./CardShell";
 
 type ChoicesData = Extract<AgentCard, { kind: "choices" }>;
@@ -18,11 +19,10 @@ export function ChoicesCard({ card, colors }: { card: ChoicesData; colors?: Acco
   const { question, options } = card;
 
   const pick = (option: ChoiceOption) => {
-    window.dispatchEvent(
-      new CustomEvent("trailin:answer-chat", {
-        detail: { text: option.reply ?? option.label, refs: option.ref ? [option.ref] : undefined },
-      }),
-    );
+    dispatchTrailin("answer-chat", {
+      text: option.reply ?? option.label,
+      refs: option.ref ? [option.ref] : undefined,
+    });
   };
 
   const hexFor = (accountId?: string) => colors?.find((c) => c.accountId === accountId)?.hex;

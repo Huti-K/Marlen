@@ -152,6 +152,14 @@
         "discardedLabel": "Verworfen",
         "goneLabel": "Dieser Entwurf existiert nicht mehr"
       },
+      "attachments": {
+        "title": "Anhänge",
+        "count_one": "{{count}} Datei",
+        "count_other": "{{count}} Dateien",
+        "empty": "Keine Anhänge an dieser Nachricht.",
+        "open": "Öffnen",
+        "download": "Herunterladen"
+      },
       "briefing": {
         "label": "Briefing",
         "itemCount_one": "{{count}} Eintrag",
@@ -178,17 +186,19 @@
           "reply_other": "{{count}} brauchen eine Antwort",
           "draftsReady_one": "{{count}} Entwurf bereit",
           "draftsReady_other": "{{count}} Entwürfe bereit",
-          "rolledUp_one": "{{count}} zusammengefasst",
-          "rolledUp_other": "{{count}} zusammengefasst",
           "scanned_one": "{{count}} geprüft",
           "scanned_other": "{{count}} geprüft"
-        },
-        "rollup": "{{count}} {{label}}"
+        }
       }
     },
     "showcase": {
       "intro": "Hier ist ein Beispiel für alles, was ich im Chat anzeigen kann — Tool-Aktivität, jede Karte, eine formatierte Antwort und der Denk-Zustand.",
       "toolsNote": "Während Tools laufen, erscheint jedes als Chip: fertig, noch aktiv oder fehlgeschlagen."
+    },
+    "attachmentViewer": {
+      "openInBrowser": "Im Browser öffnen",
+      "save": "In Bibliothek speichern",
+      "saved": "„{{name}}“ in deiner Bibliothek gespeichert."
     }
   },
   "search": {
@@ -227,6 +237,22 @@
       "memory": "Erinnerungen"
     }
   },
+  "onoffice": {
+    "crmLabel": "CRM",
+    "setupTitle": "onOffice verbinden",
+    "setupIntro": "Legen Sie in onOffice einen API-Benutzer an, erzeugen Sie ein Zugriffstoken und tragen Sie Token und Secret unten ein. Sie verbleiben auf diesem Computer und werden nie in ein Backup aufgenommen.",
+    "openApiDocs": "onOffice-API-Doku",
+    "token": "API-Token",
+    "secret": "API-Secret",
+    "keepPlaceholder": "Leer lassen, um den gespeicherten Wert zu behalten",
+    "save": "Speichern",
+    "removeSaved": "Zugangsdaten entfernen",
+    "removeSavedConfirm": "Die gespeicherten onOffice-Zugangsdaten von diesem Computer entfernen? Der Assistent verliert den Zugriff auf Ihr CRM, bis Sie sie erneut hinterlegen.",
+    "configuredFooter": "Verbunden · Zugangsdaten aus <code>{{source}}</code>",
+    "sourceSettings": "dieser App",
+    "sourceEnv": "Umgebung",
+    "edit": "Zugangsdaten bearbeiten"
+  },
   "connections": {
     "customToggle": "Eigenes Pipedream-Projekt verwenden",
     "customToggleOn": "E-Mail läuft über das unten konfigurierte Pipedream-Projekt.",
@@ -237,6 +263,7 @@
     "noProvidersFound": "Keine Apps für „{{q}}“ gefunden.",
     "suggestedHeading": "Beliebte E-Mail-Apps",
     "moreAppsHeading": "Beliebte Integrationen",
+    "crmHeading": "CRM",
     "anyAppHint": "Das sind nur einige, suchen Sie oben, um eine von über 2.000 Apps zu verbinden, von anderen Mail-Diensten bis Kalender, Notizen und Chat.",
     "setupTitle": "Einmalige Einrichtung: Trailin mit Pipedream verbinden",
     "setupIntro": "Trailin nutzt <pd>Pipedream</pd>, einen kostenlosen Dienst, um Ihre E-Mail-Konten sicher zu verbinden, so viele Sie möchten, auch mehrere vom selben Anbieter. Dafür werden drei Werte aus Ihrem eigenen Pipedream-Workspace benötigt, die Sie einmalig kopieren:",
@@ -275,6 +302,10 @@
     "setupBanner": "Trailin ist noch nicht fertig eingerichtet, der Assistent erreicht Ihre E-Mails noch nicht.",
     "setupBannerCta": "Einrichtung abschließen",
     "offlineBanner": "Ihr E-Mail-Anbieter ist gerade nicht erreichbar, prüfen Sie Ihre Verbindung.",
+    "missedBanner_one": "1 Automatisierung lief nicht, während die App geschlossen war.",
+    "missedBanner_other": "{{count}} Automatisierungen liefen nicht, während die App geschlossen war.",
+    "missedRun": "Jetzt ausführen",
+    "missedRunning": "Läuft…",
     "reviewTitle": "Wartet auf Ihre Prüfung",
     "reviewEmpty": "Keine Entwürfe offen. Wenn Sie oder der Assistent Antworten vorbereiten, erscheinen sie hier.",
     "reviewEmptyFiltered": "Keine Entwürfe in diesem Zeitraum.",
@@ -389,14 +420,6 @@
       "running": "läuft",
       "success": "erfolgreich",
       "error": "Fehler"
-    },
-    "digest": {
-      "askAbout": "Dazu nachfragen",
-      "askAboutPrompt": "Im Lauf \"{{automation}}\" vom {{date}} hast du \"{{sender}}, {{subject}}\" markiert — \"{{gist}}\". Worum geht es dabei, und muss ich etwas tun?",
-      "thisAutomation": "diese Automatisierung",
-      "draftReply": "Antwort entwerfen",
-      "draftReplyPrompt": "Entwirf eine Antwort auf {{sender}}s E-Mail \"{{subject}}\" in {{account}}. Im Briefing zusammengefasst als: {{gist}}",
-      "draftReplyPromptNoAccount": "Entwirf eine Antwort auf {{sender}}s E-Mail \"{{subject}}\". Im Briefing zusammengefasst als: {{gist}}"
     }
   },
   "contacts": {
@@ -452,7 +475,12 @@
     "delete": "Löschen",
     "deleteConfirm": "Diese Erinnerung löschen?",
     "collapse": "Erinnerungen einklappen",
-    "expand": "Erinnerungen ausklappen"
+    "expand": "Erinnerungen ausklappen",
+    "usedTimes": "{{count}}×",
+    "lastUsed": "Zuletzt genutzt {{time}}",
+    "neverUsed": "Noch nie genutzt",
+    "nearCap": "Der Speicher ist fast voll ({{count}}/{{max}}).",
+    "pruneHint": "Entfernen Sie am besten selten genutzte Einträge — am wenigsten genutzt: „{{example}}“."
   },
   "library": {
     "folderLabel": "Pfad des Bibliotheksordners",
@@ -529,6 +557,10 @@
         "chipConnected_one": "{{count}} verbunden",
         "chipConnected_other": "{{count}} verbunden",
         "chipNoAccounts": "Noch keine Konten"
+      },
+      "onoffice": {
+        "title": "onOffice",
+        "description": "Verbinden Sie Ihr onOffice-CRM, damit der Assistent Immobilien, Interessenten, Termine und Aufgaben lesen und verwalten kann."
       },
       "permissions": {
         "title": "Berechtigungen",

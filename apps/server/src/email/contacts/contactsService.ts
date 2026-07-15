@@ -1,10 +1,11 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { env } from "../../env.js";
-import { emitServerEvent, onServerEvent } from "../../events.js";
-import { JobLoop, mapWithConcurrency } from "../../jobs.js";
-import { activeModelConfigured } from "../../llm/registry.js";
+import { emitServerEvent } from "../../events.js";
+import { mapWithConcurrency } from "../../jobs.js";
+import { activeModelConfigured, resolveCheapModel } from "../../llm/registry.js";
 import { moduleLogger } from "../../logger.js";
 import { errorMessage } from "../../util.js";
+import { createMailReactivePipeline } from "../reactivePipeline.js";
 import {
   buildContactSample,
   type ContactJudgment,
@@ -14,22 +15,17 @@ import {
   saveContactJudgment,
   touchContactEnrichment,
 } from "./contactsEnrichStore.js";
-import { judgeContact, resolveContactsModel } from "./contactsLLM.js";
+import { judgeContact } from "./contactsLLM.js";
 import { deriveContacts } from "./contactsStore.js";
 
 const log = moduleLogger("contacts");
 
 /**
- * Drives the contacts pipeline: reactive to the mirror's "mail" events
- * (debounced), plus a boot catch-up and a slow safety interval, same shape
- * as email/enrich/enrichService.ts. Each cycle first re-derives every
- * contact's aggregates (cheap, no LLM), then judges whatever that left
- * stale, up to one batch. The JobLoop keeps cycles single-flight and
- * coalesces triggers that land mid-cycle.
+ * Drives the contacts pipeline on top of the shared mail reactive pipeline
+ * (email/reactivePipeline.ts), same shape as email/enrich/enrichService.ts.
+ * Each cycle first re-derives every contact's aggregates (cheap, no LLM),
+ * then judges whatever that left stale, up to one batch.
  */
-
-const DEBOUNCE_MS = 2_000;
-const SAFETY_INTERVAL_MS = 10 * 60_000;
 
 export interface ContactsCycleResult {
   /** Addresses whose aggregate changed this cycle. */
@@ -58,13 +54,16 @@ export async function runContactsCycle(
     const candidates = findStaleContacts(env.contacts.batch);
     candidateCount = candidates.length;
     if (candidates.length > 0) {
-      const model = await resolveContactsModel();
+      const model = await resolveCheapModel(env.contacts.model);
       await mapWithConcurrency(candidates, env.contacts.concurrency, async (candidate) => {
         const sample = buildContactSample(candidate.address);
         if (!sample) return; // contact vanished; candidate query won't surface it again
-        if (sample.inputHash === candidate.inputHash) {
-          // Content still valid (e.g. only the aggregate's updated_at moved)
-          // — refresh the timestamp, skip the LLM entirely.
+        if (candidate.lastError === null && sample.inputHash === candidate.inputHash) {
+          // A successful prior judgment whose inputs are unchanged (e.g. only
+          // the aggregate's updated_at moved) — refresh the timestamp, skip the
+          // LLM. Guarded on lastError: an errored row keeps the failing sample's
+          // hash, so an unchanged errored contact must fall through and retry
+          // rather than touch-and-skip forever.
           touchContactEnrichment(candidate.address);
           untouched++;
           return;
@@ -88,32 +87,20 @@ export async function runContactsCycle(
     emitServerEvent("contacts");
   }
   // A full batch means there's likely more backlog — keep draining.
-  if (candidateCount > 0 && candidateCount === env.contacts.batch) loop.trigger();
+  if (candidateCount > 0 && candidateCount === env.contacts.batch) pipeline.trigger();
   return { derived, enriched, failed, untouched };
 }
 
-const loop = new JobLoop({
+const pipeline = createMailReactivePipeline({
   name: "contacts",
   run: () => runContactsCycle().then(() => undefined),
-  intervalMs: SAFETY_INTERVAL_MS,
-  debounceMs: DEBOUNCE_MS,
 });
 
-let unsubscribe: (() => void) | null = null;
-
 export function startContacts(): void {
-  if (unsubscribe) return;
-  unsubscribe = onServerEvent((event) => {
-    if (event.topic === "mail") loop.trigger();
-  });
-  // start() fires a boot catch-up (the debounce delay also lets the first
-  // sync pages land), then the slow safety net keeps draining backlogs.
-  loop.start();
+  pipeline.start();
 }
 
 /** Detach from "mail" events and cancel pending cycles; one already running finishes on its own. */
 export function stopContacts(): void {
-  unsubscribe?.();
-  unsubscribe = null;
-  loop.stop();
+  pipeline.stop();
 }

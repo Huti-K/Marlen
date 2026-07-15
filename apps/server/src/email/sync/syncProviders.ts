@@ -84,11 +84,15 @@ export interface SyncProvider {
    * initial backfill bounded by opts.backfillDays"; otherwise resume from
    * where the returned cursor left off. Drafts, spam and trash are not mail —
    * providers must exclude them (and emit deletes when messages move there).
+   * `signal` aborts the provider's in-flight HTTP work (a cancelled chat turn
+   * or a timed-out automation must not keep paging); pages already applied
+   * stay applied — the persisted cursor makes an aborted sweep resumable.
    */
   fetchChanges(
     account: ConnectedAccount,
     cursor: string | null,
     opts: SyncOptions,
+    signal?: AbortSignal,
   ): Promise<SyncPage>;
 
   /**

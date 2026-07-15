@@ -3,6 +3,7 @@ import { AtSign, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { relativeTime } from "@/lib/dates";
+import { dispatchTrailin } from "@/lib/trailinEvents";
 import { CardShell } from "./CardShell";
 
 type EmailHitsData = Extract<AgentCard, { kind: "email_hits" }>;
@@ -36,7 +37,7 @@ export function EmailHitsCard({ card, color }: { card: EmailHitsData; color?: st
   const addToChat = (hit: EmailHit) => {
     const ref = refFor(hit, account);
     if (!ref) return;
-    window.dispatchEvent(new CustomEvent("trailin:add-chat-ref", { detail: { ref } }));
+    dispatchTrailin("add-chat-ref", { ref });
   };
 
   return (

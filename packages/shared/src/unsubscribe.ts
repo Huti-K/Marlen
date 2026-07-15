@@ -16,14 +16,7 @@
  * sender; "none" covers both "confirmed no header" and "no mirrored message
  * yet".
  */
-export const UNSUBSCRIBE_STATES = [
-  "one_click",
-  "browse",
-  "mailto_only",
-  "unknown",
-  "none",
-] as const;
-export type UnsubscribeState = (typeof UNSUBSCRIBE_STATES)[number];
+export type UnsubscribeState = "one_click" | "browse" | "mailto_only" | "unknown" | "none";
 
 export interface UnsubscribeInfo {
   state: UnsubscribeState;
@@ -42,12 +35,6 @@ export interface NewsletterSender {
   unsubscribe: UnsubscribeInfo;
   /** Set once a one-click request succeeded — the lane renders "requested" instead of the button. */
   unsubscribeRequestedAt?: string;
-}
-
-/** Body of POST /api/newsletters/unsubscribe. */
-export interface UnsubscribeRequest {
-  address: string;
-  accountId: string;
 }
 
 /** Response of POST /api/newsletters/unsubscribe on success (failure is a normal API error). */

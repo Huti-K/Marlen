@@ -8,11 +8,13 @@ import { buildSystemPrompt, disposeSession } from "../agent/emailAgent.js";
 import { parseStoredRefs } from "../agent/emailRefs.js";
 import { applyConversationFocus, clearConversationFocus } from "../agent/focus.js";
 import { beginTurn, type Turn, TurnInFlightError } from "../agent/turnRecorder.js";
-import { db, lazyStatement, schema, sqlite } from "../db/index.js";
+import { deleteConversationCascade } from "../db/conversationStore.js";
+import { db, lazyStatement, schema } from "../db/index.js";
+import { likeContains, likePattern } from "../db/like.js";
 import { buildFtsMatch } from "../db/sql.js";
 import { badRequest, conflict, requireRow } from "../errors.js";
 import { emitServerEvent } from "../events.js";
-import { errorMessage, likeContains, likePattern } from "../util.js";
+import { errorMessage } from "../util.js";
 import { openSse } from "./sse.js";
 
 const conversationsQuery = Type.Object({
@@ -59,15 +61,6 @@ const chatBody = Type.Object({
 // Turn.run() ends, wherever it's called from. This Set only drives a UI
 // badge and is safe to manage locally, right around the request lifecycle.
 const runningConversations = new Set<string>();
-
-// Same two-statement shape as the writes in agent/turnRecorder.ts, wrapped in
-// one SQLite transaction so a crash or error between the two can never leave
-// a conversation deleted with its messages still around (or vice versa). See
-// automations.ts's pinExclusively / mailStore.ts's applyTxn for the idiom.
-const deleteConversation = sqlite.transaction((id: string) => {
-  sqlite.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);
-  sqlite.prepare("DELETE FROM conversations WHERE id = ?").run(id);
-});
 
 /**
  * Message-content half of conversation search: messages_fts is the FTS5
@@ -209,8 +202,7 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
     // next getOrCreateSession would rebuild from `messages`, which is about
     // to be gone), so no write can land after the delete below commits.
     await disposeSession(req.params.id);
-    deleteConversation(req.params.id);
-    emitServerEvent("conversations");
+    deleteConversationCascade(req.params.id);
     return { ok: true };
   });
 
@@ -259,37 +251,28 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
     const stream = openSse<ChatStreamEvent>(reply, () => controller.abort());
     const send = (event: ChatStreamEvent) => stream.send(event);
 
-    const now = () => new Date().toISOString();
-
     let streamedText = "";
     try {
       runningConversations.add(conversationId);
       emitServerEvent("conversations");
 
-      // Create the conversation row on first use. This fires for every
-      // freshly minted id, but a client-supplied id can also name a
-      // conversation this server never recorded (e.g. stale client state
-      // after a delete) — either way, the message rows this turn is about to
-      // write must not end up orphaned against a nonexistent conversation.
-      // No other route creates type: "chat" rows (automations/scheduler.ts
-      // creates its own type: "automation" rows, keyed to the run id), so
-      // this is the one place chat conversations come into being;
-      // onConflictDoNothing makes the insert safe to attempt even when the
-      // row already exists.
-      const created = await db
-        .insert(schema.conversations)
-        .values({ id: conversationId, title: message.slice(0, 80), createdAt: now() })
-        .onConflictDoNothing({ target: schema.conversations.id });
-      if (created.changes > 0) {
-        emitServerEvent("conversations");
-      }
       send({ type: "conversation", conversationId });
 
+      // turnRecorder ensures the parent Conversation row (type "chat") before
+      // writing this turn's messages, using the title below. This fires for
+      // every freshly minted id, but a client-supplied id can also name a
+      // conversation this server never recorded (e.g. stale client state
+      // after a delete) — either way, ensureConversation is idempotent, so
+      // this turn's messages never end up orphaned against a nonexistent
+      // conversation. No other route creates type: "chat" rows (automations/
+      // runRecorder.ts creates its own type: "automation" rows, keyed to the
+      // run id).
       let thinkingSent = false;
       const { text } = await turn.run({
         prompt: message,
         refs: req.body.refs,
         session: "pooled",
+        conversation: { type: "chat", title: message.slice(0, 80) },
         handlers: {
           onTextDelta: (delta) => {
             streamedText += delta;

@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FastifyInstance } from "fastify";
+import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { sqlite } from "../db/index.js";
 import { moduleLogger } from "../logger.js";
 
@@ -20,7 +20,7 @@ const log = moduleLogger("backup");
  * see pipedream/secretFile.ts), both of which live outside the DB and must be
  * backed up separately.
  */
-export async function backupRoutes(app: FastifyInstance): Promise<void> {
+export const backupRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/backup", async (_req, reply) => {
     const tmpPath = join(tmpdir(), `trailin-backup-${randomUUID()}.db`);
     await sqlite.backup(tmpPath);
@@ -38,4 +38,4 @@ export async function backupRoutes(app: FastifyInstance): Promise<void> {
     });
     return reply.send(stream);
   });
-}
+};

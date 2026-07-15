@@ -2,15 +2,7 @@ import type { AccountDrafts, Automation, OpenConversations, RunFeedItem } from "
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { countUrgentItems } from "@/features/home/BriefingHero";
-
-/** "14:32" today, "Fri · 14:32" otherwise — the same shape BriefingHero uses
- *  for its own "next briefing" hint, so the two never disagree. */
-function nextRunLabel(iso: string, lang: string): string {
-  const next = new Date(iso);
-  const time = next.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
-  const isToday = next.toDateString() === new Date().toDateString();
-  return isToday ? time : `${next.toLocaleDateString(lang, { weekday: "short" })} · ${time}`;
-}
+import { dayTimeLabel } from "@/lib/dates";
 
 /**
  * A single quiet status line above the hero: figures worth a glance without
@@ -55,7 +47,7 @@ export function GlanceStrip({
   if (urgentCount > 0) stats.push(t("home.briefingUrgent", { count: urgentCount }));
   if (waitingCount > 0) stats.push(t("home.glance.waiting", { count: waitingCount }));
   if (nextRunAt)
-    stats.push(t("home.glance.nextRun", { when: nextRunLabel(nextRunAt, i18n.language) }));
+    stats.push(t("home.glance.nextRun", { when: dayTimeLabel(nextRunAt, i18n.language) }));
 
   if (stats.length === 0) return null;
 

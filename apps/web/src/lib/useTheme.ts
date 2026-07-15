@@ -1,9 +1,9 @@
 import * as React from "react";
+import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 
 export type ThemePref = "light" | "dark" | "system";
 
 const STORAGE_KEY = "trailin-theme";
-const EVENT = "trailin:theme-changed";
 
 function readPref(): ThemePref {
   if (typeof window === "undefined") return "system";
@@ -34,7 +34,7 @@ export function useTheme() {
     setResolved(next);
     document.documentElement.classList.toggle("dark", next === "dark");
     localStorage.setItem(STORAGE_KEY, pref);
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: pref }));
+    dispatchTrailin("theme-changed", pref);
   }, [pref]);
 
   // While following the system, keep resolving live as the OS setting changes.
@@ -52,11 +52,9 @@ export function useTheme() {
 
   // Cross-instance sync — another hook instance changed the pref.
   React.useEffect(() => {
-    const handlePref = (e: CustomEvent<ThemePref>) => {
-      if (e.detail !== pref) setPref(e.detail);
-    };
-    window.addEventListener(EVENT, handlePref as EventListener);
-    return () => window.removeEventListener(EVENT, handlePref as EventListener);
+    return subscribeTrailin("theme-changed", (detail) => {
+      if (detail !== pref) setPref(detail);
+    });
   }, [pref]);
 
   return [pref, resolved, setPref] as const;

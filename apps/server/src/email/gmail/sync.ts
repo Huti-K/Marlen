@@ -12,6 +12,7 @@ import {
 } from "../sync/syncProviders.js";
 import { splitAddressList } from "../textUtils.js";
 import {
+  decodeHeaderText,
   decodeHtmlEntities,
   GMAIL_API,
   headerLookup,
@@ -110,10 +111,12 @@ function toSyncMessage(msg: GmailMessageFull): SyncMessage {
   return {
     providerMessageId: msg.id,
     providerThreadId: msg.threadId,
-    subject: header("Subject"),
-    from: header("From"),
-    to: splitAddressList(header("To")),
-    cc: splitAddressList(header("Cc")),
+    subject: decodeHeaderText(header("Subject")),
+    from: decodeHeaderText(header("From")),
+    // Encoded-words decode AFTER the list is split: a decoded display name
+    // may legitimately contain a comma, which must not create a bogus entry.
+    to: splitAddressList(header("To")).map(decodeHeaderText),
+    cc: splitAddressList(header("Cc")).map(decodeHeaderText),
     // internalDate is ms-epoch and Gmail always returns it for a full fetch;
     // falling back to "now" (rather than "") keeps every SyncMessage's date
     // usable for ordering, per syncProviders.ts's contract.
@@ -138,9 +141,14 @@ function toSyncMessage(msg: GmailMessageFull): SyncMessage {
   };
 }
 
-async function fetchMessageFull(account: ConnectedAccount, id: string): Promise<GmailMessageFull> {
+async function fetchMessageFull(
+  account: ConnectedAccount,
+  id: string,
+  signal?: AbortSignal,
+): Promise<GmailMessageFull> {
   return (await proxyRequest(account.id, "get", `${GMAIL_API}/messages/${id}`, {
     params: { format: "full" },
+    signal,
   })) as GmailMessageFull;
 }
 
@@ -153,12 +161,13 @@ interface ProfileResponse {
  * that changes the mailbox while the backfill is still paging falls after
  * this point, not into a gap between "listed" and "captured".
  */
-async function fetchStartHistoryId(account: ConnectedAccount): Promise<string> {
-  const profile = (await proxyRequest(
-    account.id,
-    "get",
-    `${GMAIL_API}/profile`,
-  )) as ProfileResponse;
+async function fetchStartHistoryId(
+  account: ConnectedAccount,
+  signal?: AbortSignal,
+): Promise<string> {
+  const profile = (await proxyRequest(account.id, "get", `${GMAIL_API}/profile`, {
+    signal,
+  })) as ProfileResponse;
   if (!profile.historyId) throw new Error("Gmail profile response is missing historyId");
   return profile.historyId;
 }
@@ -172,8 +181,9 @@ async function fetchBackfillPage(
   account: ConnectedAccount,
   cursor: BackfillCursor | null,
   opts: SyncOptions,
+  signal?: AbortSignal,
 ): Promise<SyncPage> {
-  const historyId = cursor?.historyId ?? (await fetchStartHistoryId(account));
+  const historyId = cursor?.historyId ?? (await fetchStartHistoryId(account, signal));
 
   const list = (await proxyRequest(account.id, "get", `${GMAIL_API}/messages`, {
     params: {
@@ -181,11 +191,12 @@ async function fetchBackfillPage(
       maxResults: String(opts.pageSize),
       ...(cursor?.pageToken ? { pageToken: cursor.pageToken } : {}),
     },
+    signal,
   })) as MessagesListResponse;
 
   const ids = (list.messages ?? []).map((m) => m.id);
   const messages = await mapWithConcurrency(ids, BATCH_CONCURRENCY, (id) =>
-    fetchMessageFull(account, id),
+    fetchMessageFull(account, id, signal),
   );
   // The `-in:draft -in:trash -in:spam` query already excludes these, but a
   // label can change between the list call and this fetch — filter again
@@ -250,10 +261,11 @@ function collectTouchedIds(history: HistoryRecord[]): string[] {
 async function resolveTouched(
   account: ConnectedAccount,
   ids: string[],
+  signal?: AbortSignal,
 ): Promise<{ upserts: SyncMessage[]; deletes: string[] }> {
   const resolved = await mapWithConcurrency(ids, BATCH_CONCURRENCY, async (id) => {
     try {
-      return { id, message: await fetchMessageFull(account, id) };
+      return { id, message: await fetchMessageFull(account, id, signal) };
     } catch (error) {
       if (statusCodeOf(error) === 404) return { id, message: null };
       throw error;
@@ -276,6 +288,7 @@ async function fetchHistoryPage(
   account: ConnectedAccount,
   cursor: HistoryCursor,
   opts: SyncOptions,
+  signal?: AbortSignal,
 ): Promise<SyncPage> {
   let list: HistoryListResponse;
   try {
@@ -285,13 +298,18 @@ async function fetchHistoryPage(
         maxResults: String(opts.pageSize),
         ...(cursor.pageToken ? { pageToken: cursor.pageToken } : {}),
       },
+      signal,
     })) as HistoryListResponse;
   } catch (error) {
     if (isHistoryIdExpired(error)) throw new SyncCursorExpiredError();
     throw error;
   }
 
-  const { upserts, deletes } = await resolveTouched(account, collectTouchedIds(list.history ?? []));
+  const { upserts, deletes } = await resolveTouched(
+    account,
+    collectTouchedIds(list.history ?? []),
+    signal,
+  );
 
   if (list.nextPageToken) {
     // Keep the ORIGINAL startHistoryId while paging: the pageToken belongs to
@@ -347,11 +365,12 @@ export const gmailSyncProvider: SyncProvider = {
     account: ConnectedAccount,
     cursor: string | null,
     opts: SyncOptions,
+    signal?: AbortSignal,
   ): Promise<SyncPage> {
     // A tampered/unreadable cursor parses to null — same as "no cursor",
     // restart the backfill (see parseOpaqueCursor in syncProviders.ts).
     const parsed = parseOpaqueCursor(cursor, isCursor);
-    if (parsed?.phase === "history") return fetchHistoryPage(account, parsed, opts);
-    return fetchBackfillPage(account, parsed, opts);
+    if (parsed?.phase === "history") return fetchHistoryPage(account, parsed, opts, signal);
+    return fetchBackfillPage(account, parsed, opts, signal);
   },
 };

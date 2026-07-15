@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
+import { IconChip } from "@/components/ui/icon-chip";
 
 /** The collapsible section `<h2>` shared by Home's list sections (Review,
  *  Waiting) — icon chip, title, optional count badge, trailing chevron. */
@@ -27,9 +28,9 @@ export function CollapsibleSectionTitle({
         aria-expanded={expanded}
         className="flex items-center gap-2.5 hover:text-muted-foreground transition-colors select-none"
       >
-        <div className="tint-accent flex h-7 w-7 items-center justify-center rounded-md">
-          <Icon className="h-4 w-4" />
-        </div>
+        <IconChip>
+          <Icon />
+        </IconChip>
         {title}
         {typeof count === "number" && count > 0 && <Badge variant="muted">{count}</Badge>}
         {expanded ? (

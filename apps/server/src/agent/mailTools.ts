@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { AgentCard, ConnectedAccount, EmailHit } from "@trailin/shared";
-import { and, desc, eq, inArray, like, or } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import { Type } from "@sinclair/typebox";
+import type { ConnectedAccount } from "@trailin/shared";
+import { getContactContexts, searchContacts } from "../email/contacts/contactsStore.js";
 import { listDraftsCached } from "../email/draftsService.js";
 import { normalizeAddressSet } from "../email/learn/addressSubject.js";
 import { getDraftProvider } from "../email/providers.js";
@@ -16,9 +16,9 @@ import {
 import { syncAccount } from "../email/sync/syncEngine.js";
 import { mapWithConcurrency } from "../jobs.js";
 import { errorMessage } from "../util.js";
-import { accountNameMap, resolveAccountParam } from "./accounts.js";
-import { toCardAccount } from "./cards.js";
-import { defineTool, textResult } from "./toolResult.js";
+import { toCardAccount } from "./card/common.js";
+import { buildEmailHitsCard, buildEmailThreadCard, CARD_KINDS } from "./card/kinds.js";
+import { clampLimit, limitParam, numberedList, refreshParam, textResult, tool } from "./toolkit.js";
 
 /**
  * The agent's email READ tools, served entirely from the local mailbox
@@ -39,19 +39,23 @@ const MAX_LIMIT = 50;
 /** Cap per-message body text handed to the model; full mail can be enormous. */
 const MAX_BODY_CHARS = 6_000;
 
-function clampLimit(raw: unknown): number {
-  const n = typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : DEFAULT_LIMIT;
-  return Math.min(Math.max(n, 1), MAX_LIMIT);
-}
-
 function truncateBody(body: string): string {
   return body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n…(truncated)` : body;
 }
 
-/** Pull the provider change feed before reading, for "right now" questions. */
-async function refreshMirror(account: ConnectedAccount | undefined, all: ConnectedAccount[]) {
+/**
+ * Pull the provider change feed before reading, for "right now" questions.
+ * The tool run's signal rides along so a cancelled chat turn or a timed-out
+ * automation stops a sweep started on its behalf instead of letting it page
+ * on server-side; failures stay best-effort — the mirror still answers.
+ */
+async function refreshMirror(
+  account: ConnectedAccount | undefined,
+  all: ConnectedAccount[],
+  signal?: AbortSignal,
+) {
   const targets = account ? [account] : all;
-  await mapWithConcurrency(targets, 4, (a) => syncAccount(a).catch(() => {}));
+  await mapWithConcurrency(targets, 4, (a) => syncAccount(a, signal).catch(() => {}));
 }
 
 /** Contact-scoped memories quoted per participant in a read_thread block; keeps it compact. */
@@ -70,28 +74,10 @@ async function buildParticipantContext(messages: ThreadMessage[]): Promise<strin
   const addresses = [...normalizeAddressSet(messages.flatMap((m) => [m.from, ...m.to, ...m.cc]))];
   if (addresses.length === 0) return "";
 
-  const contactRows = await db
-    .select()
-    .from(schema.contacts)
-    .where(and(inArray(schema.contacts.address, addresses), eq(schema.contacts.kind, "person")));
-  const contactByAddress = new Map(contactRows.map((c) => [c.address, c]));
-
-  const memoryRows = await db
-    .select()
-    .from(schema.memories)
-    .where(inArray(schema.memories.contactId, addresses));
-  const memoriesByAddress = new Map<string, (typeof memoryRows)[number][]>();
-  for (const row of memoryRows) {
-    const key = row.contactId as string;
-    const list = memoriesByAddress.get(key);
-    if (list) list.push(row);
-    else memoriesByAddress.set(key, [row]);
-  }
+  const contexts = getContactContexts(addresses);
 
   const lines: string[] = [];
-  for (const address of addresses) {
-    const contact = contactByAddress.get(address);
-    const memories = memoriesByAddress.get(address) ?? [];
+  for (const { address, contact, memories } of contexts) {
     const gist = contact?.gist.trim();
     if (!gist && memories.length === 0) continue;
     const label = contact?.displayName ? `${contact.displayName} <${address}>` : address;
@@ -109,7 +95,7 @@ async function buildParticipantContext(messages: ThreadMessage[]): Promise<strin
 }
 
 function buildSearchMailTool(visibleCards: boolean): AgentTool {
-  return defineTool({
+  return tool({
     name: "search_mail",
     label: "Search mail",
     description:
@@ -119,53 +105,39 @@ function buildSearchMailTool(visibleCards: boolean): AgentTool {
       `threadId) and messageId (use with save-attachment tools). The index mirrors roughly the ` +
       `last month of mail and can trail live mail by a few minutes — set refresh true only when ` +
       `the user asks about mail that may have just arrived.`,
-    parameters: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Keywords to search for." },
-        account: {
-          type: "string",
-          description: "Optional: search only this connected account (email address or id).",
-        },
-        limit: { type: "number", description: `Max results (default ${DEFAULT_LIMIT}).` },
-        refresh: {
-          type: "boolean",
-          description: "Pull the latest changes from the provider before searching.",
-        },
-      },
-      required: ["query"],
+    account: "optional",
+    accountDescription: "Optional: search only this connected account (email address or id).",
+    params: {
+      query: Type.String({ description: "Keywords to search for." }),
+      limit: limitParam(DEFAULT_LIMIT),
+      refresh: refreshParam("searching"),
     },
-    execute: async (_id, params) => {
-      const {
-        query,
-        account: accountRaw,
-        limit: limitRaw,
-        refresh,
-      } = params as Record<string, unknown>;
-      const { account, accounts, error } = await resolveAccountParam(accountRaw);
-      if (error) return textResult(error);
-      if (refresh === true) await refreshMirror(account, accounts);
+    execute: async (
+      { query, limit: limitRaw, refresh },
+      { account, accounts, accountTag, signal },
+    ) => {
+      if (refresh === true) await refreshMirror(account, accounts, signal);
 
-      const limit = clampLimit(limitRaw);
-      const hits = searchMail(String(query ?? ""), { accountId: account?.id, limit });
+      const limit = clampLimit(limitRaw, DEFAULT_LIMIT, MAX_LIMIT);
+      const hits = searchMail(query, { accountId: account?.id, limit });
       if (hits.length === 0) {
         return textResult(
-          `No local mail matches "${String(query)}"${account ? ` in ${account.name}` : ""}. ` +
+          `No local mail matches "${query}"${account ? ` in ${account.name}` : ""}. ` +
             `The index covers roughly the last month of synced mail.`,
         );
       }
 
-      const names = accountNameMap(accounts);
-      const lines = hits.map((hit, i) => {
-        const accountNote = account ? "" : ` [${names.get(hit.accountId) ?? hit.accountId}]`;
-        return (
-          `${i + 1}. ${hit.subject || "(no subject)"} — from ${hit.from}${accountNote}, ${hit.date}\n` +
-          `   ${hit.snippet}\n` +
-          `   threadId: ${hit.providerThreadId} | messageId: ${hit.providerMessageId}`
-        );
-      });
+      const lines = numberedList(
+        hits.map((hit) => ({
+          head: `${hit.subject || "(no subject)"} — from ${hit.from}${accountTag(hit.accountId)}, ${hit.date}`,
+          body: [
+            hit.snippet,
+            `threadId: ${hit.providerThreadId} | messageId: ${hit.providerMessageId}`,
+          ],
+        })),
+      );
 
-      const cardHits: EmailHit[] = hits.map((hit) => ({
+      const cardHits = hits.map((hit) => ({
         messageId: hit.providerMessageId,
         threadId: hit.providerThreadId,
         accountId: hit.accountId,
@@ -175,24 +147,20 @@ function buildSearchMailTool(visibleCards: boolean): AgentTool {
         date: hit.date,
         snippet: hit.snippet,
       }));
-      const card: AgentCard = {
-        kind: "email_hits",
-        ...(account ? { account: toCardAccount(account) } : {}),
-        query: String(query ?? ""),
+      const card = buildEmailHitsCard({
+        account: account ? toCardAccount(account) : undefined,
+        query,
         hits: cardHits,
-        ...(hits.length === limit ? { truncated: true } : {}),
-      };
-      const note = visibleCards
-        ? "\n\n[The user sees these hits as a card in the conversation. Don't re-list them in " +
-          "your reply — give your takeaway and say which threads are worth opening.]"
-        : "";
-      return textResult(lines.join("\n") + note, card);
+        truncated: hits.length === limit ? true : undefined,
+      });
+      const note = visibleCards ? CARD_KINDS.email_hits.note : "";
+      return textResult(lines + note, card);
     },
   });
 }
 
 function buildReadThreadTool(visibleCards: boolean): AgentTool {
-  return defineTool({
+  return tool({
     name: "read_thread",
     label: "Read mail thread",
     description:
@@ -200,26 +168,16 @@ function buildReadThreadTool(visibleCards: boolean): AgentTool {
       `use this before summarizing a thread or drafting a reply. threadId is the provider ` +
       `thread id from search_mail, list_threads or list_waiting_threads results; pass account ` +
       `when you know which account the thread lives in.`,
-    parameters: {
-      type: "object",
-      properties: {
-        threadId: { type: "string", description: "Provider thread id." },
-        account: {
-          type: "string",
-          description: "Optional: the connected account (email address or id) the thread is in.",
-        },
-      },
-      required: ["threadId"],
+    account: "optional",
+    accountDescription: "Optional: the connected account (email address or id) the thread is in.",
+    params: {
+      threadId: Type.String({ description: "Provider thread id." }),
     },
-    execute: async (_id, params) => {
-      const { threadId, account: accountRaw } = params as Record<string, unknown>;
-      const { account, accounts, error } = await resolveAccountParam(accountRaw);
-      if (error) return textResult(error);
-
-      const detail = getThreadDetail(String(threadId ?? ""), account?.id);
+    execute: async ({ threadId }, { account, accounts }) => {
+      const detail = getThreadDetail(threadId, account?.id);
       if (!detail) {
         return textResult(
-          `No thread ${String(threadId)} in the local mail index` +
+          `No thread ${threadId} in the local mail index` +
             `${account ? ` for ${account.name}` : ""}. Check the id against a search_mail or ` +
             `list_threads result; mail older than the sync window is not indexed.`,
         );
@@ -237,9 +195,8 @@ function buildReadThreadTool(visibleCards: boolean): AgentTool {
         );
       });
 
-      const card: AgentCard = {
-        kind: "email_thread",
-        ...(owner ? { account: toCardAccount(owner) } : {}),
+      const card = buildEmailThreadCard({
+        account: owner ? toCardAccount(owner) : undefined,
         threadId: detail.providerThreadId,
         subject: detail.subject,
         messages: detail.messages.map((m) => ({
@@ -249,12 +206,9 @@ function buildReadThreadTool(visibleCards: boolean): AgentTool {
           date: m.date,
           body: truncateBody(m.bodyText),
         })),
-      };
+      });
       const participantContext = await buildParticipantContext(detail.messages);
-      const note = visibleCards
-        ? "\n\n[The user sees this thread as a card in the conversation. Don't re-print or quote " +
-          "the messages in your reply — summarize or answer directly.]"
-        : "";
+      const note = visibleCards ? CARD_KINDS.email_thread.note : "";
       return textResult(
         `${header}\n\n${blocks.join("\n\n---\n\n")}${participantContext}${note}`,
         card,
@@ -263,82 +217,77 @@ function buildReadThreadTool(visibleCards: boolean): AgentTool {
   });
 }
 
-const listThreadsTool: AgentTool = defineTool({
+const listThreadsTool: AgentTool = tool({
   name: "list_threads",
   label: "List mail threads",
   description:
     `List recent email threads from the local mail index, newest first, across all connected ` +
     `accounts or one account. filter "unread" keeps threads with unread mail; ` +
     `"needs_attention" keeps threads the enrichment pipeline judged as needing a reply or ` +
-    `action, or urgent. Each line carries the thread's one-line gist and triage when ` +
-    `available — use this to scan an inbox before deciding what to read in full, and use the ` +
-    `printed threadId with read_thread.`,
-  parameters: {
-    type: "object",
-    properties: {
-      account: {
-        type: "string",
-        description: "Optional: list only this connected account (email address or id).",
-      },
-      filter: {
-        type: "string",
-        enum: ["recent", "unread", "needs_attention"],
-        description: 'Which threads to list (default "recent").',
-      },
-      limit: { type: "number", description: `Max threads (default ${DEFAULT_LIMIT}).` },
-      refresh: {
-        type: "boolean",
-        description: "Pull the latest changes from the provider before listing.",
-      },
-    },
-    required: [],
+    `action, or urgent. sinceDays bounds the list to threads whose last message is within that ` +
+    `many days (e.g. sinceDays 7 for the last week). Each line carries the thread's one-line ` +
+    `gist and triage when available — use this to scan an inbox before deciding what to read in ` +
+    `full, and use the printed threadId with read_thread.`,
+  account: "optional",
+  accountDescription: "Optional: list only this connected account (email address or id).",
+  params: {
+    filter: Type.Optional(
+      Type.Union(
+        [Type.Literal("recent"), Type.Literal("unread"), Type.Literal("needs_attention")],
+        { description: 'Which threads to list (default "recent").' },
+      ),
+    ),
+    sinceDays: Type.Optional(
+      Type.Number({
+        description:
+          "Only threads whose last message is within this many days; omit for no age bound.",
+      }),
+    ),
+    limit: limitParam(DEFAULT_LIMIT, "threads"),
+    refresh: refreshParam("listing"),
   },
-  execute: async (_id, params) => {
-    const {
-      account: accountRaw,
-      filter: filterRaw,
-      limit: limitRaw,
-      refresh,
-    } = params as Record<string, unknown>;
-    const { account, accounts, error } = await resolveAccountParam(accountRaw);
-    if (error) return textResult(error);
-    if (refresh === true) await refreshMirror(account, accounts);
+  execute: async (
+    { filter, sinceDays, limit: limitRaw, refresh },
+    { account, accounts, accountTag, signal },
+  ) => {
+    if (refresh === true) await refreshMirror(account, accounts, signal);
 
-    const filter: ThreadFilter =
-      filterRaw === "unread" || filterRaw === "needs_attention" ? filterRaw : "recent";
+    const effectiveFilter: ThreadFilter = filter ?? "recent";
     const threads = listThreadOverviews({
       accountId: account?.id,
-      filter,
-      limit: clampLimit(limitRaw),
+      filter: effectiveFilter,
+      sinceDays: typeof sinceDays === "number" && sinceDays > 0 ? sinceDays : undefined,
+      limit: clampLimit(limitRaw, DEFAULT_LIMIT, MAX_LIMIT),
     });
     if (threads.length === 0) {
       return textResult(
-        `No ${filter === "recent" ? "" : `${filter} `}threads in the local mail index` +
+        `No ${effectiveFilter === "recent" ? "" : `${effectiveFilter} `}threads in the local mail index` +
           `${account ? ` for ${account.name}` : ""}.`,
       );
     }
 
-    const names = accountNameMap(accounts);
-    const lines = threads.map((t, i) => {
-      const accountNote = account ? "" : ` [${names.get(t.accountId) ?? t.accountId}]`;
-      const flags = [
-        t.hasUnread ? "unread" : null,
-        t.lastFromMe ? "last message from user" : null,
-        t.triage ? `triage: ${t.triage}` : null,
-        t.urgency && t.urgency !== "normal" ? `urgency: ${t.urgency}` : null,
-        t.deadline ? `deadline: ${t.deadline}` : null,
-      ].filter(Boolean);
-      return (
-        `${i + 1}. ${t.subject || "(no subject)"}${accountNote} — ${t.messageCount} msg, ` +
-        `last ${t.lastMessageAt}${flags.length > 0 ? ` (${flags.join(", ")})` : ""}\n` +
-        `${t.gist ? `   ${t.gist}\n` : ""}   threadId: ${t.providerThreadId}`
-      );
-    });
-    return textResult(lines.join("\n"));
+    const lines = numberedList(
+      threads.map((t) => {
+        const flags = [
+          t.hasUnread ? "unread" : null,
+          t.lastFromMe ? "last message from user" : null,
+          t.triage ? `triage: ${t.triage}` : null,
+          t.urgency && t.urgency !== "normal" ? `urgency: ${t.urgency}` : null,
+          t.deadline ? `deadline: ${t.deadline}` : null,
+        ].filter(Boolean);
+        return {
+          head:
+            `${t.subject || "(no subject)"}${accountTag(t.accountId)} — ${t.messageCount} msg, ` +
+            `last ${t.lastMessageAt}${flags.length > 0 ? ` (${flags.join(", ")})` : ""}`,
+          body: [t.gist || undefined, `threadId: ${t.providerThreadId}`],
+        };
+      }),
+    );
+    return textResult(lines);
   },
 });
 
-const listSentTool: AgentTool = defineTool({
+const listSentTool: AgentTool = tool({
   name: "list_sent_messages",
   label: "List sent messages",
   description:
@@ -347,25 +296,14 @@ const listSentTool: AgentTool = defineTool({
     `accounts or one account via the account parameter. Use this (not search_mail) when the ` +
     `task is about the user's own outgoing mail — reviewing what they sent today, studying ` +
     `their writing.`,
-  parameters: {
-    type: "object",
-    properties: {
-      account: {
-        type: "string",
-        description: "Optional: list only this connected account (email address or id).",
-      },
-      limit: { type: "number", description: `Max messages (default ${DEFAULT_LIMIT}).` },
-    },
-    required: [],
+  account: "optional",
+  accountDescription: "Optional: list only this connected account (email address or id).",
+  params: {
+    limit: limitParam(DEFAULT_LIMIT, "messages"),
   },
-  execute: async (_id, params) => {
-    const { account: accountRaw, limit: limitRaw } = params as Record<string, unknown>;
-    const { account, accounts, error } = await resolveAccountParam(accountRaw);
-    if (error) return textResult(error);
-
-    const limit = clampLimit(limitRaw);
+  execute: async ({ limit: limitRaw }, { account, accounts, accountTag }) => {
+    const limit = clampLimit(limitRaw, DEFAULT_LIMIT, MAX_LIMIT);
     const targets = account ? [account] : accounts;
-    const names = accountNameMap(accounts);
     const rows = targets
       .flatMap((a) => listSentMessages(a.id, limit).map((m) => ({ ...m, accountId: a.id })))
       .sort((a, b) => b.date.localeCompare(a.date))
@@ -376,18 +314,19 @@ const listSentTool: AgentTool = defineTool({
           `the mirror may still be syncing, or there is no recent sent mail.`,
       );
     }
-    const lines = rows.map((m, i) => {
-      const accountNote = account ? "" : ` [${names.get(m.accountId) ?? m.accountId}]`;
-      return (
-        `${i + 1}. ${m.subject || "(no subject)"} — to ${m.to.join(", ") || "(unknown)"}${accountNote}, ${m.date}\n` +
-        `   ${m.snippet}\n   threadId: ${m.providerThreadId}`
-      );
-    });
-    return textResult(lines.join("\n"));
+    const lines = numberedList(
+      rows.map((m) => ({
+        head:
+          `${m.subject || "(no subject)"} — to ${m.to.join(", ") || "(unknown)"}` +
+          `${accountTag(m.accountId)}, ${m.date}`,
+        body: [m.snippet, `threadId: ${m.providerThreadId}`],
+      })),
+    );
+    return textResult(lines);
   },
 });
 
-const listDraftsTool: AgentTool = defineTool({
+const listDraftsTool: AgentTool = tool({
   name: "list_drafts",
   label: "List drafts",
   description:
@@ -395,21 +334,10 @@ const listDraftsTool: AgentTool = defineTool({
     `(live from the provider, briefly cached) — subject, recipients, date, snippet, and the ` +
     `draft's threadId when it replies to a conversation. Use it to review what is drafted ` +
     `but not sent; the user sends drafts themselves from their mail client or the Drafts page.`,
-  parameters: {
-    type: "object",
-    properties: {
-      account: {
-        type: "string",
-        description: "Optional: list only this connected account (email address or id).",
-      },
-    },
-    required: [],
-  },
-  execute: async (_id, params) => {
-    const { account: accountRaw } = params as Record<string, unknown>;
-    const { account, accounts, error } = await resolveAccountParam(accountRaw);
-    if (error) return textResult(error);
-
+  account: "optional",
+  accountDescription: "Optional: list only this connected account (email address or id).",
+  params: {},
+  execute: async (_params, { account, accounts }) => {
     const targets = (account ? [account] : accounts).filter(
       (a) => getDraftProvider(a.app) !== null,
     );
@@ -426,14 +354,16 @@ const listDraftsTool: AgentTool = defineTool({
         try {
           const drafts = await listDraftsCached(a);
           if (drafts.length === 0) return `${a.name}: no drafts.`;
-          const lines = drafts.map((d, i) => {
-            const thread = d.threadId ? ` | threadId: ${d.threadId}` : "";
-            return (
-              `${i + 1}. ${d.subject || "(no subject)"} — to ${d.to || "(no recipients)"}, ${d.date}\n` +
-              `   ${d.snippet ?? ""}\n   draftId: ${d.id}${thread}`
-            );
-          });
-          return `${a.name}:\n${lines.join("\n")}`;
+          const lines = numberedList(
+            drafts.map((d) => ({
+              head: `${d.subject || "(no subject)"} — to ${d.to || "(no recipients)"}, ${d.date}`,
+              body: [
+                d.snippet ?? "",
+                `draftId: ${d.id}${d.threadId ? ` | threadId: ${d.threadId}` : ""}`,
+              ],
+            })),
+          );
+          return `${a.name}:\n${lines}`;
         } catch (error) {
           return `${a.name}: listing drafts failed (${errorMessage(error)}).`;
         }
@@ -445,7 +375,7 @@ const listDraftsTool: AgentTool = defineTool({
 
 const MAX_LOOKUP_RESULTS = 10;
 
-const lookupContactTool: AgentTool = defineTool({
+const lookupContactTool: AgentTool = tool({
   name: "lookup_contact",
   label: "Look up contact",
   description:
@@ -453,52 +383,23 @@ const lookupContactTool: AgentTool = defineTool({
     `relationship category, one-line gist, message counts, and any contact-scoped memories. ` +
     `read_thread already surfaces this automatically for a thread's participants; use this ` +
     `tool to check someone outside a thread, or when that automatic context wasn't enough.`,
-  parameters: {
-    type: "object",
-    properties: {
-      query: {
-        type: "string",
-        description: "An email address (exact or partial) or a name fragment to search for.",
-      },
-    },
-    required: ["query"],
+  params: {
+    query: Type.String({
+      description: "An email address (exact or partial) or a name fragment to search for.",
+    }),
   },
-  execute: async (_id, params) => {
-    const { query } = params as { query?: string };
-    const trimmed = (query ?? "").trim();
+  execute: async ({ query }) => {
+    const trimmed = query.trim();
     if (!trimmed) return textResult("Provide an email address or name to look up.");
 
-    const needle = `%${trimmed.toLowerCase()}%`;
-    const rows = await db
-      .select()
-      .from(schema.contacts)
-      .where(or(like(schema.contacts.address, needle), like(schema.contacts.displayName, needle)))
-      .orderBy(desc(schema.contacts.lastContactAt))
-      .limit(MAX_LOOKUP_RESULTS);
-    if (rows.length === 0) return textResult(`No local contact matches "${trimmed}".`);
+    const matches = searchContacts(trimmed, MAX_LOOKUP_RESULTS);
+    if (matches.length === 0) return textResult(`No local contact matches "${trimmed}".`);
 
-    // Real correspondents first — bulk/newsletter senders sort after, within the same cap.
-    const sorted = [...rows].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "person" ? -1 : 1));
-
-    const addresses = sorted.map((c) => c.address);
-    const memoryRows = await db
-      .select()
-      .from(schema.memories)
-      .where(inArray(schema.memories.contactId, addresses));
-    const memoriesByAddress = new Map<string, (typeof memoryRows)[number][]>();
-    for (const m of memoryRows) {
-      const key = m.contactId as string;
-      const list = memoriesByAddress.get(key);
-      if (list) list.push(m);
-      else memoriesByAddress.set(key, [m]);
-    }
-
-    const blocks = sorted.map((c) => {
+    const blocks = matches.map(({ contact: c, memories }) => {
       const label = c.displayName ? `${c.displayName} <${c.address}>` : c.address;
       const aggregates =
         `${c.messageCount} message(s), ${c.sentCount} sent, ` +
         `last contact ${c.lastContactAt || "unknown"}`;
-      const memories = memoriesByAddress.get(c.address) ?? [];
       const notes =
         memories.length > 0
           ? `\n  Notes:\n${memories.map((m) => `  - ${m.content}`).join("\n")}`

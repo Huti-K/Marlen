@@ -1,6 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { Type } from "@sinclair/typebox";
 import type { ConnectedAccount, UnsubscribeInfo } from "@trailin/shared";
-import { defineTool, textResult } from "../../agent/toolResult.js";
+import { textResult, tool } from "../../agent/toolkit.js";
 import { errorMessage } from "../../util.js";
 import { executeAndMarkUnsubscribe, resolveAccountUnsubscribe } from "./resolve.js";
 
@@ -20,7 +21,7 @@ import { executeAndMarkUnsubscribe, resolveAccountUnsubscribe } from "./resolve.
  * implementation of the lookup and the RFC 8058 POST, not two.
  */
 export function buildUnsubscribeTool(account: ConnectedAccount, name: string): AgentTool {
-  return defineTool({
+  return tool({
     name,
     label: "Unsubscribe from sender",
     description:
@@ -29,18 +30,10 @@ export function buildUnsubscribeTool(account: ConnectedAccount, name: string): A
       `search_mail results). Senders that only offer a browse link or a mailto address are ` +
       `refused — those need the user's own click, not the agent's.\n\n` +
       `Acts as the connected account: ${account.name}.`,
-    parameters: {
-      type: "object",
-      properties: {
-        address: {
-          type: "string",
-          description: "The sender's email address to unsubscribe from.",
-        },
-      },
-      required: ["address"],
+    params: {
+      address: Type.String({ description: "The sender's email address to unsubscribe from." }),
     },
-    execute: async (_toolCallId, params) => {
-      const { address } = params as { address?: string };
+    execute: async ({ address }) => {
       const trimmed = address?.trim();
       if (!trimmed) return textResult("A sender address is required.");
 

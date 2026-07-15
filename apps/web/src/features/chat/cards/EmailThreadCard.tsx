@@ -4,6 +4,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { relativeTime } from "@/lib/dates";
+import { dispatchTrailin } from "@/lib/trailinEvents";
 import { CardBodyText, CardShell } from "./CardShell";
 
 type EmailThreadData = Extract<AgentCard, { kind: "email_thread" }>;
@@ -40,13 +41,9 @@ export function EmailThreadCard({ card, color }: { card: EmailThreadData; color?
 
   const addToChat = () => {
     if (!account) return;
-    window.dispatchEvent(
-      new CustomEvent("trailin:add-chat-ref", {
-        detail: {
-          ref: { threadId, accountId: account.accountId, accountName: account.name, subject },
-        },
-      }),
-    );
+    dispatchTrailin("add-chat-ref", {
+      ref: { threadId, accountId: account.accountId, accountName: account.name, subject },
+    });
   };
 
   return (

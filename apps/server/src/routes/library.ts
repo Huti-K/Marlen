@@ -3,23 +3,16 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
-import type { LibraryStatus } from "@trailin/shared";
+import type { LibrarySearchHit, LibraryStatus } from "@trailin/shared";
 import { badRequest, notFound } from "../errors.js";
 import { deleteDocument, getLibraryDir, saveUpload, setLibraryFolder } from "../library/ingest.js";
 import { pickFolder } from "../library/pickFolder.js";
 import { getDocument, listDocuments, type SearchHit, searchChunks } from "../library/store.js";
 import { trimSnippet } from "../search/snippets.js";
 import { errorMessage } from "../util.js";
+import { contentDisposition, inlineForMime, mimeForExt } from "./fileResponse.js";
 
 const UPLOAD_LIMIT = 64 * 1024 * 1024;
-
-export interface LibrarySearchHit {
-  id: string;
-  title: string;
-  path: string;
-  ext: string;
-  snippet: string;
-}
 
 // Over-fetch chunk-level hits so collapsing them to one entry per document
 // still leaves close to SEARCH_DOC_LIMIT distinct documents.
@@ -57,41 +50,6 @@ function searchDocuments(q: string): LibrarySearchHit[] {
     if (results.length >= SEARCH_DOC_LIMIT) break;
   }
   return results;
-}
-
-/** Map file extension to a browser-friendly MIME type. */
-function mimeForExt(ext: string): string {
-  switch (ext.toLowerCase()) {
-    case "pdf":
-      return "application/pdf";
-    case "md":
-    case "markdown":
-    case "txt":
-    case "csv":
-      return "text/plain; charset=utf-8";
-    case "html":
-    case "htm":
-      // Never text/html: library folders hold sender-controlled content
-      // (saved email exports), and serving that inline as HTML on the app
-      // origin would let its script call every /api endpoint.
-      return "text/plain; charset=utf-8";
-    case "docx":
-      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    default:
-      return "application/octet-stream";
-  }
-}
-
-/**
- * Build a Content-Disposition header value for a filename that may contain
- * non-Latin1 or quote characters, which Node's raw header serializer rejects
- * (ERR_INVALID_CHAR) or which would otherwise malform the quoted-string.
- * Ships an ASCII `filename` fallback plus the exact name via RFC 5987/6266
- * `filename*`.
- */
-function contentDisposition(kind: "inline" | "attachment", filename: string): string {
-  const ascii = filename.replace(/[\\"]/g, "").replace(/[^\x20-\x7e]/g, "_");
-  return `${kind}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 const librarySearchQuery = Type.Object({ q: Type.Optional(Type.String()) });
@@ -177,12 +135,10 @@ export const libraryRoutes: FastifyPluginAsyncTypebox = async (app) => {
       }
 
       const mime = mimeForExt(doc.ext);
-      // PDFs and plain text (html/htm included, mapped to text/plain above so
-      // it renders as inert source rather than executing) open in-browser;
-      // everything else downloads.
-      const inline = /^(application\/pdf|text\/plain)/.test(mime);
+      // PDFs, plain text (html/htm mapped to text/plain so they render as inert
+      // source) and images open in-browser; everything else downloads.
       const disposition = contentDisposition(
-        inline ? "inline" : "attachment",
+        inlineForMime(mime) ? "inline" : "attachment",
         `${doc.title}.${doc.ext}`,
       );
 

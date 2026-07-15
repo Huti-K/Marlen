@@ -41,14 +41,14 @@ export function setSyncCursor(accountId: string, cursor: string | null): void {
 // last_synced_at only moves on a successful pass (COALESCE keeps the previous
 // value when null is bound), so an error run never erases when mail was last
 // fresh; the cursor column is untouched either way.
-const upsertStatus = lazyStatement(`
-  INSERT INTO mail_sync_state (account_id, status, error, last_synced_at)
-  VALUES (@accountId, @status, @error, @lastSyncedAt)
-  ON CONFLICT(account_id) DO UPDATE SET
-    status = excluded.status,
-    error = excluded.error,
-    last_synced_at = COALESCE(excluded.last_synced_at, mail_sync_state.last_synced_at)
-`);
+const upsertStatus = lazyStatement(
+  upsertSql({
+    table: "mail_sync_state",
+    conflict: ["account_id"],
+    update: ["status", "error"],
+    coalesceUpdate: ["last_synced_at"],
+  }),
+);
 
 export function markSyncStatus(
   accountId: string,
@@ -79,10 +79,13 @@ const upsertMessage = lazyStatement(
       "is_from_me",
       "is_unread",
       "labels",
-      "list_unsubscribe",
-      "list_unsubscribe_post",
       "synced_at",
     ],
+    // Resolved lazily by the unsubscribe pipeline and not re-supplied by every
+    // provider on a routine sync page (Outlook's message shape carries no
+    // headers), so a null from a later sync must not erase a value already
+    // resolved — COALESCE keeps the stored one.
+    coalesceUpdate: ["list_unsubscribe", "list_unsubscribe_post"],
   }),
 );
 

@@ -127,6 +127,44 @@ const DRAFT_CARD: AgentCard = {
   },
 };
 
+/** A message's attachments, reusing the Acme invoice message id from HITS_CARD:
+ *  a viewable+saveable PDF, a viewable-only image, and a saveable-only Word doc,
+ *  so every row-action branch (open vs download) is exercised. */
+const ATTACHMENTS_CARD: AgentCard = {
+  kind: "attachments",
+  account: WORK_ACCOUNT,
+  subject: "Re: Rechnung #A-2291 – Zahlungserinnerung",
+  items: [
+    {
+      accountId: "demo-work",
+      messageId: "msg-acme-2291-2",
+      filename: "Rechnung_A-2291.pdf",
+      mimeType: "application/pdf",
+      size: 148_213,
+      viewable: true,
+      saveable: true,
+    },
+    {
+      accountId: "demo-work",
+      messageId: "msg-acme-2291-2",
+      filename: "Logo_Nordwind.png",
+      mimeType: "image/png",
+      size: 32_940,
+      viewable: true,
+      saveable: false,
+    },
+    {
+      accountId: "demo-work",
+      messageId: "msg-acme-2291-2",
+      filename: "Angebot_Rebranding.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      size: 21_004,
+      viewable: false,
+      saveable: true,
+    },
+  ],
+};
+
 /** The structured Morning-briefing card — flat and cross-account, mixing the
  *  work and personal demo inboxes so the priority-first layout has something
  *  to prove. Reuses the Acme thread/draft ids from HITS_CARD/DRAFT_CARD and
@@ -195,15 +233,55 @@ const BRIEFING_CARD: AgentCard = {
   ],
   rollups: [
     {
-      accountId: "demo-work",
       label: "Newsletter & Angebote",
-      count: 12,
-      examples: ["Spotify", "Duolingo", "Zalando"],
+      items: [
+        {
+          threadId: "roll-zalando",
+          accountId: "demo-work",
+          sender: "Zalando",
+          subject: "-20% auf Sneaker – nur bis Sonntag",
+          gist: "Rabattaktion, keine Handlung nötig.",
+          priority: "fyi",
+          webUrl: "https://mail.google.com/mail/#all/roll-zalando",
+        },
+        {
+          threadId: "roll-duolingo",
+          accountId: "demo-personal",
+          sender: "Duolingo",
+          subject: "Vergiss deinen Streak nicht!",
+          gist: "Erinnerung, heute zu üben.",
+          priority: "fyi",
+        },
+        {
+          threadId: "roll-spotify",
+          accountId: "demo-work",
+          sender: "Spotify",
+          subject: "Dein Wochenmix ist da",
+          gist: "Neue Playlist-Empfehlungen.",
+          priority: "fyi",
+        },
+      ],
     },
     {
-      accountId: "demo-personal",
       label: "Quittungen",
-      count: 5,
+      items: [
+        {
+          threadId: "roll-apple",
+          accountId: "demo-personal",
+          sender: "Apple",
+          subject: "Deine Rechnung von Apple",
+          gist: "iCloud+ 0,99 € abgebucht.",
+          priority: "fyi",
+        },
+        {
+          threadId: "roll-amazon",
+          accountId: "demo-personal",
+          sender: "Amazon.de",
+          subject: "Deine Bestellung wurde versandt",
+          gist: "Paket kommt voraussichtlich Dienstag.",
+          priority: "fyi",
+        },
+      ],
     },
   ],
 };
@@ -274,6 +352,7 @@ export const SHOWCASE_TURNS: ShowcaseTurn[] = [
     ],
   },
   { cards: [HITS_CARD, THREAD_CARD, DRAFT_CARD, EMPTY_HITS_CARD] },
+  { cards: [ATTACHMENTS_CARD] },
   { cards: [BRIEFING_CARD] },
   { cards: [CHOICES_CARD] },
   { content: MARKDOWN_SAMPLE },

@@ -41,6 +41,28 @@ export async function resolveActiveModel(): Promise<Model<Api>> {
   return resolved;
 }
 
+/** Cheap-tier candidates tried against the active provider, in order, before the active-model fallback. */
+const CHEAP_MODEL_CANDIDATES = ["claude-haiku-4-5", "claude-haiku-4-5-20251001"];
+
+/**
+ * Cheap-tier model for high-volume background LLM seams (thread enrichment,
+ * contact judging, draft-match tiebreak, nightly style extraction): tries an
+ * optional caller override, then the built-in cheap candidates, against the
+ * active provider — a different provider would need its own credentials —
+ * falling back to the active model when none of them resolve.
+ */
+export async function resolveCheapModel(overrideModelId?: string): Promise<Model<Api>> {
+  const { provider } = await getActiveModelIds();
+  const candidates = overrideModelId
+    ? [overrideModelId, ...CHEAP_MODEL_CANDIDATES]
+    : CHEAP_MODEL_CANDIDATES;
+  for (const id of candidates) {
+    const model = modelRegistry.getModel(provider, id);
+    if (model) return model;
+  }
+  return resolveActiveModel();
+}
+
 /** True when the active model's provider has usable credentials. */
 export async function activeModelConfigured(): Promise<boolean> {
   try {

@@ -2,6 +2,8 @@ import type { AgentCard, EmailRef } from "@trailin/shared";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { emitServerEvent } from "../events.js";
+import type { CardKindDef } from "./card/common.js";
+import { CARD_KINDS } from "./card/kinds.js";
 
 /**
  * Conversation focus: the account — and, while one email is the topic, the
@@ -63,26 +65,15 @@ export function focusFromRefs(refs: EmailRef[] | undefined): FocusPatch | null {
 /**
  * What a card says about where the conversation is. Thread-level cards set
  * both parts; account-wide cards (search hits) set the account and CLEAR the
- * thread — the topic has widened beyond one email. Briefing cards carry no
- * top-level account (their items span accounts) and never move focus.
+ * thread — the topic has widened beyond one email. Briefing and choices
+ * cards carry no top-level account (a briefing's items span accounts; a
+ * choices card is a question, not activity in one) and never move focus.
+ * Each kind's own extraction lives in its CARD_KINDS entry (agent/card/
+ * kinds.ts) — this is just the registry dispatch over `card.kind`.
  */
 export function focusFromCard(card: AgentCard): FocusPatch | null {
-  if (!("account" in card) || !card.account) return null;
-  const accountId = card.account.accountId;
-  switch (card.kind) {
-    case "email_thread":
-      return { accountId, threadId: card.threadId, subject: card.subject ?? null };
-    case "email_draft":
-      return {
-        accountId,
-        threadId: card.draft.threadId ?? null,
-        subject: card.draft.subject ?? null,
-      };
-    case "email_hits":
-      return { accountId, threadId: null };
-    default:
-      return null;
-  }
+  const def: CardKindDef = CARD_KINDS[card.kind];
+  return def.focus(card);
 }
 
 /**

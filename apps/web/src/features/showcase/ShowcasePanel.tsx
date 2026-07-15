@@ -72,6 +72,15 @@ import { ApiError } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
+  DisclosureDemo,
+  LoadingRowsDemo,
+  NoticeDemo,
+  PagedListDemo,
+  RetryableErrorDemo,
+  SmallMarksDemo,
+  ToggleRowDemo,
+} from "./demos";
+import {
   applyTuning,
   formatOklch,
   hexToOklch,
@@ -124,13 +133,11 @@ const DRIVEN_VARS = [...COLOR_TOKENS.map((token) => token.name), ...SCALAR_TOKEN
 interface Shape {
   /** rem */
   radius: number;
-  /** multiplies every --shadow-* opacity */
-  shadow: number;
   /** root font size; Tailwind is rem-based, so this scales the entire app */
   scale: number;
 }
 
-const DEFAULT_SHAPE: Shape = { radius: 0.7, shadow: 1, scale: 1 };
+const DEFAULT_SHAPE: Shape = { radius: 0.7, scale: 1 };
 
 /** Base colours (hex, as the pickers speak) keyed by token, per theme. */
 type Overrides = Record<ThemeName, Record<string, string>>;
@@ -282,15 +289,6 @@ const SHAPE_KNOBS: {
     max: 1.4,
     step: 0.05,
     format: (v) => `${v.toFixed(2)}rem`,
-  },
-  {
-    key: "shadow",
-    label: "Shadow depth",
-    hint: "0× flattens the UI",
-    min: 0,
-    max: 3,
-    step: 0.1,
-    format: (v) => `${v.toFixed(1)}×`,
   },
   {
     key: "scale",
@@ -600,9 +598,6 @@ export function ShowcasePanel() {
     if (shape.radius === DEFAULT_SHAPE.radius) root.removeProperty("--radius");
     else root.setProperty("--radius", `${shape.radius}rem`);
 
-    if (shape.shadow === DEFAULT_SHAPE.shadow) root.removeProperty("--shadow-strength");
-    else root.setProperty("--shadow-strength", String(shape.shadow));
-
     // Not a custom property: Tailwind's spacing and type scales are rem, so the
     // root font size is the one knob that resizes the whole app at once.
     root.fontSize = shape.scale === DEFAULT_SHAPE.scale ? "" : scalePercent(shape.scale);
@@ -614,7 +609,6 @@ export function ShowcasePanel() {
       const root = document.documentElement.style;
       for (const name of DRIVEN_VARS) root.removeProperty(name);
       root.removeProperty("--radius");
-      root.removeProperty("--shadow-strength");
       root.fontSize = "";
     },
     [],
@@ -678,8 +672,6 @@ export function ShowcasePanel() {
 
     const rootLines: string[] = [];
     if (shape.radius !== DEFAULT_SHAPE.radius) rootLines.push(`  --radius: ${shape.radius}rem;`);
-    if (shape.shadow !== DEFAULT_SHAPE.shadow)
-      rootLines.push(`  --shadow-strength: ${shape.shadow};`);
     if (rootLines.length) parts.push(`:root {\n${rootLines.join("\n")}\n}`);
     // UI scale isn't a token — it's the root font size Tailwind's rem scales read.
     if (shape.scale !== DEFAULT_SHAPE.scale) {
@@ -717,7 +709,7 @@ export function ShowcasePanel() {
       </div>
 
       {/* ── Theme Lab ─────────────────────────────────────────────── */}
-      <Card tone="soft" padding="lg" className="flex flex-col gap-6">
+      <Card padding="lg" className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center gap-2">
           <p className="mr-auto text-sm font-semibold tracking-tight">Theme Lab</p>
           <Button variant="outline" size="sm" onClick={toggleTheme}>
@@ -809,7 +801,7 @@ export function ShowcasePanel() {
               return (
                 <div key={name} className="flex items-center gap-2.5">
                   <span
-                    className="h-9 w-9 shrink-0 rounded-lg shadow-sm"
+                    className="h-9 w-9 shrink-0 rounded-lg"
                     style={{ background: palettes[theme].live.css[name] }}
                   />
                   <div className="min-w-0">
@@ -843,6 +835,9 @@ export function ShowcasePanel() {
           <Button variant="destructive" data-tooltip="Warning: destructive action">
             <Trash2 /> Destructive
           </Button>
+          <Button variant="ghost-danger" data-tooltip="Delete/discard row actions — pale red hover">
+            <Trash2 /> Ghost danger
+          </Button>
           <Button disabled data-tooltip="This is currently disabled">
             Disabled
           </Button>
@@ -856,6 +851,15 @@ export function ShowcasePanel() {
           <Button size="lg">Large</Button>
           <Button size="icon" aria-label="Notifications">
             <Bell />
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Compact row action (icon-sm)">
+            <Bell />
+          </Button>
+          <Button variant="ghost" size="icon-xs" aria-label="Tiny row action (icon-xs)">
+            <Bell />
+          </Button>
+          <Button variant="ghost-danger" size="icon-xs" aria-label="Delete row (icon-xs)">
+            <Trash2 />
           </Button>
           <IconButton aria-label="Dismiss row">
             <Bell className="h-4 w-4" />
@@ -875,6 +879,14 @@ export function ShowcasePanel() {
           <Badge variant="warning">Paused</Badge>
           <Badge variant="destructive">Error</Badge>
         </div>
+      </Section>
+
+      {/* ── Small marks ───────────────────────────────────────────── */}
+      <Section
+        title="Small marks"
+        description="Icon chips, account dots, and keyboard hints — the tiny shared shapes."
+      >
+        <SmallMarksDemo />
       </Section>
 
       {/* ── Chips & run status ────────────────────────────────────── */}
@@ -963,13 +975,9 @@ export function ShowcasePanel() {
         title="Surfaces"
         description="Three tones by depth — never a border, never card-in-card."
       >
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Card tone="flat">
             <p className="text-sm font-medium">Flat card</p>
-            <p className="text-xs text-muted-foreground">surface + soft shadow.</p>
-          </Card>
-          <Card tone="soft">
-            <p className="text-sm font-medium">Soft card</p>
             <p className="text-xs text-muted-foreground">The one elevated panel.</p>
           </Card>
           <Card tone="pop">
@@ -1058,6 +1066,7 @@ export function ShowcasePanel() {
           ))}
         </div>
         <ErrorBanner>Something went wrong while saving your changes.</ErrorBanner>
+        <NoticeDemo />
       </Section>
 
       {/* ── Feedback & empty ──────────────────────────────────────── */}
@@ -1065,7 +1074,8 @@ export function ShowcasePanel() {
         title="Feedback & empty states"
         description="Loading, skeletons, and the nothing-here shape."
       >
-        <LoadingRow label="Loading your drafts…" />
+        <LoadingRowsDemo />
+        <RetryableErrorDemo />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-2/3" />
           <Skeleton className="h-4 w-1/2" />
@@ -1085,6 +1095,16 @@ export function ShowcasePanel() {
             description="Nothing needs your attention right now."
           />
         </div>
+      </Section>
+
+      {/* ── Lists & disclosure ────────────────────────────────────── */}
+      <Section
+        title="Lists & disclosure"
+        description="Paged reveal (SearchField + usePagedVisible + ShowMoreButton — type to see the cap reset), the quiet DisclosureToggle, and the keyboard-operable toggle row."
+      >
+        <PagedListDemo />
+        <DisclosureDemo />
+        <ToggleRowDemo />
       </Section>
 
       {/* ── Agent chat ────────────────────────────────────────────── */}

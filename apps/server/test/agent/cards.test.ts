@@ -3,12 +3,12 @@ import {
   coerceBriefingItem,
   coerceBriefingRollup,
   isBriefingPriority,
-  parseAgentCard,
-} from "../../src/agent/cards.js";
+} from "../../src/agent/card/kinds.js";
+import { parseAgentCard } from "../../src/agent/cards.js";
 
 // coerceBriefingItem/coerceBriefingRollup are shared between briefingTool.ts's
 // compose_briefing tool (which resolves an accountId itself before calling
-// them) and parseAgentCard's "briefing" arm below (which trusts a card's
+// them) and parseAgentCard's "briefing" arm (which trusts a card's
 // accountId field directly) — these tests cover the shared rules directly,
 // plus one end-to-end parseAgentCard check that the "briefing" arm still
 // wires accountId through correctly.
@@ -107,43 +107,30 @@ describe("coerceBriefingItem", () => {
   });
 });
 
-const validRollup = { label: "Newsletters", count: 3 };
+const rollupItem = coerceBriefingItem(
+  { ...validItem, threadId: "n1", subject: "Weekly digest", gist: "Nothing needed." },
+  "acc-1",
+  undefined,
+);
+if (!rollupItem) throw new Error("test setup: rollupItem should coerce");
 
 describe("coerceBriefingRollup", () => {
-  it("keeps a valid rollup, including the given accountId", () => {
-    const rollup = coerceBriefingRollup(validRollup, "acc-1");
-    expect(rollup).toEqual({ accountId: "acc-1", label: "Newsletters", count: 3 });
+  it("keeps a valid rollup carrying its coerced items", () => {
+    const rollup = coerceBriefingRollup({ label: "Newsletters" }, [rollupItem]);
+    expect(rollup).toEqual({ label: "Newsletters", items: [rollupItem] });
   });
 
   it("drops non-record input", () => {
-    expect(coerceBriefingRollup("nope", "acc-1")).toBeUndefined();
+    expect(coerceBriefingRollup("nope", [rollupItem])).toBeUndefined();
   });
 
   it("drops a rollup with an empty label", () => {
-    expect(coerceBriefingRollup({ ...validRollup, label: "" }, "acc-1")).toBeUndefined();
+    expect(coerceBriefingRollup({ label: "" }, [rollupItem])).toBeUndefined();
+    expect(coerceBriefingRollup({ label: "   " }, [rollupItem])).toBeUndefined();
   });
 
-  it("drops a rollup with a non-finite count", () => {
-    expect(coerceBriefingRollup({ ...validRollup, count: Number.NaN }, "acc-1")).toBeUndefined();
-    expect(coerceBriefingRollup({ ...validRollup, count: "3" }, "acc-1")).toBeUndefined();
-  });
-
-  it("clamps a negative or fractional count to a non-negative integer", () => {
-    expect(coerceBriefingRollup({ ...validRollup, count: -2.6 }, "acc-1")?.count).toBe(0);
-    expect(coerceBriefingRollup({ ...validRollup, count: 3.6 }, "acc-1")?.count).toBe(4);
-  });
-
-  it("keeps a non-empty examples array (toStringArray only filters non-strings)", () => {
-    const rollup = coerceBriefingRollup(
-      { ...validRollup, examples: ["Ada", "", "Grace"] },
-      undefined,
-    );
-    expect(rollup?.examples).toEqual(["Ada", "", "Grace"]);
-  });
-
-  it("drops the examples field entirely for a non-array, non-string value", () => {
-    const rollup = coerceBriefingRollup({ ...validRollup, examples: 42 }, undefined);
-    expect(rollup?.examples).toBeUndefined();
+  it("drops a rollup with no items — an empty group has nothing to render", () => {
+    expect(coerceBriefingRollup({ label: "Newsletters" }, [])).toBeUndefined();
   });
 });
 

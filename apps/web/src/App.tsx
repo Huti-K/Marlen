@@ -14,16 +14,20 @@ import {
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Kbd, SearchPalette } from "@/components/SearchPalette";
+import { SearchPalette } from "@/components/SearchPalette";
 import { Sidebar } from "@/components/Sidebar";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { CursorTooltip } from "@/components/ui/cursor-tooltip";
 import { Dialog } from "@/components/ui/dialog";
 import { LoadingRow } from "@/components/ui/feedback";
+import { Kbd } from "@/components/ui/kbd";
+import { SearchField } from "@/components/ui/search-field";
 import { Toaster } from "@/components/ui/toaster";
 import { AutomationsPanel } from "@/features/automations/AutomationsPanel";
-import { ChatPanel, HistoryList } from "@/features/chat/ChatPanel";
+import { AttachmentViewer } from "@/features/chat/AttachmentViewer";
+import { ChatPanel } from "@/features/chat/ChatPanel";
 import { FocusChip } from "@/features/chat/FocusChip";
+import { HistoryList } from "@/features/chat/HistoryList";
 import { ContactsPanel } from "@/features/contacts/ContactsPanel";
 import { HomePanel } from "@/features/home/HomePanel";
 import { KnowledgePanel } from "@/features/knowledge/KnowledgePanel";
@@ -33,6 +37,7 @@ import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showca
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { NAV_VIEWS, type View } from "@/lib/nav";
+import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useTheme } from "@/lib/useTheme";
 import { cn, MOD_LABEL } from "@/lib/utils";
@@ -177,23 +182,19 @@ export default function App() {
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
-    const onShowChat = () => setChatOpen(true);
-    window.addEventListener("trailin:show-chat", onShowChat);
+    const unsubscribeShowChat = subscribeTrailin("show-chat", () => setChatOpen(true));
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("trailin:show-chat", onShowChat);
+      unsubscribeShowChat();
     };
   }, [refreshStatus]);
 
   // Navigation requests from non-React code (e.g. a toast's click-through action).
   React.useEffect(() => {
-    const onNavigate = (event: Event) => {
-      const path = (event as CustomEvent<string>).detail;
+    return subscribeTrailin("navigate", (path) => {
       if (typeof path === "string" && path.startsWith("/")) navigate(path);
-    };
-    window.addEventListener("trailin:navigate", onNavigate);
-    return () => window.removeEventListener("trailin:navigate", onNavigate);
+    });
   }, [navigate]);
 
   React.useEffect(() => {
@@ -296,7 +297,7 @@ export default function App() {
     >
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[70] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground focus:shadow-md"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[70] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
       >
         {t("app.skipToContent")}
       </a>
@@ -305,7 +306,7 @@ export default function App() {
 
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 shadow-lg transition-transform duration-200 ease-out md:static md:z-auto md:translate-x-0 md:shadow-none",
+          "fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out md:static md:z-auto md:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -344,7 +345,7 @@ export default function App() {
             {/* Reads as a field on desktop so the shortcut is discoverable; an icon on mobile. */}
             <button
               type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent("trailin:open-search"))}
+              onClick={() => dispatchTrailin("open-search")}
               className="hidden h-9 w-56 shrink-0 items-center gap-2 rounded-md bg-surface-2 px-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:flex"
             >
               <Search className="h-4 w-4 shrink-0" />
@@ -353,7 +354,7 @@ export default function App() {
             </button>
             <HeaderIconButton
               label={t("search.openButton")}
-              onClick={() => window.dispatchEvent(new CustomEvent("trailin:open-search"))}
+              onClick={() => dispatchTrailin("open-search")}
               className="shrink-0 sm:hidden"
             >
               <Search />
@@ -462,7 +463,10 @@ export default function App() {
         <div
           className={cn(
             "flex min-h-0 min-w-0 flex-1 overflow-hidden pointer-events-auto",
-            onChatRoute ? "flex-row bg-surface" : "flex-col bg-sidebar",
+            // Chat tab: a grey canvas gutter framing the conversation. The history
+            // rail sits bare on it (chrome, like the nav); the chat column below
+            // becomes a rounded card with a free top row — same as every panel.
+            onChatRoute ? "flex-row gap-4 p-4 sm:p-6" : "flex-col bg-sidebar",
             // Panel mode: pin the content to the full panel width while the
             // outer shell animates closed/open, so the text is clipped by the
             // shrinking edge instead of re-wrapping on every frame.
@@ -483,7 +487,7 @@ export default function App() {
                 <HeaderIconButton
                   label={t("chat.newConversation")}
                   onClick={() => {
-                    window.dispatchEvent(new CustomEvent("trailin:new-chat"));
+                    dispatchTrailin("new-chat");
                     setHistoryOpen(false);
                   }}
                   className="ml-auto"
@@ -506,34 +510,18 @@ export default function App() {
                 </HeaderIconButton>
               </div>
               <div className="px-4 pb-2">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={historyQuery}
-                    onChange={(e) => setHistoryQuery(e.target.value)}
-                    placeholder={t("chat.searchPlaceholder")}
-                    aria-label={t("chat.searchPlaceholder")}
-                    className="field w-full py-2 pl-9 pr-8 text-base md:text-sm focus:outline-none"
-                  />
-                  {historyQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setHistoryQuery("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={t("common.close")}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
+                <SearchField
+                  value={historyQuery}
+                  onChange={setHistoryQuery}
+                  placeholder={t("chat.searchPlaceholder")}
+                />
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-2 pb-4">
                 <HistoryList
                   activeId={activeConversationId}
                   query={historyQuery}
                   onPick={(id) => {
-                    window.dispatchEvent(new CustomEvent("trailin:open-chat", { detail: id }));
+                    dispatchTrailin("open-chat", id);
                     setHistoryOpen(false);
                   }}
                 />
@@ -541,8 +529,16 @@ export default function App() {
             </div>
           )}
 
-          {/* Chat column — always present; the stable slot that owns the ChatPanel instance. */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Chat column — always present; the stable slot that owns the ChatPanel instance.
+              White surface (a rounded card on the Chat tab, flush chrome in panel mode), so
+              its neutral controls (composer, focus chip, code blocks) recess to grey rather
+              than rising to white as they would on the canvas. */}
+          <div
+            className={cn(
+              "surface-fills flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+              onChatRoute && "rounded-2xl bg-surface",
+            )}
+          >
             <div className="flex shrink-0 items-center gap-2.5 px-5 pb-4 pt-6">
               {/* Full-page tab has no app header, so mobile users still need a way into the nav drawer. */}
               {onChatRoute && (
@@ -579,7 +575,7 @@ export default function App() {
               )}
               <HeaderIconButton
                 label={t("chat.newConversation")}
-                onClick={() => window.dispatchEvent(new CustomEvent("trailin:new-chat"))}
+                onClick={() => dispatchTrailin("new-chat")}
                 className={cn(!onChatRoute && "ml-auto", onChatRoute && "md:hidden")}
               >
                 <Plus />
@@ -623,7 +619,7 @@ export default function App() {
       </div>
 
       <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} title="Keyboard shortcuts">
-        <div className="divide-y divide-border">
+        <div>
           {[
             ["Show keyboard shortcuts", MOD_LABEL, "Shift", "7"],
             ["Swap light / dark theme", MOD_LABEL, "Shift", "L"],
@@ -645,6 +641,7 @@ export default function App() {
       <Toaster />
       <CursorTooltip />
       <SearchPalette />
+      <AttachmentViewer />
     </div>
   );
 }

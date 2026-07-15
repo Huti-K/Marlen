@@ -1,10 +1,11 @@
 import type { PipedreamStatus } from "@trailin/shared";
-import { Check, ChevronRight, ExternalLink, Loader2, Pencil, X } from "lucide-react";
+import { Check, ExternalLink, Loader2, Pencil, X } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
 import { FormField } from "@/components/ui/form-field";
 import { IconButton } from "@/components/ui/icon-button";
@@ -15,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Accounts } from "@/features/connections/Accounts";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage, openExternal } from "@/lib/utils";
+import { errorMessage, openExternal } from "@/lib/utils";
 
 export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => void }) {
   const { t } = useTranslation();
@@ -137,23 +138,17 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
             <Accounts onChanged={onStatusChanged} />
           </div>
           <div className="animate-in-up" style={{ animationDelay: "50ms" }}>
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((open) => !open)}
-              className="flex w-full items-center gap-1.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            <DisclosureToggle
+              open={advancedOpen}
+              onToggle={() => setAdvancedOpen((open) => !open)}
+              className="w-full py-1.5"
             >
-              <ChevronRight
-                className={cn(
-                  "h-3.5 w-3.5 shrink-0 transition-transform",
-                  advancedOpen && "rotate-90",
-                )}
-              />
               <span>{t("connections.advanced")}</span>
               <span aria-hidden="true">·</span>
               <span>
                 {custom ? t("connections.advancedCustom") : t("connections.advancedBuiltin")}
               </span>
-            </button>
+            </DisclosureToggle>
             {advancedOpen && (
               <div className="mt-3 flex flex-col gap-4">
                 {modeToggle}
@@ -341,7 +336,6 @@ function SetupWizard({
         title={t("connections.removeSaved")}
         description={t("connections.removeSavedConfirm")}
         confirmLabel={t("connections.removeSaved")}
-        variant="destructive"
         busy={busy === "remove"}
         onConfirm={() => void removeSaved()}
       />

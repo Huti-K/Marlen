@@ -1,7 +1,8 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { streamViaModelRegistry } from "../../agent/oneShot.js";
 import { runPrompt } from "../../agent/run.js";
-import { modelRegistry } from "../../llm/registry.js";
+import { defineTool } from "../../agent/toolkit.js";
 
 /**
  * The tiebreak LLM call for ambiguous standalone-draft matches (matcher.ts):
@@ -24,7 +25,7 @@ export interface TiebreakCandidate {
 }
 
 function buildMatchReportTool(onReport: (matchedId: string | null) => void): AgentTool {
-  return {
+  return defineTool({
     name: "report_match",
     label: "Report matched candidate",
     description: "Record which candidate (if any) is the draft as sent. Call exactly once.",
@@ -39,7 +40,7 @@ function buildMatchReportTool(onReport: (matchedId: string | null) => void): Age
         },
       },
       required: ["matched_message_id"],
-    } as AgentTool["parameters"],
+    },
     execute: async (_id, params) => {
       const raw = (params as Record<string, unknown>).matched_message_id;
       const matchedId = typeof raw === "string" && raw.trim() !== "none" ? raw.trim() : null;
@@ -50,7 +51,7 @@ function buildMatchReportTool(onReport: (matchedId: string | null) => void): Age
         terminate: true,
       };
     },
-  };
+  });
 }
 
 function renderPrompt(draftBody: string, candidates: TiebreakCandidate[]): string {
@@ -89,7 +90,7 @@ export async function resolveTiebreak(
       model,
       tools: [buildMatchReportTool((matchedId) => (captured = matchedId))],
     },
-    streamFn: (m, c, o) => modelRegistry.streamSimple(m, c, o),
+    streamFn: streamViaModelRegistry,
   });
   await runPrompt(
     { agent },

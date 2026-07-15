@@ -1,7 +1,12 @@
 import { extname } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { type ConnectedAccount, formatFileSize } from "@trailin/shared";
+import { Type } from "@sinclair/typebox";
+import { type AttachmentItem, type ConnectedAccount, formatFileSize } from "@trailin/shared";
+import { toCardAccount } from "../agent/card/common.js";
+import { buildAttachmentsCard } from "../agent/card/kinds.js";
+import { textResult, tool } from "../agent/toolkit.js";
 import { LIBRARY_EXTENSIONS, SUPPORTED_FORMATS, saveUpload } from "../library/ingest.js";
+import { inlineForMime, mimeForExt } from "../routes/fileResponse.js";
 import { errorMessage } from "../util.js";
 import type { AttachmentProvider, EmailAttachment } from "./attachmentProviders.js";
 
@@ -15,13 +20,71 @@ import type { AttachmentProvider, EmailAttachment } from "./attachmentProviders.
  * buildDraftTool there.
  */
 
-const text = (value: string) => ({
-  content: [{ type: "text" as const, text: value }],
-  details: undefined,
-});
-
 function hasSupportedExt(filename: string): boolean {
   return LIBRARY_EXTENSIONS.has(extname(filename).toLowerCase());
+}
+
+/**
+ * One card row per attachment, carrying the exact handle its actions need
+ * (accountId + messageId + filename) plus the server-decided flags: `viewable`
+ * comes from the filename-derived MIME (the browser renders PDFs, images and
+ * text inline), `saveable` from the library's accepted formats.
+ */
+function toAttachmentItem(
+  account: ConnectedAccount,
+  messageId: string,
+  attachment: EmailAttachment,
+): AttachmentItem {
+  const ext = extname(attachment.filename).toLowerCase();
+  return {
+    accountId: account.id,
+    messageId,
+    filename: attachment.filename,
+    ...(attachment.mimeType ? { mimeType: attachment.mimeType } : {}),
+    ...(attachment.size !== undefined ? { size: attachment.size } : {}),
+    viewable: inlineForMime(mimeForExt(ext)),
+    saveable: LIBRARY_EXTENSIONS.has(ext),
+  };
+}
+
+export function buildListAttachmentsTool(
+  account: ConnectedAccount,
+  name: string,
+  provider: AttachmentProvider,
+): AgentTool {
+  return tool({
+    name,
+    label: "List email attachments",
+    description:
+      `List the attachments on an email in this account and publish them as an interactive card ` +
+      `the user can act on: viewable files (PDF, images, plain text) open in a side-panel viewer, ` +
+      `and library-supported files (${SUPPORTED_FORMATS}) can be saved to the document library — ` +
+      `both from the card, without you saving anything. Call this when a message has an ` +
+      `attachment the user might want to see, instead of only offering to save it. Pass the ` +
+      `messageId from search_mail or read_thread results.\n\n` +
+      `Acts as the connected account: ${account.name}.`,
+    params: {
+      messageId: Type.String({
+        description: "The message id, from search_mail or read_thread results.",
+      }),
+    },
+    execute: async ({ messageId }) => {
+      const attachments = await provider.listAttachments(account, messageId);
+      if (attachments.length === 0) return textResult("This message has no attachments.");
+
+      const items = attachments.map((a) => toAttachmentItem(account, messageId, a));
+      const card = buildAttachmentsCard({ account: toCardAccount(account), items });
+
+      const lines = attachments
+        .map((a) => `- ${a.filename}${a.size !== undefined ? ` (${formatFileSize(a.size)})` : ""}`)
+        .join("\n");
+      const viewable = items.filter((i) => i.viewable).length;
+      const summary =
+        `${attachments.length} attachment${attachments.length === 1 ? "" : "s"} on this message` +
+        `${viewable > 0 ? `, ${viewable} viewable in the side panel` : ""}:`;
+      return textResult(`${summary}\n${lines}`, card);
+    },
+  });
 }
 
 export function buildSaveAttachmentTool(
@@ -29,7 +92,7 @@ export function buildSaveAttachmentTool(
   name: string,
   provider: AttachmentProvider,
 ): AgentTool {
-  return {
+  return tool({
     name,
     label: "Save attachment to library",
     description:
@@ -39,35 +102,29 @@ export function buildSaveAttachmentTool(
       `${SUPPORTED_FORMATS}. Pass the messageId from search_mail or read_thread results; if the ` +
       `message has several attachments, call this once per attachment with its filename.\n\n` +
       `Acts as the connected account: ${account.name}.`,
-    parameters: {
-      type: "object",
-      properties: {
-        messageId: {
-          type: "string",
-          description: "The message id, from search_mail or read_thread results.",
-        },
-        filename: {
-          type: "string",
+    params: {
+      messageId: Type.String({
+        description: "The message id, from search_mail or read_thread results.",
+      }),
+      filename: Type.Optional(
+        Type.String({
           description:
             "Which attachment to save, by filename. Omit when the message has exactly one supported attachment.",
-        },
-      },
-      required: ["messageId"],
-    } as AgentTool["parameters"],
-    execute: async (_toolCallId, params) => {
-      const { messageId, filename } = params as { messageId: string; filename?: string };
-
+        }),
+      ),
+    },
+    execute: async ({ messageId, filename }) => {
       // Hard failure on a bad messageId or a provider error — thrown as-is;
       // pi turns it into an error tool result.
       const attachments = await provider.listAttachments(account, messageId);
-      if (attachments.length === 0) return text("This message has no attachments.");
+      if (attachments.length === 0) return textResult("This message has no attachments.");
 
       let picked: EmailAttachment;
       if (filename?.trim()) {
         const wanted = filename.trim().toLowerCase();
         const match = attachments.find((a) => a.filename.toLowerCase() === wanted);
         if (!match) {
-          return text(
+          return textResult(
             `No attachment named "${filename}" on this message. Attachments: ` +
               `${attachments.map((a) => a.filename).join(", ")}.`,
           );
@@ -80,7 +137,7 @@ export function buildSaveAttachmentTool(
       } else {
         const supported = attachments.filter((a) => hasSupportedExt(a.filename));
         if (supported.length !== 1) {
-          return text(
+          return textResult(
             `This message has several attachments: ${attachments.map((a) => a.filename).join(", ")}. ` +
               `Call again with filename set to the one to save.`,
           );
@@ -92,7 +149,7 @@ export function buildSaveAttachmentTool(
 
       // Check the extension before downloading anything.
       if (!hasSupportedExt(picked.filename)) {
-        return text(
+        return textResult(
           `"${picked.filename}" is not a format the library can save. Only these formats can be ` +
             `saved: ${SUPPORTED_FORMATS}.`,
         );
@@ -115,10 +172,10 @@ export function buildSaveAttachmentTool(
         );
       }
 
-      return text(
+      return textResult(
         `Saved "${stored}" (${formatFileSize(buffer.length)}) to the document library; it is being ` +
           `indexed and will be searchable with library_search / readable with library_read momentarily.`,
       );
     },
-  };
+  });
 }

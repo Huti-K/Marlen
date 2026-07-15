@@ -113,6 +113,9 @@ const THREAD_FILTER_SQL: Record<ThreadFilter, string> = {
   needs_attention: "(s.triage IN ('needs_reply', 'needs_action') OR s.urgency = 'high')",
 };
 
+// `t.last_message_at >= ?` is always present: callers that don't scope by age
+// bind an empty string, which every ISO timestamp sorts at or after, so the
+// bound matches everything and one prepared statement covers both cases.
 const listSql = (filter: ThreadFilter, accountFilter: boolean) => `
   SELECT t.account_id AS accountId,
          t.provider_thread_id AS providerThreadId,
@@ -126,6 +129,7 @@ const listSql = (filter: ThreadFilter, accountFilter: boolean) => `
   FROM mail_threads t
   LEFT JOIN mail_thread_state s ON s.thread_id = t.id
   WHERE ${THREAD_FILTER_SQL[filter]}
+    AND t.last_message_at >= ?
     ${accountFilter ? "AND t.account_id = ?" : ""}
   ORDER BY t.last_message_at DESC
   LIMIT ?
@@ -174,13 +178,19 @@ function toOverview(row: RawThreadRow): ThreadOverview {
 export function listThreadOverviews(opts: {
   accountId?: string;
   filter?: ThreadFilter;
+  /** Only threads whose last message is within this many days; omit for no age bound. */
+  sinceDays?: number;
   limit: number;
 }): ThreadOverview[] {
   const filter = opts.filter ?? "recent";
   const stmt = listStmts[`${filter}:${opts.accountId ? "account" : "all"}`];
   if (!stmt) return [];
+  const since =
+    opts.sinceDays && opts.sinceDays > 0
+      ? new Date(Date.now() - opts.sinceDays * 24 * 60 * 60 * 1000).toISOString()
+      : "";
   const rows = (
-    opts.accountId ? stmt().all(opts.accountId, opts.limit) : stmt().all(opts.limit)
+    opts.accountId ? stmt().all(since, opts.accountId, opts.limit) : stmt().all(since, opts.limit)
   ) as RawThreadRow[];
   return rows.map(toOverview);
 }

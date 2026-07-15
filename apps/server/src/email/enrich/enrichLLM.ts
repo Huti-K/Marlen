@@ -6,37 +6,19 @@ import {
   type ThreadTriage,
   type ThreadUrgency,
 } from "@trailin/shared";
+import { streamViaModelRegistry } from "../../agent/oneShot.js";
 import { runPrompt } from "../../agent/run.js";
-import { env } from "../../env.js";
-import { getActiveModelIds, modelRegistry, resolveActiveModel } from "../../llm/registry.js";
+import { defineTool } from "../../agent/toolkit.js";
 import type { EnrichmentResult, ThreadSnapshot } from "./enrichStore.js";
 
 /**
  * The one LLM call of the enrichment pipeline: one thread in, one structured
  * report out, via the report-tool pattern (voiceLearn.ts) — a one-shot
  * ephemeral Agent whose only tool is report_thread_state with terminate:true.
- *
- * Runs on a cheaper model tier than chat/drafting when one is available:
- * this fires for every changed thread in the mailbox, so cost discipline
- * matters more than eloquence. Only same-provider candidates are tried —
- * a different provider would need its own credentials — falling back to the
- * active model otherwise.
+ * The caller resolves the model (llm/registry.ts's resolveCheapModel) — this
+ * fires for every changed thread in the mailbox, so cost discipline matters
+ * more than eloquence.
  */
-
-/** Cheap-tier candidates tried against the ACTIVE provider, in order. */
-const CHEAP_MODEL_CANDIDATES = ["claude-haiku-4-5", "claude-haiku-4-5-20251001"];
-
-export async function resolveEnrichModel(): Promise<Model<Api>> {
-  const { provider } = await getActiveModelIds();
-  const candidates = env.enrich.model
-    ? [env.enrich.model, ...CHEAP_MODEL_CANDIDATES]
-    : CHEAP_MODEL_CANDIDATES;
-  for (const id of candidates) {
-    const model = modelRegistry.getModel(provider, id);
-    if (model) return model;
-  }
-  return resolveActiveModel();
-}
 
 const SYSTEM_PROMPT = `You are the triage engine of Trailin, a personal email assistant. You read
 ONE email thread from the user's mailbox and report its state by calling the report_thread_state
@@ -94,7 +76,7 @@ function sanitizeReport(params: Record<string, unknown>): EnrichmentResult {
 }
 
 function buildReportTool(onReport: (result: EnrichmentResult) => void): AgentTool {
-  return {
+  return defineTool({
     name: "report_thread_state",
     label: "Report thread state",
     description: "Record the triage report for this thread. Call exactly once.",
@@ -137,7 +119,7 @@ function buildReportTool(onReport: (result: EnrichmentResult) => void): AgentToo
         },
       },
       required: ["gist", "summary", "action_items", "triage", "urgency", "awaiting_reply"],
-    } as AgentTool["parameters"],
+    },
     execute: async (_id, params) => {
       onReport(sanitizeReport(params as Record<string, unknown>));
       return {
@@ -146,7 +128,7 @@ function buildReportTool(onReport: (result: EnrichmentResult) => void): AgentToo
         terminate: true,
       };
     },
-  };
+  });
 }
 
 /** Newest messages win the budget — the old ones are context, not the point. */
@@ -200,7 +182,7 @@ export async function enrichThread(
       model,
       tools: [buildReportTool((result) => (captured = result))],
     },
-    streamFn: (m, c, o) => modelRegistry.streamSimple(m, c, o),
+    streamFn: streamViaModelRegistry,
   });
   await runPrompt(
     { agent },

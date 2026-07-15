@@ -1,7 +1,10 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { executeOneClickUnsubscribe } from "../../../src/email/unsubscribe/execute.js";
+import {
+  executeOneClickUnsubscribe,
+  isBlockedUnsubscribeHost,
+} from "../../../src/email/unsubscribe/execute.js";
 
 /**
  * The real one-click POST is exercised against a genuine local HTTP server
@@ -25,6 +28,41 @@ describe("executeOneClickUnsubscribe — https enforcement", () => {
     const result = await executeOneClickUnsubscribe("mailto:unsub@example.com", fetchImpl);
     expect(result.ok).toBe(false);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeOneClickUnsubscribe — SSRF host guard", () => {
+  it.each([
+    ["https://127.0.0.1/unsub", "IPv4 loopback"],
+    ["https://10.0.0.5/unsub", "private 10/8"],
+    ["https://172.16.4.2/unsub", "private 172.16/12"],
+    ["https://192.168.1.1/admin/reboot", "private 192.168/16"],
+    ["https://169.254.169.254/latest/meta-data", "link-local"],
+    ["https://localhost:8443/unsub", "localhost name"],
+    ["https://[::1]/unsub", "IPv6 loopback"],
+    ["https://[::ffff:127.0.0.1]/unsub", "IPv4-mapped IPv6 loopback"],
+  ])("refuses %s (%s) without making any request", async (url) => {
+    const fetchImpl = vi.fn();
+    const result = await executeOneClickUnsubscribe(url, fetchImpl);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/private or local/i);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("still allows an ordinary public host", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const result = await executeOneClickUnsubscribe("https://lists.example.com/unsub", fetchImpl);
+    expect(result.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("isBlockedUnsubscribeHost classifies public vs private hosts", () => {
+    expect(isBlockedUnsubscribeHost("example.com")).toBe(false);
+    expect(isBlockedUnsubscribeHost("93.184.216.34")).toBe(false);
+    expect(isBlockedUnsubscribeHost("127.0.0.1")).toBe(true);
+    expect(isBlockedUnsubscribeHost("192.168.0.1")).toBe(true);
+    expect(isBlockedUnsubscribeHost("172.15.0.1")).toBe(false); // just below the private block
+    expect(isBlockedUnsubscribeHost("172.32.0.1")).toBe(false); // just above it
   });
 });
 
@@ -106,12 +144,12 @@ describe("executeOneClickUnsubscribe — live server (request actually reaches t
     const port = (server.address() as AddressInfo).port;
     const realUrl = `http://127.0.0.1:${port}/unsub`;
 
-    // The https-only guard refuses this URL through the real entry point (the
-    // local test server has no TLS cert to be a genuine https target), so
-    // fetchImpl redirects the request to the real server while everything
-    // else — method, body, headers, redirect: "manual" — is the module's own,
-    // unmocked call, verified server-side below via `received`.
-    await executeOneClickUnsubscribe(`https://127.0.0.1:${port}/unsub`, async (_url, init) =>
+    // The passed URL uses a public IP literal so it clears both the https-only
+    // and the SSRF host guards (a loopback host would be refused before any
+    // request); fetchImpl then redirects to the real local server, while
+    // everything else — method, body, headers, redirect: "manual" — is the
+    // module's own, unmocked call, verified server-side below via `received`.
+    await executeOneClickUnsubscribe(`https://93.184.216.34:${port}/unsub`, async (_url, init) =>
       fetch(realUrl, init),
     );
 

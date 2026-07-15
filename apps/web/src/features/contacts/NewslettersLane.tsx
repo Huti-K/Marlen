@@ -1,26 +1,28 @@
 import type { NewsletterSender } from "@trailin/shared";
-import { ChevronDown, Loader2, Mail, SearchX } from "lucide-react";
+import { Loader2, Mail, SearchX } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorBanner } from "@/components/ui/feedback";
+import { RetryableError } from "@/components/ui/feedback";
 import { ListRow } from "@/components/ui/list-row";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SearchField } from "@/components/ui/search-field";
+import { ShowMoreButton } from "@/components/ui/show-more-button";
 import {
   ContactAvatar,
   LANE_INITIAL_VISIBLE,
   LANE_SEARCH_THRESHOLD,
   LANE_VISIBLE_STEP,
-  LaneSearchField,
+  LaneSkeletons,
   stagger,
 } from "@/features/contacts/shared";
 import { api } from "@/lib/api";
 import { relativeTime } from "@/lib/dates";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
+import { usePagedVisible } from "@/lib/usePagedVisible";
 import { errorMessage } from "@/lib/utils";
 
 /** How long after a request queued/in-flight sends are still expected; only mail past this counts as evidence the unsubscribe failed. */
@@ -58,7 +60,7 @@ export function NewslettersLane() {
   const [requested, setRequested] = React.useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = React.useState<NewsletterSender | null>(null);
   const [busyAddress, setBusyAddress] = React.useState<string | null>(null);
-  const [visible, setVisible] = React.useState(LANE_INITIAL_VISIBLE);
+  const { visible, showMore } = usePagedVisible(LANE_INITIAL_VISIBLE, LANE_VISIBLE_STEP, query);
 
   const refresh = React.useCallback(() => {
     api
@@ -97,13 +99,6 @@ export function NewslettersLane() {
     );
   }, [actionable, query]);
 
-  // Reset the cap whenever the query narrows the filtered set, so "show more"
-  // never sits past the end. query isn't read in the body — it's the trigger.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: query drives the reset, not the effect body
-  React.useEffect(() => {
-    setVisible(LANE_INITIAL_VISIBLE);
-  }, [query]);
-
   const confirmUnsubscribe = async () => {
     if (!pending) return;
     // A bulk sender is only listed once it has a mirrored message, which
@@ -130,18 +125,9 @@ export function NewslettersLane() {
 
   if (senders === null) {
     return loadError ? (
-      <div className="flex flex-col items-start gap-2">
-        <ErrorBanner>{loadError}</ErrorBanner>
-        <Button variant="ghost" size="sm" onClick={refresh}>
-          {t("common.retry")}
-        </Button>
-      </div>
+      <RetryableError onRetry={refresh}>{loadError}</RetryableError>
     ) : (
-      <div className="flex flex-col gap-2">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-16 w-full rounded-lg" />
-        ))}
-      </div>
+      <LaneSkeletons />
     );
   }
 
@@ -152,7 +138,7 @@ export function NewslettersLane() {
   return (
     <div className="flex flex-col gap-4">
       {actionable.length > LANE_SEARCH_THRESHOLD && (
-        <LaneSearchField
+        <SearchField
           value={query}
           onChange={setQuery}
           placeholder={t("contacts.newsletters.searchPlaceholder")}
@@ -187,17 +173,7 @@ export function NewslettersLane() {
               />
             </div>
           ))}
-          {remaining > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="self-start"
-              onClick={() => setVisible((v) => v + LANE_VISIBLE_STEP)}
-            >
-              <ChevronDown />
-              {t("library.showMore", { count: remaining })}
-            </Button>
-          )}
+          {remaining > 0 && <ShowMoreButton count={remaining} onClick={showMore} />}
         </div>
       )}
 
@@ -211,7 +187,6 @@ export function NewslettersLane() {
           name: pending?.displayName || pending?.address || "",
         })}
         confirmLabel={t("contacts.newsletters.unsubscribe")}
-        variant="destructive"
         busy={pending !== null && busyAddress === pending.address}
         onConfirm={() => void confirmUnsubscribe()}
       />

@@ -19,8 +19,7 @@ async function* hangUntilAborted(signal?: AbortSignal): AsyncGenerator<never, vo
 }
 
 // enrichThread only ever touches modelRegistry.streamSimple (via its
-// streamFn) — the rest of enrichLLM.ts's imports from this module belong to
-// resolveEnrichModel, which this suite doesn't exercise.
+// streamFn) — model resolution is the caller's job, not exercised here.
 vi.mock("../../../src/llm/registry.js", () => ({
   modelRegistry: {
     streamSimple: (_model: unknown, _context: unknown, options?: { signal?: AbortSignal }) =>

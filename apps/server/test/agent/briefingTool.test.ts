@@ -110,14 +110,42 @@ describe("compose_briefing — item and rollup validation", () => {
     expect(textOf(result)).toContain("1 item dropped");
   });
 
-  it("rolls up low-value mail with a resolved accountId, no webUrl field", async () => {
+  it("lists rolled-up mail as items, each with its own resolved account and webUrl", async () => {
     listAccountsMock.mockResolvedValue([gmailAccount]);
     const result = await callBriefing({
       items: [],
-      rollups: [{ account: "work@example.com", label: "Newsletters", count: 6 }],
+      rollups: [
+        {
+          label: "Newsletters",
+          items: [
+            {
+              ...baseItem,
+              threadId: "n1",
+              subject: "Weekly digest",
+              gist: "Nothing needed.",
+              account: "work@example.com",
+            },
+          ],
+        },
+      ],
     });
     const card = cardOf(result) as Extract<AgentCard, { kind: "briefing" }>;
-    expect(card.rollups).toEqual([{ accountId: "acc-gmail", label: "Newsletters", count: 6 }]);
+    expect(card.rollups?.[0]?.label).toBe("Newsletters");
+    const item = card.rollups?.[0]?.items[0];
+    expect(item?.accountId).toBe("acc-gmail");
+    expect(item?.webUrl).toBe("https://mail.google.com/mail/?authuser=work%40example.com#all/n1");
+    expect(textOf(result)).toContain("1 message rolled up");
+  });
+
+  it("drops a rollup group whose only item is missing a required field", async () => {
+    listAccountsMock.mockResolvedValue([gmailAccount]);
+    const { threadId: _omit, ...badItem } = baseItem;
+    const result = await callBriefing({
+      items: [],
+      rollups: [{ label: "Newsletters", items: [badItem] }],
+    });
+    const card = cardOf(result) as Extract<AgentCard, { kind: "briefing" }>;
+    expect(card.rollups).toBeUndefined();
   });
 
   it("publishes an empty briefing without throwing when no items are given", async () => {

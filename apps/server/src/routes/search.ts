@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import type { MailSuggestion, SearchResult } from "@trailin/shared";
+import { likeContains } from "../db/like.js";
 import { listThreadOverviews, searchMail } from "../email/sync/mailQuery.js";
 import {
   safeSource,
@@ -11,7 +12,6 @@ import {
   searchMemories,
   searchRuns,
 } from "../search/sources.js";
-import { likeContains } from "../util.js";
 
 /**
  * Global search across chats, automation runs (digests), drafts, local mail,

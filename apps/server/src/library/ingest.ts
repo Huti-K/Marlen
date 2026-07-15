@@ -3,6 +3,7 @@ import { type Dirent, type FSWatcher, watch } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { type HtmlToTextOptions, htmlToText } from "html-to-text";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
@@ -64,8 +65,6 @@ const QUIESCENCE_RECENT_MS = 5000;
 const QUIESCENCE_WAIT_MS = 500;
 const QUIESCENCE_RESCAN_MS = 2000;
 
-const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
-
 /** html-to-text options for .html/.htm files: headings stay as written
  * (uppercased by default), links keep their URLs so they stay searchable. */
 const HTML_EXTRACT_OPTIONS: HtmlToTextOptions = {
@@ -113,7 +112,7 @@ function normalize(text: string): string {
  * a paragraph, line or sentence boundary in the second half of the window.
  * Slices are exact (no trimming), so joining them restores the text.
  */
-export function chunkText(text: string, target = CHUNK_TARGET): string[] {
+function chunkText(text: string, target = CHUNK_TARGET): string[] {
   const chunks: string[] = [];
   let pos = 0;
   while (pos < text.length) {
@@ -225,7 +224,7 @@ async function indexFile(relPath: string, size: number, mtimeMs: number): Promis
   }
 }
 
-export interface ScanSummary {
+interface ScanSummary {
   indexed: number;
   failed: number;
   removed: number;
@@ -235,7 +234,7 @@ let scanning: Promise<ScanSummary> | null = null;
 let rescanWanted = false;
 
 /** Reconcile the folder with the index. Concurrent calls share one scan. */
-export function scanLibrary(): Promise<ScanSummary> {
+function scanLibrary(): Promise<ScanSummary> {
   if (scanning) {
     rescanWanted = true;
     return scanning;

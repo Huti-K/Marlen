@@ -1,17 +1,9 @@
 import type { Automation, AutomationRun } from "@trailin/shared";
-import {
-  CalendarClock,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  MessageSquareShare,
-  Pin,
-  Play,
-  Plus,
-} from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronUp, Loader2, Pin, Play, Plus } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { OpenRunInChatButton } from "@/components/OpenRunInChatButton";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,15 +13,16 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
+import { LoadingRow } from "@/components/ui/feedback";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LinkButton } from "@/components/ui/link-button";
+import { Markdown } from "@/components/ui/markdown";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { DigestView } from "@/features/automations/DigestView";
 import {
   buildCron,
   DEFAULT_PRESET,
@@ -42,10 +35,9 @@ import {
   weekdayShortName,
 } from "@/features/automations/schedule";
 import { api } from "@/lib/api";
-import { openRunInChat } from "@/lib/runNavigation";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
-import { cn } from "@/lib/utils";
+import { cn, toggleRowProps } from "@/lib/utils";
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
@@ -208,8 +200,8 @@ export function AutomationsPanel() {
           <div className="flex w-full items-center justify-between">
             {editingId ? (
               <Button
-                variant="ghost"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                variant="ghost-danger"
+                className="text-destructive"
                 onClick={() => setConfirmDelete(true)}
               >
                 {t("automations.delete")}
@@ -423,7 +415,6 @@ export function AutomationsPanel() {
         title={t("automations.delete")}
         description={t("automations.deleteConfirm", { name: form.name })}
         confirmLabel={t("automations.delete")}
-        variant="destructive"
         busy={saving}
         onConfirm={() => void remove()}
       />
@@ -633,11 +624,11 @@ function AutomationCard({
       {expanded && (
         <div className="mt-2 flex flex-col gap-2">
           {!runs ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <LoadingRow />
           ) : runs.length === 0 ? (
             <p className="text-xs text-muted-foreground">{t("automations.noRuns")}</p>
           ) : (
-            runs.map((run) => <RunItem key={run.id} run={run} automationName={automation.name} />)
+            runs.map((run) => <RunItem key={run.id} run={run} />)
           )}
         </div>
       )}
@@ -645,8 +636,8 @@ function AutomationCard({
   );
 }
 
-function RunItem({ run, automationName }: { run: AutomationRun; automationName: string }) {
-  const { t, i18n } = useTranslation();
+function RunItem({ run }: { run: AutomationRun }) {
+  const { i18n } = useTranslation();
   const navigate = useNavigate();
   const [expanded, setExpanded] = React.useState(false);
   const hasResult = !!run.result;
@@ -657,20 +648,7 @@ function RunItem({ run, automationName }: { run: AutomationRun; automationName: 
     <div className="rounded-lg bg-surface-2 p-3">
       <div
         className={cn("flex items-center gap-2", hasResult && "cursor-pointer")}
-        {...(hasResult
-          ? {
-              role: "button" as const,
-              tabIndex: 0,
-              "aria-expanded": expanded,
-              onClick: toggleExpanded,
-              onKeyDown: (e: React.KeyboardEvent) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  toggleExpanded();
-                }
-              },
-            }
-          : {})}
+        {...(hasResult ? toggleRowProps(expanded, toggleExpanded) : {})}
       >
         {hasResult &&
           (expanded ? (
@@ -683,29 +661,10 @@ function RunItem({ run, automationName }: { run: AutomationRun; automationName: 
           <time dateTime={run.startedAt} className="text-xs text-muted-foreground">
             {new Date(run.startedAt).toLocaleString(i18n.language)}
           </time>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            title={t("home.openInChat")}
-            aria-label={t("home.openInChat")}
-            onClick={(e) => {
-              e.stopPropagation();
-              openRunInChat(run.id, () => navigate("/chat"));
-            }}
-          >
-            <MessageSquareShare className="h-3 w-3" />
-          </Button>
+          <OpenRunInChatButton runId={run.id} onNavigateToChat={() => navigate("/chat")} />
         </div>
       </div>
-      {expanded && hasResult && (
-        <DigestView
-          content={run.result}
-          automationName={automationName}
-          runDate={run.startedAt}
-          className="mt-2 text-xs"
-        />
-      )}
+      {expanded && hasResult && <Markdown content={run.result} className="mt-2 text-xs" />}
     </div>
   );
 }

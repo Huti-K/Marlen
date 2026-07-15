@@ -52,3 +52,22 @@ export function dayLabel(iso: string, lang: string): string {
 export function timeLabel(iso: string, lang: string): string {
   return new Date(iso).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
 }
+
+/**
+ * A compact "when": bare time for a timestamp that falls today, else the day
+ * plus the time — "14:32", or "Fri · 14:32" (`style: "short"`, the default)
+ * / "Wednesday, 9 Jul · 14:32" (`style: "long"`). Every spot that needs a
+ * short absolute time collapsing to time-only on the current day shares this
+ * one comparison against the current date, so they can't drift out of sync
+ * with each other.
+ */
+export function dayTimeLabel(iso: string, lang: string, style: "short" | "long" = "short"): string {
+  const date = new Date(iso);
+  const time = date.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+  if (date.toDateString() === new Date().toDateString()) return time;
+  const day =
+    style === "long"
+      ? date.toLocaleDateString(lang, { weekday: "long", day: "numeric", month: "short" })
+      : date.toLocaleDateString(lang, { weekday: "short" });
+  return `${day} · ${time}`;
+}

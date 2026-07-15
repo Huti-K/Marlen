@@ -123,14 +123,14 @@ function jsonArraySetting<T>(key: string): {
   };
 }
 
-export const ACCOUNT_COLORS_SETTING_KEY = "account.colors";
+const ACCOUNT_COLORS_SETTING_KEY = "account.colors";
 const accountColorsSetting = jsonArraySetting<AccountColor>(ACCOUNT_COLORS_SETTING_KEY);
 
 /** All persisted account color assignments. */
 export const getAccountColors = accountColorsSetting.get;
 export const setAccountColors = accountColorsSetting.set;
 
-export const ACCOUNT_DESCRIPTIONS_SETTING_KEY = "account.descriptions";
+const ACCOUNT_DESCRIPTIONS_SETTING_KEY = "account.descriptions";
 const accountDescriptionsSetting = jsonArraySetting<AccountDescription>(
   ACCOUNT_DESCRIPTIONS_SETTING_KEY,
 );
@@ -139,14 +139,14 @@ const accountDescriptionsSetting = jsonArraySetting<AccountDescription>(
 export const getAccountDescriptions = accountDescriptionsSetting.get;
 export const setAccountDescriptions = accountDescriptionsSetting.set;
 
-export const ACCOUNT_VOICES_SETTING_KEY = "account.voices";
+const ACCOUNT_VOICES_SETTING_KEY = "account.voices";
 const accountVoicesSetting = jsonArraySetting<AccountVoice>(ACCOUNT_VOICES_SETTING_KEY);
 
 /** All persisted per-account voices (signature + style notes for drafting). */
 export const getAccountVoices = accountVoicesSetting.get;
 export const setAccountVoices = accountVoicesSetting.set;
 
-export const WRITE_ACCESS_SETTING_KEY = "account.writeAccess";
+const WRITE_ACCESS_SETTING_KEY = "account.writeAccess";
 const writeAccessSetting = jsonArraySetting<string>(WRITE_ACCESS_SETTING_KEY);
 
 /**

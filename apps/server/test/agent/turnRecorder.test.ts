@@ -166,7 +166,12 @@ describe("turnRecorder", () => {
     _setSessionsForTest(sessions);
 
     const turn = beginTurn(conversationId);
-    const runPromise = turn.run({ prompt: "hello", session: "pooled", log: testLog });
+    const runPromise = turn.run({
+      prompt: "hello",
+      session: "pooled",
+      conversation: { type: "chat", title: "test" },
+      log: testLog,
+    });
 
     await agent.whenPrompted;
     agent.emit({
@@ -203,7 +208,12 @@ describe("turnRecorder", () => {
     const turn = beginTurn(conversationId);
     expect(() => beginTurn(conversationId)).toThrow(TurnInFlightError);
 
-    const runPromise = turn.run({ prompt: "hi", session: "pooled", log: testLog });
+    const runPromise = turn.run({
+      prompt: "hi",
+      session: "pooled",
+      conversation: { type: "chat", title: "test" },
+      log: testLog,
+    });
     await agent.whenPrompted;
     expect(() => beginTurn(conversationId)).toThrow(TurnInFlightError);
 
@@ -219,7 +229,12 @@ describe("turnRecorder", () => {
     _setSessionsForTest({ pooled: async () => fakeSession(agent), ephemeral: neverEphemeral });
 
     const turn = beginTurn(conversationId);
-    const runPromise = turn.run({ prompt: "hi", session: "pooled", log: testLog });
+    const runPromise = turn.run({
+      prompt: "hi",
+      session: "pooled",
+      conversation: { type: "chat", title: "test" },
+      log: testLog,
+    });
     await agent.whenPrompted;
 
     const boom = new Error("model exploded");
@@ -246,6 +261,7 @@ describe("turnRecorder", () => {
     const runPromise = turn.run({
       prompt: "hi",
       session: "pooled",
+      conversation: { type: "chat", title: "test" },
       signal: controller.signal,
       log: testLog,
     });
@@ -272,6 +288,7 @@ describe("turnRecorder", () => {
     const runPromise = turn.run({
       prompt: "hi",
       session: "pooled",
+      conversation: { type: "chat", title: "test" },
       signal: controller.signal,
       log: testLog,
     });
@@ -296,7 +313,12 @@ describe("turnRecorder", () => {
     });
 
     const turn = beginTurn(conversationId);
-    const runPromise = turn.run({ prompt: "hi", session: "ephemeral", log: testLog });
+    const runPromise = turn.run({
+      prompt: "hi",
+      session: "ephemeral",
+      conversation: { type: "automation", title: "test run" },
+      log: testLog,
+    });
     await agent.whenPrompted;
     agent.resolveTurn();
     await runPromise;
@@ -314,7 +336,12 @@ describe("turnRecorder", () => {
     });
 
     const turn = beginTurn(conversationId);
-    const runPromise = turn.run({ prompt: "hi", session: "pooled", log: testLog });
+    const runPromise = turn.run({
+      prompt: "hi",
+      session: "pooled",
+      conversation: { type: "chat", title: "test" },
+      log: testLog,
+    });
     await agent.whenPrompted;
     agent.resolveTurn();
     await runPromise;
@@ -330,9 +357,14 @@ describe("turnRecorder", () => {
     });
 
     const turn = beginTurn(conversationId);
-    await expect(turn.run({ prompt: "hi", session: "pooled", log: testLog })).rejects.toThrow(
-      "pooled session unavailable",
-    );
+    await expect(
+      turn.run({
+        prompt: "hi",
+        session: "pooled",
+        conversation: { type: "chat", title: "test" },
+        log: testLog,
+      }),
+    ).rejects.toThrow("pooled session unavailable");
 
     const rows = await messagesFor(conversationId);
     expect(rows).toHaveLength(0);
@@ -377,6 +409,7 @@ describe("turnRecorder", () => {
     const runPromise = turn.run({
       prompt: "hi",
       session: "pooled",
+      conversation: { type: "chat", title: "test" },
       handlers: { onCard },
       log: testLog,
     });

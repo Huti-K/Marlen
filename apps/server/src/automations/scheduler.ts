@@ -1,14 +1,15 @@
-import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import type { MissedAutomation } from "@trailin/shared";
+import { desc, eq } from "drizzle-orm";
 import cron, { type ScheduledTask } from "node-cron";
-import { beginTurn, serializeTurnCards } from "../agent/turnRecorder.js";
 import { db, schema } from "../db/index.js";
 import { getTimezoneSetting } from "../db/settings.js";
-import { env } from "../env.js";
-import { emitServerEvent } from "../events.js";
 import { KeyedJobs } from "../jobs.js";
 import { moduleLogger } from "../logger.js";
-import { errorMessage } from "../util.js";
+import {
+  type AutomationRunResult,
+  executeAutomationRun,
+  sweepOrphanedRuns,
+} from "./runRecorder.js";
 
 const log = moduleLogger("scheduler");
 
@@ -18,12 +19,6 @@ const tasks = new Map<string, ScheduledTask>();
 // can't stack a second agent on top of one still working — on a tight
 // schedule that piled up concurrent runs, each opening its own MCP sessions.
 const runJobs = new KeyedJobs();
-
-/** Sanitized run deadline: a bad AUTOMATION_RUN_TIMEOUT_MS must not abort every run instantly. */
-const RUN_TIMEOUT_MS =
-  Number.isFinite(env.automationRunTimeoutMs) && env.automationRunTimeoutMs > 0
-    ? env.automationRunTimeoutMs
-    : 300_000;
 
 // Nothing may create cron tasks before boot has scheduled everything —
 // rescheduleAll() has to stay inert until startScheduler() runs.
@@ -37,6 +32,40 @@ export function isValidCron(expression: string): boolean {
 export function getNextRunAt(automationId: string): string | null {
   const next = tasks.get(automationId)?.getNextRun();
   return next ? next.toISOString() : null;
+}
+
+/** How far back catch-up looks for a missed slot. 40 days covers a monthly
+ *  schedule; a slot older than this is treated as "nothing missed" rather than
+ *  replaying ancient history the user no longer cares about. */
+const CATCHUP_LOOKBACK_MS = 40 * 24 * 60 * 60 * 1000;
+
+/**
+ * The most recent time a cron expression would have fired at or before
+ * `notAfter`, or null when it wouldn't have within the lookback window. Cron
+ * resolves to the minute, so this walks back minute by minute, matching each
+ * candidate against a throwaway (never-started) task built with the same
+ * timezone the live schedule uses — the reliable way to evaluate a pattern in a
+ * named zone across DST without hand-rolling the calendar math.
+ */
+export function previousCronRun(
+  expression: string,
+  timezone: string | undefined,
+  notAfter: Date,
+): Date | null {
+  const task = cron.createTask(expression, () => {}, timezone ? { timezone } : undefined);
+  try {
+    const probe = new Date(notAfter);
+    probe.setSeconds(0, 0);
+    const floor = notAfter.getTime() - CATCHUP_LOOKBACK_MS;
+    for (let t = probe.getTime(); t >= floor; t -= 60_000) {
+      if (task.match(new Date(t))) return new Date(t);
+    }
+    return null;
+  } finally {
+    // createTask registers the task in node-cron's global map even though it
+    // never starts; destroy() removes it so these probes don't accumulate.
+    void task.destroy();
+  }
 }
 
 /** True for the client's "specific date" schedule shape: a fixed day-of-month
@@ -57,7 +86,10 @@ function isOneOffSchedule(expression: string): boolean {
 
 /** Execute one automation now (used by the scheduler and the "Run now" button).
  *  `manual` marks an explicit user-triggered run, which may run a paused
- *  automation; scheduled ticks never may. */
+ *  automation; scheduled ticks never may. Run-row/Conversation bookkeeping,
+ *  the agent turn, and the timeout are runRecorder.ts's job; this only adds
+ *  the overlap guard and, once runRecorder reports back, retires a one-off
+ *  schedule that succeeded. */
 export async function runAutomation(
   automationId: string,
   opts: { manual?: boolean } = {},
@@ -71,131 +103,90 @@ export async function runAutomation(
     );
     return;
   }
-  await runJobs.join(automationId, () => executeAutomationRun(automationId, opts));
+  const result = await runJobs.join(automationId, () => executeAutomationRun(automationId, opts));
+  await retireIfOneOff(automationId, result);
 }
 
-async function executeAutomationRun(
-  automationId: string,
-  opts: { manual?: boolean } = {},
-): Promise<void> {
-  const [automation] = await db
-    .select()
-    .from(schema.automations)
-    .where(eq(schema.automations.id, automationId));
-  // A ghost task — one leaked by a lost schedule/unschedule race, or one that
-  // fired between the automation being disabled and unschedule() running —
-  // must not still execute. Re-check the current row rather than trusting
-  // whatever state was true when the task was registered. A manual "Run now"
-  // is exempt from the enabled gate: pausing stops the schedule, not the user.
-  if (!automation || (!automation.enabled && !opts.manual)) {
-    log.warn(
-      { automationId, found: Boolean(automation) },
-      "skipping run — automation is missing or disabled",
+/**
+ * Enabled automations whose most recent scheduled slot elapsed without being
+ * covered by a run — node-cron only fires while the process is alive, so a slot
+ * that passed while the machine was asleep or off never ran. "Run once": only
+ * the latest missed slot is reported per automation, however many were skipped.
+ *
+ * A slot counts as covered when the automation's most recent run started at or
+ * after it and did not error — a success, or a run still in progress (so a
+ * catch-up already underway isn't reported as still-missed). A slot earlier
+ * than the automation's createdAt is ignored, since the automation didn't exist
+ * to run then.
+ */
+export async function findMissedAutomations(now: Date = new Date()): Promise<MissedAutomation[]> {
+  const timezone = (await getTimezoneSetting()) ?? undefined;
+  const automations = await db.select().from(schema.automations);
+  const missed: MissedAutomation[] = [];
+  for (const automation of automations) {
+    // An enabled automation with a valid cron is always scheduled (startScheduler
+    // / refreshSchedule keep that invariant), so the schedule string alone tells
+    // us when it should have last fired.
+    if (!automation.enabled || !isValidCron(automation.schedule)) continue;
+    const due = previousCronRun(automation.schedule, timezone, now);
+    if (!due || due.getTime() < new Date(automation.createdAt).getTime()) continue;
+
+    const [last] = await db
+      .select({
+        startedAt: schema.automationRuns.startedAt,
+        status: schema.automationRuns.status,
+      })
+      .from(schema.automationRuns)
+      .where(eq(schema.automationRuns.automationId, automation.id))
+      .orderBy(desc(schema.automationRuns.startedAt))
+      .limit(1);
+    const covered =
+      last && new Date(last.startedAt).getTime() >= due.getTime() && last.status !== "error";
+    if (covered) continue;
+
+    missed.push({ id: automation.id, name: automation.name, dueAt: due.toISOString() });
+  }
+  return missed;
+}
+
+/**
+ * Run every automation with an uncovered past slot once, now — the shared body
+ * of boot catch-up (startScheduler) and the Home "run missed" button. Each goes
+ * through the same overlap-guarded path as a scheduled tick, so a real tick that
+ * lands mid-catch-up is dropped rather than stacked, and a slot the user just
+ * disabled is re-checked and skipped by executeAutomationRun. Fire-and-forget:
+ * returns the automations it kicked off, not their outcomes.
+ */
+export async function runMissedAutomations(): Promise<MissedAutomation[]> {
+  const missed = await findMissedAutomations();
+  for (const item of missed) {
+    log.info({ automationId: item.id, dueAt: item.dueAt }, "catching up missed automation run");
+    runAutomation(item.id).catch((error: unknown) =>
+      log.error({ err: error, automationId: item.id }, "catch-up run failed"),
     );
+  }
+  return missed;
+}
+
+/** Disable and unschedule a one-off automation once its single run has succeeded; a
+ *  failed one-off (or a run that never started) is left alone so it stays retryable. */
+async function retireIfOneOff(automationId: string, result: AutomationRunResult): Promise<void> {
+  if (!result.started || !result.schedule || !isOneOffSchedule(result.schedule)) return;
+  if (result.succeeded) {
+    await db
+      .update(schema.automations)
+      .set({ enabled: false })
+      .where(eq(schema.automations.id, automationId));
+    unschedule(automationId);
     return;
   }
-
-  const runId = randomUUID();
-  // Nobody is watching a 06:00 briefing. Every line this run produces carries
-  // the run id, so a failure can be traced back through the log afterwards.
-  const runLog = log.child({ runId, automationId, automation: automation.name });
-  const startedAt = Date.now();
-  runLog.info("automation run started");
-
-  await db.insert(schema.automationRuns).values({
-    id: runId,
-    automationId,
-    status: "running",
-    result: "",
-    startedAt: new Date().toISOString(),
-  });
-  emitServerEvent("runs");
-
-  // Bound the whole agent turn: a stuck model or MCP call otherwise keeps the
-  // run (and its MCP sessions) alive forever, and on a repeating schedule the
-  // overlap guard above would then wedge the automation permanently.
-  const signal = AbortSignal.timeout(RUN_TIMEOUT_MS);
-
-  // Gates the one-off retire below: a one-time schedule whose only run
-  // errored or timed out must not be silently disabled with zero successful
-  // executions — the user would have no way to know it never ran.
-  let succeeded = false;
-  try {
-    // Create a conversation for the automation run
-    await db.insert(schema.conversations).values({
-      id: runId,
-      title: `Run: ${automation.name}`,
-      type: "automation",
-      createdAt: new Date().toISOString(),
-    });
-    emitServerEvent("conversations");
-
-    const instructionMessage = `Scheduled automation "${automation.name}". Execute this instruction now and report the outcome:\n\n${automation.instruction}`;
-
-    // The run id is the conversation id, so drafts created by this run link
-    // back to the run's transcript and its cards render when it's reopened.
-    // The recorder writes the turn's user/assistant rows — including its own
-    // transcript-capping row on failure or cancellation — so this run row
-    // only tracks the run's own status, timing and, on success, its result.
-    const turn = beginTurn(runId);
-    const { text, cards } = await turn.run({
-      prompt: instructionMessage,
-      session: "ephemeral",
-      signal,
-      log: runLog,
-    });
-
-    await db
-      .update(schema.automationRuns)
-      .set({
-        status: "success",
-        result: text,
-        cards: serializeTurnCards(cards),
-        finishedAt: new Date().toISOString(),
-      })
-      .where(eq(schema.automationRuns.id, runId));
-    emitServerEvent("runs");
-    runLog.info({ durationMs: Date.now() - startedAt }, "automation run finished");
-    succeeded = true;
-  } catch (error) {
-    // The run's row records the message for the UI; the log keeps the stack,
-    // which is the only place it survives for an unattended run.
-    const timedOut = signal.aborted;
-    const message = timedOut
-      ? `Run stopped after exceeding the ${Math.round(RUN_TIMEOUT_MS / 1000)}s time limit.`
-      : errorMessage(error);
-    runLog.error(
-      { err: error, timedOut, durationMs: Date.now() - startedAt },
-      "automation run failed",
-    );
-    await db
-      .update(schema.automationRuns)
-      .set({
-        status: "error",
-        result: message,
-        finishedAt: new Date().toISOString(),
-      })
-      .where(eq(schema.automationRuns.id, runId));
-    emitServerEvent("runs");
-  }
-
-  if (isOneOffSchedule(automation.schedule)) {
-    if (succeeded) {
-      await db
-        .update(schema.automations)
-        .set({ enabled: false })
-        .where(eq(schema.automations.id, automationId));
-      unschedule(automationId);
-    } else {
-      // Leave it enabled and scheduled: it stays visible in the activity
-      // feed as a failed run, and the user can rerun it or fix it rather
-      // than losing the automation to a retiring bug they never see.
-      runLog.warn(
-        { automationId },
-        "one-off automation run failed — not retiring it so it stays scheduled for a retry",
-      );
-    }
-  }
+  // Leave it enabled and scheduled: it stays visible in the activity feed as
+  // a failed run, and the user can rerun it or fix it rather than losing the
+  // automation to a retiring bug they never see.
+  log.warn(
+    { automationId },
+    "one-off automation run failed — not retiring it so it stays scheduled for a retry",
+  );
 }
 
 async function schedule(automation: { id: string; schedule: string }): Promise<void> {
@@ -271,22 +262,9 @@ export async function rescheduleAll(): Promise<void> {
   }
 }
 
-/** Called once on boot: schedule every enabled automation. */
+/** Called once on boot: close out any run interrupted by the last restart, then schedule every enabled automation. */
 export async function startScheduler(): Promise<void> {
-  // Runs only live inside this process, so a row still "running" at boot
-  // belongs to a process that died mid-run and would spin in the UI forever.
-  const orphaned = await db
-    .update(schema.automationRuns)
-    .set({
-      status: "error",
-      result: "Interrupted by a server restart before the run could finish.",
-      finishedAt: new Date().toISOString(),
-    })
-    .where(eq(schema.automationRuns.status, "running"))
-    .returning({ id: schema.automationRuns.id });
-  if (orphaned.length > 0) {
-    log.warn({ count: orphaned.length }, "orphaned in-flight automation runs marked as error");
-  }
+  await sweepOrphanedRuns();
 
   const all = await db.select().from(schema.automations);
   for (const automation of all) {
@@ -296,6 +274,13 @@ export async function startScheduler(): Promise<void> {
   }
   schedulerStarted = true;
   log.info({ count: tasks.size }, "automations scheduled");
+
+  // Catch up on runs the machine slept through: node-cron only fires while the
+  // process is alive, so any slot that elapsed while it was off never ran. Kept
+  // off the boot critical path — the runs it starts record themselves.
+  void runMissedAutomations().catch((error: unknown) =>
+    log.error({ err: error }, "boot catch-up failed"),
+  );
 }
 
 /** Destroy every cron task and re-latch; only startScheduler() re-arms scheduling. */

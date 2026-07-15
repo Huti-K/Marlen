@@ -2,19 +2,21 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
-// Borderless buttons: ink primary, tonal fills for everything else. No strokes,
-// no shadows. The only outline is the keyboard focus ring.
+// Borderless buttons: brand-accent primary (the CTA), tonal fills for everything
+// else. No strokes, no shadows. The only outline is the keyboard focus ring.
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[background-color,color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "bg-accent text-accent-foreground hover:bg-accent/90",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         // Formerly "outline" — now a quiet tonal fill (no border).
         outline: "bg-surface-2 text-foreground hover:bg-secondary",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/70",
         ghost: "text-muted-foreground hover:bg-secondary hover:text-foreground",
+        /* Ghost for destructive row actions — pale red hover instead of the neutral fill. */
+        "ghost-danger": "text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
       },
       size: {
         default: "h-9 px-4 py-2",

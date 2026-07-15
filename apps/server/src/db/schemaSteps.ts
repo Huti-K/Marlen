@@ -262,4 +262,11 @@ export const SCHEMA_STEPS: readonly string[] = [
   `
     ALTER TABLE contacts ADD COLUMN unsubscribe_requested_at TEXT;
   `,
+  // 8: per-memory usage tracking — how often the agent reports leaning on an
+  // entry (memory_used) and when it last did, feeding the Knowledge page's
+  // use counts and prune-candidate hints.
+  `
+    ALTER TABLE memories ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE memories ADD COLUMN last_used_at TEXT;
+  `,
 ];

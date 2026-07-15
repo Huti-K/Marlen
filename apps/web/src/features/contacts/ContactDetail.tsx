@@ -7,7 +7,7 @@ import { ChevronLeft, ExternalLink } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { ErrorBanner } from "@/components/ui/feedback";
+import { RetryableError } from "@/components/ui/feedback";
 import { Label } from "@/components/ui/label";
 import { ListRow } from "@/components/ui/list-row";
 import { Select } from "@/components/ui/select";
@@ -70,12 +70,7 @@ export function ContactDetail({ address, onBack }: { address: string; onBack: ()
 
       {!detail ? (
         loadError ? (
-          <div className="flex flex-col items-start gap-2">
-            <ErrorBanner>{loadError}</ErrorBanner>
-            <Button variant="ghost" size="sm" onClick={load}>
-              {t("common.retry")}
-            </Button>
-          </div>
+          <RetryableError onRetry={load}>{loadError}</RetryableError>
         ) : (
           <div className="flex flex-col gap-4">
             <div className="flex items-start gap-3">

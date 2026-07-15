@@ -18,14 +18,18 @@
 :root,
 .light {
   color-scheme: light;
-  --background: oklch(0.9892 0.0033 296.35);
+  /* Neutral greys — surface tones carry no hue (chroma 0); temperature lives
+     only in the text inks and the accent. The canvas is a real grey so raised
+     white surfaces (cards, rows) lift off it and recessed controls sink below
+     it — the same tone ladder dark mode already has. */
+  --background: oklch(0.96 0 0);
   --surface: oklch(1 0 0);
-  --surface-2: oklch(0.9576 0.0104 281.33);
+  --surface-2: oklch(0.945 0 0);
   --foreground: oklch(0.2923 0.01 270);
 
-  --muted: oklch(0.9572 0.005 265);
+  --muted: oklch(0.949 0 0);
   --muted-foreground: oklch(0.5678 0.0225 268);
-  --secondary: oklch(0.9506 0.0063 265);
+  --secondary: oklch(0.936 0 0);
   --secondary-foreground: oklch(0.373 0.015 270);
 
   /* Ink primary — near-black charcoal, near-white text. */
@@ -57,31 +61,30 @@
 
   --radius: 0.7rem;
   --grain-opacity: 0.018;
-  /* Cool, near-invisible shadow ink for the few elevated panels. */
-  --shadow-ink: 0.28 0.02 260;
-  /* Scales every shadow's opacity at once. 0 flattens the UI completely. */
-  --shadow-strength: 1;
 
-  /* Painted fills — what recessed/tonal shapes actually use. On the canvas
-     they ARE the raw tokens; elevated panels re-scope them one step further
-     (see .surface below) so a fill never melts into the panel behind it. */
-  --surface-2-fill: var(--surface-2);
-  --secondary-fill: var(--secondary);
+  /* Painted fills — what neutral controls (fields, chips, secondary buttons,
+     hover fills) actually use. Their tone is relative to the surface behind
+     them: on the grey canvas they RISE to white so they lift off it (a grey
+     control on the grey canvas is near-invisible here — only ~0.015 L apart);
+     any white surface re-scopes them one step DOWN to grey (see .surface /
+     .surface-fills below). That alternation is the whole depth model. */
+  --surface-2-fill: var(--surface);
+  --secondary-fill: var(--surface);
 }
 
 .dark {
   color-scheme: dark;
-  /* True near-black canvas with only a whisper of the accent's cool hue —
-     reads black, not tinted grey. Same three-step spacing as light: each
-     surface sits ~0.04 L above the one behind it. */
-  --background: oklch(0.16 0.006 287);
-  --surface: oklch(0.205 0.007 287);
-  --surface-2: oklch(0.25 0.008 287);
+  /* True neutral near-black canvas — reads black, not tinted grey. Same
+     three-step spacing as light: each surface sits ~0.04 L above the one
+     behind it. */
+  --background: oklch(0.16 0 0);
+  --surface: oklch(0.205 0 0);
+  --surface-2: oklch(0.25 0 0);
   --foreground: oklch(0.96 0.004 255);
 
-  --muted: oklch(0.185 0.005 287);
+  --muted: oklch(0.185 0 0);
   --muted-foreground: oklch(0.7008 0.012 258);
-  --secondary: oklch(0.2 0.005 287);
+  --secondary: oklch(0.2 0 0);
   --secondary-foreground: oklch(0.924 0.005 255);
 
   /* Ink flips to light-on-dark for CTAs. */
@@ -102,11 +105,14 @@
 
   --ring: oklch(0.6987 0.2104 286.13);
   --border: color-mix(in oklch, var(--foreground) 12%, transparent);
-  --sidebar: oklch(0.12 0.005 287);
+  --sidebar: oklch(0.12 0 0);
 
   --grain-opacity: 0.028;
-  --shadow-ink: 0.02 0.01 287;
 
+  /* Dark keeps neutral controls at the brighter surface-2 on the canvas: here
+     depth reads forward-brighter (surface-2 sits ~0.09 L above the near-black
+     canvas and separates cleanly), so there is no muddy grey-on-grey to lift
+     out of the way. White surfaces still re-scope one step further below. */
   --surface-2-fill: var(--surface-2);
   --secondary-fill: var(--secondary);
 }
@@ -149,14 +155,15 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* Ultra-diffuse, warm-tinted lift for the rare elevated panel. No lines.
-     Each opacity rides --shadow-strength so the whole depth scale moves as one. */
-  --shadow-xs: 0 1px 2px 0 oklch(var(--shadow-ink) / calc(0.04 * var(--shadow-strength, 1)));
-  --shadow-sm: 0 1px 3px -1px oklch(var(--shadow-ink) / calc(0.05 * var(--shadow-strength, 1)));
-  --shadow-md: 0 6px 20px -8px oklch(var(--shadow-ink) / calc(0.1 * var(--shadow-strength, 1))),
-    0 2px 6px -4px oklch(var(--shadow-ink) / calc(0.06 * var(--shadow-strength, 1)));
-  --shadow-lg: 0 18px 40px -16px oklch(var(--shadow-ink) / calc(0.14 * var(--shadow-strength, 1))),
-    0 4px 12px -6px oklch(var(--shadow-ink) / calc(0.06 * var(--shadow-strength, 1)));
+  /* No drop shadows anywhere — depth is tone-only. Null the Tailwind scale so
+     a stray shadow-* utility renders nothing instead of the framework default. */
+  --shadow-2xs: 0 0 #0000;
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: 0 0 #0000;
+  --shadow-md: 0 0 #0000;
+  --shadow-lg: 0 0 #0000;
+  --shadow-xl: 0 0 #0000;
+  --shadow-2xl: 0 0 #0000;
 }
 
 @layer base {
@@ -210,35 +217,33 @@
     background: var(--surface);
     border-radius: var(--radius);
   }
-  .surface-soft {
-    background: var(--surface);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-md);
-  }
   /*
     Anchored floating panel: select menus, the color picker — floats over
-    content with no scrim. In light mode the shadow lifts it; dark shadows are
-    invisible, so the panel itself steps one tone brighter than a card.
+    content with no scrim. Elevation is tone-only, so in dark mode the panel
+    itself steps one tone brighter than a card; in light it is already the
+    brightest tone.
   */
   .surface-pop {
     background: var(--surface);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-lg);
   }
   /*
-    Fills recess against what they SIT ON, not against the page. surface-2 on
-    a surface panel is near-invisible (worst in dark: only ~0.04 L apart), so
-    inside any elevated panel the painted fills step one tone further. Derived
-    from the raw tokens so Theme Lab palette overrides flow through.
+    Fills recess against what they SIT ON, not against the page. A neutral
+    control on a white surface steps one tone DOWN to grey; the same control on
+    the grey canvas rises to white (the root default above). `.surface-fills`
+    carries this recessing to white chrome that paints its own background rather
+    than using `.surface` — the nav rail and the chat column — so a field there
+    lands on grey, not white-on-white. Derived from the raw tokens so Theme Lab
+    palette overrides flow through.
   */
   .surface,
-  .surface-soft,
-  .surface-pop {
-    --surface-2-fill: color-mix(in oklch, var(--surface-2) 96%, var(--foreground));
-    --secondary-fill: color-mix(in oklch, var(--secondary) 96%, var(--foreground));
+  .surface-pop,
+  .surface-fills {
+    --surface-2-fill: var(--surface-2);
+    --secondary-fill: var(--secondary);
   }
   .dark .surface,
-  .dark .surface-soft {
+  .dark .surface-fills {
     --surface-2-fill: color-mix(in oklch, var(--surface-2) 92%, var(--foreground));
     --secondary-fill: color-mix(in oklch, var(--secondary) 92%, var(--foreground));
   }
@@ -313,8 +318,8 @@
     page content would let it bleed through. Mixed in srgb — alpha
     compositing's space — so these match the translucent tints exactly;
     an oklch mix would inherit white's hue 0 and skew every tone pink.
-    Dark mixes harder — like the other dark fills — since dark shadows
-    barely separate.
+    Dark mixes harder — like the other dark fills — tone is the only
+    separation there is.
   */
   .tint-pop-accent {
     background: color-mix(in srgb, var(--accent) 13%, var(--surface));
@@ -454,10 +459,6 @@
   animation: palette-overlay-out 110ms ease-in both;
 }
 .palette-panel {
-  /* Deeper than --shadow-lg: this is the one panel that floats over a blur. */
-  box-shadow:
-    0 32px 64px -24px oklch(var(--shadow-ink) / 0.3),
-    0 12px 24px -12px oklch(var(--shadow-ink) / 0.16);
   animation: palette-panel-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .palette-panel[data-state="closed"] {

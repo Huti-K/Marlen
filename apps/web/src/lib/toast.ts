@@ -2,6 +2,7 @@ import type { ApiErrorCode } from "@trailin/shared";
 import { toast as sonnerToast } from "sonner";
 import { ApiError } from "@/lib/api";
 import i18n from "@/lib/i18n";
+import { dispatchTrailin } from "@/lib/trailinEvents";
 import { errorMessage } from "@/lib/utils";
 
 /**
@@ -18,8 +19,7 @@ function actionFor(error: unknown): { label: string; onClick: () => void } | und
   const target = ERROR_CODE_ACTIONS[error.code];
   return {
     label: target.label(),
-    onClick: () =>
-      window.dispatchEvent(new CustomEvent("trailin:navigate", { detail: target.path })),
+    onClick: () => dispatchTrailin("navigate", target.path),
   };
 }
 

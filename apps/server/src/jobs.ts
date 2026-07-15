@@ -25,7 +25,15 @@ export async function mapWithConcurrency<T, R>(
   const worker = async (): Promise<void> => {
     while (next < items.length) {
       const index = next++;
-      results[index] = await fn(items[index] as T, index);
+      try {
+        results[index] = await fn(items[index] as T, index);
+      } catch (error) {
+        // Stop sibling workers from claiming more items: the first rejection is
+        // about to propagate through Promise.all, so anything still queued would
+        // be wasted work whose result nobody awaits.
+        next = items.length;
+        throw error;
+      }
     }
   };
   const workers = Math.max(1, Math.min(limit, items.length));
@@ -54,6 +62,8 @@ export class KeyedJobs {
 
   join<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const running = this.inFlight.get(key);
+    // Sound only while every joiner of a given key asks for the same T — a
+    // busy key hands back the in-flight promise as-is, unchecked.
     if (running) return running as Promise<T>;
     const run = fn().finally(() => {
       this.inFlight.delete(key);

@@ -151,7 +151,6 @@ export function WriteAccess({ onState }: { onState?: (armedCount: number) => voi
           account: confirmAccount?.name ?? "",
         })}
         confirmLabel={t("settings.permissions.confirmCta")}
-        variant="destructive"
         busy={confirmBusy}
         onConfirm={() => void confirmArm()}
       />

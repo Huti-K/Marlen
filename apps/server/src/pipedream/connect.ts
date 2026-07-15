@@ -88,7 +88,7 @@ async function customConfig(): Promise<ConnectConfig | null> {
  * the built-in ones when available, otherwise custom (the only actionable
  * path on a build without built-in credentials).
  */
-export async function getUseCustom(): Promise<boolean> {
+async function getUseCustom(): Promise<boolean> {
   const explicit = await getSetting(KEYS.useCustom);
   if (explicit !== undefined) return explicit === "true";
   if (await getSetting(KEYS.clientId)) return true;
@@ -409,12 +409,13 @@ export async function deleteAccount(accountId: string): Promise<void> {
  *
  * GET/DELETE take `params` (query string); POST/PUT/PATCH take `body` (JSON).
  * PATCH is Microsoft Graph's verb for partial updates (e.g. editing a draft).
+ * `signal` aborts the underlying HTTP request.
  */
 export async function proxyRequest(
   accountId: string,
   method: "get" | "post" | "put" | "patch" | "delete",
   url: string,
-  opts: { params?: Record<string, string>; body?: unknown } = {},
+  opts: { params?: Record<string, string>; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<unknown> {
   const { pd, config } = await getClient();
   const request = {
@@ -423,11 +424,21 @@ export async function proxyRequest(
     accountId,
     params: opts.params,
   };
-  if (method === "get") return pd.proxy.get(request);
-  if (method === "delete") return pd.proxy.delete(request);
+  const requestOptions = { abortSignal: opts.signal };
+  if (method === "get") return pd.proxy.get(request, requestOptions);
+  if (method === "delete") return pd.proxy.delete(request, requestOptions);
   if (method === "put")
-    return pd.proxy.put({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
+    return pd.proxy.put(
+      { ...request, body: (opts.body ?? {}) as Record<string, unknown> },
+      requestOptions,
+    );
   if (method === "patch")
-    return pd.proxy.patch({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
-  return pd.proxy.post({ ...request, body: (opts.body ?? {}) as Record<string, unknown> });
+    return pd.proxy.patch(
+      { ...request, body: (opts.body ?? {}) as Record<string, unknown> },
+      requestOptions,
+    );
+  return pd.proxy.post(
+    { ...request, body: (opts.body ?? {}) as Record<string, unknown> },
+    requestOptions,
+  );
 }
