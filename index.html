@@ -69,7 +69,6 @@
     <div class="buttons" id="buttons">
       <a class="btn disabled" data-os="windows" href="#">Download für Windows <small>.exe</small></a>
       <a class="btn disabled" data-os="mac" href="#">Download für macOS <small>.dmg</small></a>
-      <a class="btn disabled" data-os="linux" href="#">Download für Linux <small>.AppImage</small></a>
     </div>
     <p class="note" id="macnote" hidden>macOS: Beim ersten Start Rechtsklick → „Öffnen" bzw. Systemeinstellungen → Datenschutz &amp; Sicherheit → „Dennoch öffnen" (die App ist noch nicht notariell beglaubigt).</p>
     <p class="note">Die App aktualisiert sich nach der Installation automatisch.</p>
@@ -83,13 +82,11 @@
 
 <script>
   const REPO = "Huti-K/Trailin";
-  const SUFFIX = { windows: ".exe", mac: ".dmg", linux: ".AppImage" };
+  const SUFFIX = { windows: ".exe", mac: ".dmg" };
 
   function detectOS() {
     const p = (navigator.userAgentData?.platform || navigator.platform || "").toLowerCase();
-    if (p.includes("win")) return "windows";
-    if (p.includes("mac")) return "mac";
-    return "linux";
+    return p.includes("mac") ? "mac" : "windows";
   }
 
   function mb(bytes) { return (bytes / 1048576).toFixed(1).replace(".", ",") + " MB"; }
