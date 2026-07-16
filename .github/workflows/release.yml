@@ -14,7 +14,21 @@ permissions:
   contents: write
 
 jobs:
+  # Both platform builders publish into one draft release. Created up front
+  # because two electron-builder jobs racing to create it end up with two
+  # drafts for the same tag, each holding half the assets.
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - run: >
+          gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+          gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft
+          --title "$GITHUB_REF_NAME" --notes ""
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: draft
     strategy:
       fail-fast: false
       matrix:
