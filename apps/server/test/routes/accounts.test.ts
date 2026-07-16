@@ -64,6 +64,9 @@ describe("GET /api/status — email account counting", () => {
     const body = await getStatus();
     expect(body.emailAccounts).toBe(2);
     expect(body.emailAccountsKnown).toBe(true);
+    // No onOffice credentials in tests (setup.ts neutralizes the env pair),
+    // so the lead surface reports as absent.
+    expect(body.onofficeConfigured).toBe(false);
   });
 
   it("reports the count as unknown when listing accounts fails", async () => {

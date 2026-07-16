@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AutomationRunResult } from "../../src/automations/runRecorder.js";
 
 // db/index.ts runs its DDL and reads DATABASE_PATH at import time (same pattern
 // as runRecorder.test.ts) — point it at a fresh temp file before anything pulls
@@ -11,8 +12,19 @@ const tempDir = mkdtempSync(join(tmpdir(), "trailin-scheduler-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(tempDir, "test.db");
 
+// The requestRun suite needs runs it can hold open and release — stand in for
+// executeAutomationRun with a controllable promise instead of a real agent
+// turn. Nothing else in this file reaches runRecorder.
+const executeAutomationRunMock =
+  vi.fn<(automationId: string, opts?: { manual?: boolean }) => Promise<AutomationRunResult>>();
+vi.mock("../../src/automations/runRecorder.js", () => ({
+  executeAutomationRun: (...args: Parameters<typeof executeAutomationRunMock>) =>
+    executeAutomationRunMock(...args),
+  sweepOrphanedRuns: vi.fn(async () => {}),
+}));
+
 const { db, schema, closeDb } = await import("../../src/db/index.js");
-const { previousCronRun, findMissedAutomations } = await import(
+const { previousCronRun, findMissedAutomations, requestRun } = await import(
   "../../src/automations/scheduler.js"
 );
 const { setSetting, TIMEZONE_SETTING_KEY } = await import("../../src/db/settings.js");
@@ -129,5 +141,53 @@ describe("findMissedAutomations", () => {
     // Created after today's 08:00 slot: that slot isn't its responsibility.
     await insertAutomation({ createdAt: "2026-07-15T08:30:00Z" });
     expect(await findMissedAutomations(now)).toEqual([]);
+  });
+});
+
+describe("requestRun", () => {
+  beforeEach(() => {
+    executeAutomationRunMock.mockReset();
+  });
+
+  it("runs once immediately when nothing is in flight", async () => {
+    const id = await insertAutomation();
+    executeAutomationRunMock.mockResolvedValue({
+      started: true,
+      succeeded: true,
+      schedule: "0 8 * * *",
+    });
+
+    await requestRun(id);
+
+    expect(executeAutomationRunMock).toHaveBeenCalledTimes(1);
+    expect(executeAutomationRunMock).toHaveBeenCalledWith(id, {});
+  });
+
+  it("coalesces requests landing mid-run into exactly one follow-up", async () => {
+    const id = await insertAutomation();
+    const releases: Array<() => void> = [];
+    executeAutomationRunMock.mockImplementation(
+      () =>
+        new Promise<AutomationRunResult>((resolve) => {
+          releases.push(() => resolve({ started: true, succeeded: true, schedule: "0 8 * * *" }));
+        }),
+    );
+
+    // The first request starts a run synchronously (no await between the
+    // busy check and the run — the atomicity requestRun relies on).
+    const first = requestRun(id);
+    expect(executeAutomationRunMock).toHaveBeenCalledTimes(1);
+
+    // Three more requests land while that run is still in flight …
+    await Promise.all([requestRun(id), requestRun(id), requestRun(id)]);
+    expect(executeAutomationRunMock).toHaveBeenCalledTimes(1);
+
+    // … and releasing it starts exactly one follow-up run, not three.
+    releases[0]?.();
+    await vi.waitFor(() => expect(executeAutomationRunMock).toHaveBeenCalledTimes(2));
+
+    releases[1]?.();
+    await first;
+    expect(executeAutomationRunMock).toHaveBeenCalledTimes(2);
   });
 });

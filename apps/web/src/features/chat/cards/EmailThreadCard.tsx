@@ -1,11 +1,11 @@
-import type { AgentCard, EmailThreadMessage } from "@trailin/shared";
-import { AtSign, ChevronDown, ChevronRight, MessagesSquare } from "lucide-react";
+import type { AgentCard } from "@trailin/shared";
+import { AtSign, MessagesSquare } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { ThreadMessageRow } from "@/components/ThreadHistory";
 import { Button } from "@/components/ui/button";
-import { relativeTime } from "@/lib/dates";
 import { dispatchTrailin } from "@/lib/trailinEvents";
-import { CardBodyText, CardShell } from "./CardShell";
+import { CardShell } from "./CardShell";
 
 type EmailThreadData = Extract<AgentCard, { kind: "email_thread" }>;
 
@@ -80,59 +80,5 @@ export function EmailThreadCard({ card, color }: { card: EmailThreadData; color?
         ))}
       </div>
     </CardShell>
-  );
-}
-
-function ThreadMessageRow({
-  message,
-  open,
-  onToggle,
-  lang,
-}: {
-  message: EmailThreadMessage;
-  open: boolean;
-  onToggle: () => void;
-  lang: string;
-}) {
-  const { t } = useTranslation();
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-surface-2"
-      >
-        {open ? (
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        )}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{message.from}</span>
-        <time className="shrink-0 font-mono text-2xs text-muted-foreground">
-          {relativeTime(message.date, lang)}
-        </time>
-      </button>
-
-      {open && (
-        /* Body indents to the sender's text edge, keeping the chevron column clear. */
-        <div className="flex flex-col gap-2 pb-3 pl-7.5 pr-3 pt-0.5">
-          {message.to.length > 0 && (
-            <p className="truncate text-xs text-muted-foreground">
-              <span className="font-mono text-2xs">{t("chat.cards.thread.to")}</span>{" "}
-              {message.to.join(", ")}
-            </p>
-          )}
-          {message.cc && message.cc.length > 0 && (
-            <p className="truncate text-xs text-muted-foreground">
-              <span className="font-mono text-2xs">{t("chat.cards.thread.cc")}</span>{" "}
-              {message.cc.join(", ")}
-            </p>
-          )}
-          <CardBodyText text={message.body} />
-        </div>
-      )}
-    </div>
   );
 }

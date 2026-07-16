@@ -1,4 +1,5 @@
 import type { OnOfficeStatus } from "@trailin/shared";
+import { getOnOfficeAutomationCreates, getOnOfficeWriteAccess } from "../db/settings.js";
 import { env } from "../env.js";
 import { OnOfficeClient, STABLE_URL } from "./client.js";
 import { deleteOnOfficeSecret, readOnOfficeSecret, writeOnOfficeSecret } from "./secretFile.js";
@@ -49,6 +50,8 @@ export async function getOnOfficeStatus(): Promise<OnOfficeStatus> {
     configured: config !== null,
     source: config?.source ?? null,
     apiUrl: config?.apiUrl ?? STABLE_URL,
+    automationCreates: await getOnOfficeAutomationCreates(),
+    writeAccess: await getOnOfficeWriteAccess(),
   };
 }
 

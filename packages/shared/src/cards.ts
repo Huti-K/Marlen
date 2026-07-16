@@ -66,6 +66,8 @@ export interface DraftPreview {
   webUrl?: string;
   /** The account's signature was appended to `body`. */
   signatureAppended?: boolean;
+  /** Files attached to the draft, for the human's pre-send review. */
+  attachments?: { filename: string; size?: number }[];
 }
 
 /**

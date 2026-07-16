@@ -68,9 +68,11 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js", () => {
 
 // listAccounts/getConnectConfig/getPipedreamAccessToken are stubbed the same
 // way test/agent/accounts.test.ts stubs them — spread the real module so the
-// gmail/outlook draft and attachment providers pulled in transitively (they
-// import proxyRequest from this module at the top level) still resolve.
+// gmail/outlook draft and attachment providers pulled in transitively still
+// resolve. proxyRequest is stubbed too, so the create-draft tool tests below
+// can serve the provider's Gmail round-trips.
 const listAccountsMock = vi.fn<() => Promise<ConnectedAccount[]>>();
+const proxyRequestMock = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 vi.mock("../../src/pipedream/connect.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/pipedream/connect.js")>();
   return {
@@ -85,6 +87,7 @@ vi.mock("../../src/pipedream/connect.js", async (importOriginal) => {
     }),
     getPipedreamAccessToken: async () => "fake-token",
     listAccounts: () => listAccountsMock(),
+    proxyRequest: (...args: unknown[]) => proxyRequestMock(...args),
   };
 });
 
@@ -96,6 +99,29 @@ vi.mock("../../src/db/settings.js", async (importOriginal) => {
     getWriteAccessAccounts: () => writeAccessMock(),
   };
 });
+
+// The create-draft tool's collaborators, faked so executing the tool touches
+// neither the database nor a humanizer model call: composition passes the
+// body through unchanged, snapshots are no-ops, and the library attachment
+// resolver is scripted per test.
+const resolveLibraryAttachmentsMock =
+  vi.fn<(ids: string[]) => Promise<import("../../src/email/providers.js").DraftAttachment[]>>();
+vi.mock("../../src/library/draftAttachments.js", () => ({
+  resolveLibraryAttachments: (ids: string[]) => resolveLibraryAttachmentsMock(ids),
+}));
+vi.mock("../../src/agent/composition.js", () => ({
+  composeDraftBody: async (_accountId: string, input: { body: string }) => ({
+    body: input.body,
+    humanized: false,
+    signatureAppended: false,
+    signature: null,
+  }),
+}));
+vi.mock("../../src/db/draftStore.js", () => ({
+  createDraftSnapshot: async () => {},
+  appendDraftVersion: async () => {},
+  getDraftCardDetails: async () => null,
+}));
 
 const { loadEmailTools } = await import("../../src/pipedream/mcp.js");
 const { isMcpTimeoutError, isMcpTransportError } = await import(
@@ -118,6 +144,8 @@ beforeEach(() => {
   callToolCount = 0;
   listAccountsMock.mockReset();
   writeAccessMock.mockReset();
+  proxyRequestMock.mockReset();
+  resolveLibraryAttachmentsMock.mockReset();
 });
 
 describe("loadEmailTools — read/write registration policy", () => {
@@ -320,5 +348,91 @@ describe("MCP error classification", () => {
     expect(isMcpTransportError(new StreamableHTTPError(403, "forbidden"))).toBe(false);
     expect(isMcpTransportError(new Error("No matching thread found"))).toBe(false);
     expect(isMcpTransportError("not even an error")).toBe(false);
+  });
+});
+
+describe("create-draft tool — library attachments", () => {
+  async function loadCreateDraftTool() {
+    const acc = account("acc-gmail-att", "gmail", "kadim@gmail.com");
+    listAccountsMock.mockResolvedValue([acc]);
+    writeAccessMock.mockResolvedValue([]);
+    toolsByAccountId.set(acc.id, []);
+    const toolset = await loadEmailTools();
+    const create = toolset.tools.find((t) => t.name === "gmail-create-draft");
+    expect(create).toBeDefined();
+    return { toolset, create };
+  }
+
+  it("declares attachLibraryDocumentIds in the tool schema and description", async () => {
+    const { toolset, create } = await loadCreateDraftTool();
+    await toolset.close();
+
+    const parameters = create?.parameters as { properties?: Record<string, unknown> } | undefined;
+    expect(parameters?.properties?.attachLibraryDocumentIds).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
+    expect(create?.description).toContain("attachLibraryDocumentIds");
+  });
+
+  it("returns the resolver's steering text without creating a draft when an id is bad", async () => {
+    const { toolset, create } = await loadCreateDraftTool();
+    resolveLibraryAttachmentsMock.mockRejectedValue(
+      new Error('No library document with id "nope" — use library_list.'),
+    );
+
+    const result = await create?.execute(
+      "call-1",
+      { to: ["a@example.com"], subject: "S", body: "B", attachLibraryDocumentIds: ["nope"] },
+      undefined,
+      undefined,
+    );
+    await toolset.close();
+
+    expect(result?.content).toEqual([
+      { type: "text", text: 'No library document with id "nope" — use library_list.' },
+    ]);
+    // The draft was never created: no provider round-trip at all.
+    expect(proxyRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("passes resolved attachments to the provider and reports them in text and card", async () => {
+    const { toolset, create } = await loadCreateDraftTool();
+    resolveLibraryAttachmentsMock.mockResolvedValue([
+      { filename: "expose.pdf", mimeType: "application/pdf", content: Buffer.from("PDF") },
+    ]);
+    proxyRequestMock.mockResolvedValue({
+      id: "draft-1",
+      message: { id: "m1", threadId: "t1" },
+    });
+
+    const result = await create?.execute(
+      "call-1",
+      { to: ["a@example.com"], subject: "S", body: "B", attachLibraryDocumentIds: ["d-pdf"] },
+      undefined,
+      undefined,
+    );
+    await toolset.close();
+
+    expect(resolveLibraryAttachmentsMock).toHaveBeenCalledWith(["d-pdf"]);
+    const content = result?.content as { type: string; text: string }[] | undefined;
+    expect(content?.[0]?.text).toContain("Attached: expose.pdf (3 B).");
+
+    // The provider received the attachment: the raw Gmail message is multipart
+    // and carries the file.
+    const postCall = proxyRequestMock.mock.calls.find(
+      (call) => call[1] === "post" && String(call[2]).includes("/drafts"),
+    );
+    expect(postCall).toBeDefined();
+    const opts = postCall?.[3] as { body: { message: { raw: string } } } | undefined;
+    const decoded = Buffer.from(opts?.body.message.raw ?? "", "base64url").toString("utf8");
+    expect(decoded).toContain("multipart/mixed");
+    expect(decoded).toContain('name="expose.pdf"');
+
+    // The card lists the attachment for the human's pre-send review.
+    const card = result?.details as
+      | { draft?: { attachments?: { filename: string; size?: number }[] } }
+      | undefined;
+    expect(card?.draft?.attachments).toEqual([{ filename: "expose.pdf", size: 3 }]);
   });
 });

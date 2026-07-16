@@ -29,6 +29,9 @@ const automationBody = Type.Object({
   enabled: Type.Optional(Type.Boolean()),
   showInActivity: Type.Optional(Type.Boolean()),
   pinned: Type.Optional(Type.Boolean()),
+  runOnNewMail: Type.Optional(Type.Boolean()),
+  notifyOnCompletion: Type.Optional(Type.Boolean()),
+  leadId: Type.Optional(Type.String()),
 });
 
 const automationPatchBody = Type.Object({
@@ -38,6 +41,8 @@ const automationPatchBody = Type.Object({
   enabled: Type.Optional(Type.Boolean()),
   showInActivity: Type.Optional(Type.Boolean()),
   pinned: Type.Optional(Type.Boolean()),
+  runOnNewMail: Type.Optional(Type.Boolean()),
+  notifyOnCompletion: Type.Optional(Type.Boolean()),
 });
 
 /** Join condition linking a run to its automation, shared by every runs query and its count. */

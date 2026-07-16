@@ -25,6 +25,13 @@ const SCHEDULE_DESCRIPTION =
   `day-of-month AND month with day-of-week "*" (e.g. "0 9 15 3 *") is treated as one-time: it ` +
   `runs once at the next occurrence and then disables itself.`;
 
+const RUN_ON_NEW_MAIL_DESCRIPTION =
+  "Also run immediately whenever new inbound mail is detected in any connected account, in " +
+  "addition to the cron schedule.";
+
+const NOTIFY_ON_COMPLETION_DESCRIPTION =
+  "Show a desktop notification when a run of this automation finishes.";
+
 function instructionPreview(instruction: string): string {
   const collapsed = collapseWhitespace(instruction);
   if (collapsed.length <= INSTRUCTION_PREVIEW_CHARS) return collapsed;
@@ -91,10 +98,28 @@ const automationCreate: AgentTool = tool({
       description: "The complete, self-contained instruction the unattended run will execute.",
     }),
     schedule: Type.String({ description: SCHEDULE_DESCRIPTION }),
+    runOnNewMail: Type.Optional(Type.Boolean({ description: RUN_ON_NEW_MAIL_DESCRIPTION })),
+    notifyOnCompletion: Type.Optional(
+      Type.Boolean({ description: NOTIFY_ON_COMPLETION_DESCRIPTION }),
+    ),
+    leadId: Type.Optional(
+      Type.String({
+        description:
+          "Attach the automation to this lead (from lead_list): it shows up with the lead and " +
+          "is deleted with it. Only for follow-ups about that specific lead.",
+      }),
+    ),
   },
   catchToText: true,
-  execute: async ({ name, instruction, schedule }) => {
-    const automation = await createAutomation({ name, instruction, schedule });
+  execute: async ({ name, instruction, schedule, runOnNewMail, notifyOnCompletion, leadId }) => {
+    const automation = await createAutomation({
+      name,
+      instruction,
+      schedule,
+      runOnNewMail,
+      notifyOnCompletion,
+      leadId,
+    });
     return textResult(
       `Created automation "${automation.name}" [${automation.id}] — ${scheduleSummary(automation)}.`,
     );
@@ -119,10 +144,29 @@ const automationUpdate: AgentTool = tool({
     enabled: Type.Optional(
       Type.Boolean({ description: "false pauses the automation; true resumes it." }),
     ),
+    runOnNewMail: Type.Optional(Type.Boolean({ description: RUN_ON_NEW_MAIL_DESCRIPTION })),
+    notifyOnCompletion: Type.Optional(
+      Type.Boolean({ description: NOTIFY_ON_COMPLETION_DESCRIPTION }),
+    ),
   },
   catchToText: true,
-  execute: async ({ id, name, instruction, schedule, enabled }) => {
-    const automation = await updateAutomation(id, { name, instruction, schedule, enabled });
+  execute: async ({
+    id,
+    name,
+    instruction,
+    schedule,
+    enabled,
+    runOnNewMail,
+    notifyOnCompletion,
+  }) => {
+    const automation = await updateAutomation(id, {
+      name,
+      instruction,
+      schedule,
+      enabled,
+      runOnNewMail,
+      notifyOnCompletion,
+    });
     return textResult(
       `Updated automation "${automation.name}" [${automation.id}] — ${scheduleSummary(automation)}.`,
     );

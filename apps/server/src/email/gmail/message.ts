@@ -20,6 +20,19 @@ export interface MessagePart {
 
 type MessageHeaders = { headers?: { name: string; value: string }[] };
 
+/** One message of a GET /threads/:id?format=full response — the fields the thread readers use. */
+export interface ThreadGetMessage {
+  id?: string;
+  internalDate?: string;
+  labelIds?: string[];
+  payload?: MessagePart & { headers?: { name: string; value: string }[] };
+}
+
+/** Response shape of GET /threads/:id?format=full. */
+export interface ThreadGetResponse {
+  messages?: ThreadGetMessage[];
+}
+
 /** Case-insensitive header lookup, the way Gmail's `payload.headers` needs to be read. */
 export function headerLookup(payload: MessageHeaders | undefined) {
   const headers = payload?.headers ?? [];

@@ -100,6 +100,106 @@ describe("outlookReadProvider.listSentSince", () => {
   });
 });
 
+function graphThreadMessage(
+  id: string,
+  opts: { date?: string; isDraft?: boolean; cc?: boolean; html?: boolean } = {},
+) {
+  return {
+    id,
+    subject: `subject ${id}`,
+    from: { emailAddress: { name: "Ada", address: "ada@example.com" } },
+    toRecipients: [{ emailAddress: { name: "Me", address: "me@contoso.com" } }],
+    ...(opts.cc ? { ccRecipients: [{ emailAddress: { address: "bob@example.com" } }] } : {}),
+    receivedDateTime: opts.date ?? "2026-07-02T10:00:00Z",
+    body: opts.html
+      ? { contentType: "html", content: "<p>hello <b>there</b></p>" }
+      : { contentType: "text", content: `body of ${id}` },
+    isDraft: opts.isDraft ?? false,
+  };
+}
+
+describe("outlookReadProvider.getThread", () => {
+  it("filters by conversationId (quotes doubled), culls drafts, oldest first", async () => {
+    proxyRequestMock.mockResolvedValueOnce({
+      value: [
+        graphThreadMessage("m2", { date: "2026-07-03T10:00:00Z" }),
+        graphThreadMessage("m1", { date: "2026-07-02T10:00:00Z", cc: true }),
+        graphThreadMessage("d1", { date: "2026-07-04T10:00:00Z", isDraft: true }),
+      ],
+    });
+
+    const thread = await outlookReadProvider.getThread?.(ACCOUNT, "c'1");
+
+    const [, method, url, opts] = proxyRequestMock.mock.calls[0] ?? [];
+    expect(method).toBe("get");
+    expect(url).toContain("/messages");
+    expect(opts?.params?.$filter).toBe("conversationId eq 'c''1'");
+    expect(thread?.subject).toBe("subject m1");
+    expect(thread?.messages.map((m) => m.id)).toEqual(["m1", "m2"]);
+    expect(thread?.messages[0]).toMatchObject({
+      from: "Ada <ada@example.com>",
+      to: ["Me <me@contoso.com>"],
+      cc: ["bob@example.com"],
+      body: "body of m1",
+      date: "2026-07-02T10:00:00Z",
+    });
+    expect(thread?.messages[1]?.cc).toBeUndefined();
+  });
+
+  it("follows @odata.nextLink to gather the whole conversation", async () => {
+    const nextLink = "https://graph.microsoft.com/v1.0/me/messages?$skip=1";
+    proxyRequestMock
+      .mockResolvedValueOnce({
+        value: [graphThreadMessage("m1")],
+        "@odata.nextLink": nextLink,
+      })
+      .mockResolvedValueOnce({ value: [graphThreadMessage("m2", { html: true })] });
+
+    const thread = await outlookReadProvider.getThread?.(ACCOUNT, "c1");
+
+    expect(proxyRequestMock.mock.calls[1]?.[2]).toBe(nextLink);
+    expect(thread?.messages).toHaveLength(2);
+    expect(thread?.messages[1]?.body).toBe("hello there");
+  });
+
+  it("returns null when the conversation matches nothing or only drafts", async () => {
+    proxyRequestMock.mockResolvedValueOnce({ value: [] });
+    await expect(outlookReadProvider.getThread?.(ACCOUNT, "c-empty")).resolves.toBeNull();
+
+    proxyRequestMock.mockResolvedValueOnce({
+      value: [graphThreadMessage("d1", { isDraft: true })],
+    });
+    await expect(outlookReadProvider.getThread?.(ACCOUNT, "c-draft")).resolves.toBeNull();
+  });
+});
+
+describe("outlookReadProvider.newestInbound", () => {
+  it("asks the inbox for the single newest message's id and date in one Graph call", async () => {
+    proxyRequestMock.mockResolvedValueOnce({
+      value: [{ id: "m7", receivedDateTime: "2026-07-16T09:30:00Z" }],
+    });
+
+    const newest = await outlookReadProvider.newestInbound(ACCOUNT, { knownId: "elsewhere" });
+
+    expect(newest).toEqual({ id: "m7", date: "2026-07-16T09:30:00Z" });
+    expect(proxyRequestMock).toHaveBeenCalledTimes(1);
+    const [, method, url, opts] = proxyRequestMock.mock.calls[0] ?? [];
+    expect(method).toBe("get");
+    expect(url).toContain("mailFolders('inbox')/messages");
+    expect(opts?.params).toEqual({
+      $select: "id,receivedDateTime",
+      $orderby: "receivedDateTime desc",
+      $top: "1",
+    });
+  });
+
+  it("returns null for an empty inbox", async () => {
+    proxyRequestMock.mockResolvedValueOnce({ value: [] });
+    await expect(outlookReadProvider.newestInbound(ACCOUNT)).resolves.toBeNull();
+    expect(proxyRequestMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("outlookReadProvider.getMessageBody", () => {
   it("returns the body text of one message", async () => {
     proxyRequestMock.mockResolvedValueOnce(graphMessage("m9"));

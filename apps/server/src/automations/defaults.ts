@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
-import { getSetting, setSetting } from "../db/settings.js";
+import { deleteSetting, getSetting, setSetting } from "../db/settings.js";
 import { moduleLogger } from "../logger.js";
+import { getOnOfficeConfig } from "../onoffice/config.js";
+import { updateAutomation } from "./manage.js";
 
 const log = moduleLogger("automations");
 
@@ -14,40 +16,126 @@ const log = moduleLogger("automations");
  */
 interface DefaultAutomation {
   name: string;
+  /**
+   * Names this default shipped under in earlier versions. Rows still carrying
+   * one of these (with an untouched instruction) are renamed in place by
+   * refreshUnmodifiedDefaults, and their seed flags keep guarding re-seeding.
+   */
+  previousNames: readonly string[];
   schedule: string;
   enabled: boolean;
   showInActivity: boolean;
   /** Leads the Home page as the pinned hero. At most one default may set this. */
   pinned: boolean;
+  /** Also started by the mail probe when new inbound mail lands (automations/mailProbe.ts). */
+  runOnNewMail: boolean;
+  /** Desktop notification when a run finishes (runRecorder → "notification" event). */
+  notifyOnCompletion: boolean;
+  /**
+   * Part of the lead workflow, which exists only alongside a configured
+   * onOffice connection: seeds once credentials are saved, is paused when they
+   * are cleared and resumed when they return (see pause/resumeOnOfficeDefaults).
+   */
+  requiresOnOffice?: boolean;
   instruction: string;
 }
 
 const DEFAULT_AUTOMATIONS: DefaultAutomation[] = [
   {
-    name: `Morning briefing`,
+    name: `Morgenbriefing`,
+    previousNames: ["Morning briefing"],
     schedule: "0 8 * * *",
     enabled: true,
     showInActivity: true,
     pinned: true,
-    instruction: `Across all connected email accounts, review the mail from the last 24 hours — triage it, draft the replies that are warranted, and publish the result as a structured briefing.
+    runOnNewMail: false,
+    notifyOnCompletion: false,
+    instruction: `Sieh in allen verbundenen E-Mail-Konten die Mails der letzten 24 Stunden durch — triagiere sie, verfasse die Antwortentwürfe, die sich lohnen, und veröffentliche das Ergebnis als strukturiertes Briefing.
 
-REVIEW: Mail is read live from each provider through per-account read tools — their names start with verbs like find/list/search, each one's description says which account it acts as, and with several accounts of one app the names carry an account suffix. For each connected email account, list the messages from the last 24 hours: use a date-bounded query where the account's tool supports one, otherwise list newest-first and stop at the 24-hour boundary — never let the digest reach further back. Fan the per-account reviews out with the delegate tool, one self-contained task per account that names the account and says what to report back (sender, subject, one-line gist, threadId, and whether a reply from me seems needed), rather than working through accounts serially. Read a thread in full (the account's thread/message get tool) only when it will become a briefing item or a draft — subjects and snippets from the listing are enough to dismiss the rest. A live read can take seconds and occasionally time out; retry once with a narrower query, and if an account stays unreachable, say so in the briefing instead of silently skipping it.
+DURCHSICHT: Mails werden live pro Konto über dessen Lese-Tools gelesen — ihre Namen beginnen mit Verben wie find/list/search, die Beschreibung jedes Tools sagt, für welches Konto es agiert, und bei mehreren Konten einer App tragen die Namen ein Konto-Suffix. Liste für jedes verbundene E-Mail-Konto die Nachrichten der letzten 24 Stunden: nutze eine datumsbegrenzte Abfrage, wo das Tool des Kontos eine unterstützt, sonst liste neueste zuerst und stoppe an der 24-Stunden-Grenze — der Digest darf nie weiter zurückreichen. Fächere die Durchsicht pro Konto mit dem delegate-Tool auf, eine in sich geschlossene Aufgabe pro Konto, die das Konto benennt und sagt, was zurückzumelden ist (Absender, Betreff, Einzeiler zum Inhalt, threadId und ob eine Antwort von mir nötig scheint), statt die Konten nacheinander abzuarbeiten. Lies einen Thread nur dann vollständig (mit dem thread/message-get-Tool des Kontos), wenn er ein Briefing-Punkt oder ein Entwurf wird — für den Rest reichen Betreff und Snippet aus der Liste. Ein Live-Read kann Sekunden dauern und gelegentlich in einen Timeout laufen; versuche es einmal mit einer engeren Abfrage erneut, und bleibt ein Konto unerreichbar, sag das im Briefing, statt es stillschweigend zu überspringen.
 
-TRIAGE: Put every noteworthy message in exactly one tier. "urgent" when it is time-sensitive, a deadline could pass, or somebody is blocked on me. "reply" when a real person is waiting on my answer but nothing is on fire. "action" when it needs a decision or a task from me and nobody is waiting. "fyi" when it is worth knowing and needs nothing. Nothing pre-judges the mail for you — decide each tier from the content itself. Newsletters, promotions, receipts, shipping updates and automated notifications are not tier items: group them into rollups by kind ("Newsletters", "Receipts", "Promotions", "Notifications"). A rollup is not a summary line — it carries its messages: list every message in the group as a rollup item, each with its real threadId and account and a one-line gist, exactly like a tier item (sender, subject, gist), so the card renders each as its own row I can open or draft from. Do not full-read these to build them — the listing line is enough.
+TRIAGE: Ordne jede nennenswerte Nachricht genau einer Stufe zu. "urgent", wenn sie zeitkritisch ist, eine Frist verstreichen könnte oder jemand auf mich wartet und blockiert ist. "reply", wenn eine echte Person auf meine Antwort wartet, aber nichts brennt. "action", wenn sie eine Entscheidung oder Aufgabe von mir braucht und niemand wartet. "fyi", wenn sie wissenswert ist und nichts erfordert. Nichts sortiert die Mails für dich vor — entscheide jede Stufe aus dem Inhalt selbst. Newsletter, Werbung, Belege, Versandupdates und automatische Benachrichtigungen sind keine Stufen-Punkte: fasse sie nach Art in Rollups zusammen ("Newsletter", "Belege", "Werbung", "Benachrichtigungen"). Ein Rollup ist keine Zusammenfassungszeile — es trägt seine Nachrichten: liste jede Nachricht der Gruppe als Rollup-Eintrag, jede mit ihrer echten threadId, ihrem Konto und einem Einzeiler zum Inhalt, genau wie einen Stufen-Punkt (Absender, Betreff, Einzeiler), damit die Karte jede als eigene Zeile rendert, die ich öffnen oder aus der ich einen Entwurf starten kann. Lies diese dafür nicht vollständig — die Listenzeile genügt.
 
-DRAFTS (only where it genuinely makes sense): For threads that actually warrant a reply from me, ACTUALLY CREATE THE DRAFT by calling that account's create-draft tool (the exact tool name varies by provider and account, use the one whose description says it acts as that account) so a real unsent draft is saved to my Drafts folder; do not merely write the draft text in your report. Attach it to the original thread by passing the thread's threadId from the read results so it threads correctly. A reply is warranted when a real person is asking me something, is awaiting my response, or the thread needs an action or acknowledgement from me. Do NOT draft for newsletters, marketing/promotions, receipts, shipping/order updates, calendar invites, automated or no-reply notifications, or threads I have already answered (when in doubt, skip it). Write each draft concisely, in my usual tone, and in the same language as the email it replies to. Never send, reply, forward, label, or delete anything, only save drafts for me to review.
+ENTWÜRFE (nur wo es wirklich sinnvoll ist): Für Threads, die tatsächlich eine Antwort von mir verdienen, ERSTELLE DEN ENTWURF WIRKLICH, indem du das create-draft-Tool des jeweiligen Kontos aufrufst (der genaue Toolname variiert je Provider und Konto — nimm das Tool, dessen Beschreibung sagt, dass es für dieses Konto agiert), sodass ein echter ungesendeter Entwurf in meinem Entwürfe-Ordner liegt; schreibe den Entwurfstext nicht bloß in deinen Bericht. Hänge ihn an den Original-Thread an, indem du dessen threadId aus den Leseergebnissen übergibst, damit er korrekt einsortiert wird. Eine Antwort lohnt sich, wenn eine echte Person mich etwas fragt, auf meine Rückmeldung wartet oder der Thread eine Aktion oder Bestätigung von mir braucht. Erstelle KEINE Entwürfe für Newsletter, Marketing/Werbung, Belege, Versand-/Bestellupdates, Kalendereinladungen, automatische oder No-Reply-Benachrichtigungen oder Threads, die ich schon beantwortet habe (im Zweifel weglassen). Schreibe jeden Entwurf knapp, in meinem üblichen Ton und in der Sprache der E-Mail, auf die er antwortet. Sende, beantworte, leite weiter, labele oder lösche nie etwas — speichere nur Entwürfe, die ich prüfen kann.
 
-PUBLISH: This automation's entire output is the structured briefing card — calling compose_briefing exactly once, at the very end, is mandatory, even on a quiet day with an empty items array: a run that ends without calling it has nothing to show me, whatever else you wrote. Give each item the real threadId from the read results and the account it arrived in, carry over the deadline when one is known, and set draftId on any item you drafted a reply for, so the card's actions work. Group the low-value mail by kind ("Newsletters", "Receipts", "Promotions", "Notifications") and pass each group's messages as rollup items — give every one the same real threadId, account and one-line gist a tier item gets, so each rolled-up message becomes its own actionable row under the group heading.
+VERÖFFENTLICHEN: Der gesamte Output dieser Automation ist die strukturierte Briefing-Karte — compose_briefing genau einmal, ganz am Ende, aufzurufen ist Pflicht, auch an einem ruhigen Tag mit leerem items-Array: ein Lauf, der ohne diesen Aufruf endet, hat mir nichts zu zeigen, egal was du sonst geschrieben hast. Gib jedem Punkt die echte threadId aus den Leseergebnissen und das Konto, in dem er ankam, übernimm die Frist, wenn eine bekannt ist, und setze draftId bei jedem Punkt, für den du eine Antwort entworfen hast, damit die Aktionen der Karte funktionieren. Gruppiere die geringwertige Post nach Art ("Newsletter", "Belege", "Werbung", "Benachrichtigungen") und übergib die Nachrichten jeder Gruppe als Rollup-Einträge — gib jeder davon dieselbe echte threadId, dasselbe Konto und denselben Einzeiler wie einem Stufen-Punkt, damit jede zusammengefasste Mail zu einer eigenen anklickbaren Zeile unter der Gruppenüberschrift wird.
 
-CLOSE: The card is the report, so do not repeat the items in prose — compose_briefing's own result tells you exactly how to close the turn.`,
+ABSCHLUSS: Die Karte ist der Bericht — wiederhole die Punkte also nicht in Prosa; das Ergebnis von compose_briefing selbst sagt dir, wie du den Zug abschließt.`,
+  },
+  {
+    name: `Lead-Eingang`,
+    previousNames: ["Lead intake"],
+    // The mail probe starts a run within minutes of new mail; the cron is the
+    // safety net for accounts the probe cannot watch.
+    schedule: "0 */2 * * *",
+    enabled: true,
+    // Most runs legitimately find nothing — keep the activity feed clean.
+    showInActivity: false,
+    pinned: false,
+    runOnNewMail: true,
+    notifyOnCompletion: true,
+    requiresOnOffice: true,
+    instruction: `Durchsuche die eingegangene Post der letzten Stunden in allen verbundenen E-Mail-Konten nach neuen Interessenten, halte das Leads-Verzeichnis aktuell und lege für jeden neuen Interessenten sofort einen Antwortentwurf an — mit passenden Objektvorschlägen, Exposé und Preisliste im Anhang und einem Besichtigungsangebot.
+
+SCAN: Mails werden live über die Lese-Tools des jeweiligen Kontos gelesen — ihre Namen beginnen mit Verben wie find/list/search, und die Beschreibung jedes Tools sagt, für welches Konto es agiert. Liste für jedes verbundene Konto die eingegangenen Nachrichten der letzten 3 Stunden: nutze eine datumsbegrenzte Abfrage, wo das Tool des Kontos eine unterstützt, sonst liste neueste zuerst und stoppe an der Grenze. Bei mehreren Konten fächere die Scans mit dem delegate-Tool auf, eine in sich geschlossene Aufgabe pro Konto, und frage für jede Nachricht Absender (Name und Adresse), Betreff, Datum und einen Einzeiler ab, was der Absender will. Die Listenzeile reicht meist — lies eine Nachricht nur dann vollständig, wenn sich sonst nicht erkennen lässt, ob es ein Interessent ist.
+
+ERKENNEN: Ein Lead ist eine echte Person mit Interesse an einer Immobilie, einer Besichtigung oder den Leistungen des Nutzers — eine Anfrage zu einem Inserat, ein Besichtigungswunsch, ein Suchauftrag, eine Frage zu Angebot oder Bewertung. Keine Leads: Newsletter, Werbung, Belege, automatische oder No-Reply-Benachrichtigungen und Routinepost von Kollegen oder bestehenden Dienstleistern. Im Zweifel erfassen — ein überflüssiger Eintrag kostet nichts, ein verlorener Interessent schon.
+
+EINSCHÄTZEN: Bilde dir zu jedem Interessenten aus der Anfrage ein kurzes Urteil: welcher Käufertyp es ist (persona, z. B. "Kapitalanleger", "junge Familie", "Eigennutzer") und wie hoch die Kaufwahrscheinlichkeit (score): "high" bei konkretem Budget, Zeitdruck oder Besichtigungswunsch zu einem bestimmten Objekt; "medium" bei erkennbarem Suchprofil ohne Dringlichkeit; "low" bei vagen Erstanfragen. Gib beides an lead_record mit — die Lead-Kadenz priorisiert danach.
+
+ERFASSEN: Rufe für jeden Interessenten lead_record auf, mit E-Mail-Adresse, Name, Interesse, persona, score, dem Postfach, in dem die Mail ankam (accountId), und dem Nachrichtendatum als inboundAt. lead_record führt nach Adresse zusammen — einen Absender zu erfassen, den das Verzeichnis schon kennt, ist also unbedenklich: es rückt nur dessen Last-Inbound-Zeitstempel vor, und genau so werden auch Antworten bekannter Leads registriert. Wenn eine Nachricht die Antwort eines bekannten Leads auf unsere Ansprache ist, setze zusätzlich mit lead_update dessen Status auf "engaged". Alles ab hier gilt nur für NEU erfasste Leads: meldet lead_record "already known", ist der Interessent versorgt — derselbe Posteingang kann diesen Lauf mehrfach angestoßen haben, und ein zweiter Entwurf zur selben Anfrage wäre peinlich.
+
+RECHERCHE (für jeden neu erfassten Lead): Wähle erst das passende Projekt, dann darin die passenden Wohnungen. Sind die onoffice_*-Tools verfügbar, suche zuerst im CRM — onoffice_search bzw. onoffice_read_estates nach Objekten, die zu Lage, Budget und Größe der Anfrage passen (kläre Feldnamen vorher mit onoffice_get_fields, wenn du filterst). Ergänze, wo es hilft, eine Websuche (web_search) nach passenden öffentlichen Inseraten oder Marktinformationen zur gewünschten Gegend. Prüfe die Erinnerungen (memory-Tools) auf Vorgaben, was empfohlen werden soll und was nicht. Wähle höchstens die zwei, drei besten Treffer — Klasse statt Masse. Gibt die Anfrage kein Suchprofil her, überspringe die Recherche; der Entwurf stellt dann gezielte Rückfragen.
+
+MATERIAL (für jeden neu erfassten Lead mit Empfehlung): Suche in der Dokumenten-Library (library_search bzw. library_list) nach dem Exposé und der Preisliste des empfohlenen Projekts — die PDFs liegen dort pro Projekt bereit — und merke dir ihre Dokument-Ids für den Entwurf. Hänge nie das Material eines anderen Projekts an; findet sich nichts Passendes, verweise im Text stattdessen auf den Projektlink.
+
+ENTWURF (für jeden neu erfassten Lead): ERSTELLE WIRKLICH einen Antwortentwurf im Original-Thread über das create-draft-Tool des Kontos (threadId aus den Leseergebnissen), schreibe den Text nicht bloß in deinen Bericht, und hänge Exposé und Preisliste über attachLibraryDocumentIds an: bedanke dich für die Anfrage, geh konkret auf das Anliegen ein, stelle die empfohlenen Wohnungen kurz und begründet vor, füge den Projektlink ein und biete aktiv eine Besichtigung an — oder stelle zwei, drei gezielte Rückfragen (Budget, Lage, Zeitrahmen), wenn das Profil unklar ist. Schreibe in der Sprache der Anfrage und in meinem üblichen Ton. Sende nie — nur Entwürfe. Halte das Ergebnis am Lead fest (lead_update): präzisiere das Interesse und vermerke in den Notizen, was empfohlen und angehängt wurde.
+
+ONOFFICE (nur wenn die Anlege-Tools in diesem Lauf verfügbar sind): Lege jeden neu erfassten Lead auch als Adresse im CRM an — onoffice_create_address mit checkDuplicate und den bekannten Kontaktdaten (Name, E-Mail, Telefon) — und speichere die Datensatz-ID am Lead (lead_update, onofficeAddressId). Existiert die Adresse schon (Dublette oder Treffer über onoffice_search), übernimm nur deren ID. Dokumentiere die entworfene Erstantwort im Maklerbuch: onoffice_create_agentslog mit datetime, addressids (die Adress-ID), estateid des empfohlenen Objekts, wenn bekannt, und einer Kurzfassung als note. Fehlen die Anlege-Tools, überspringe diesen Schritt kommentarlos.
+
+BERICHT: Die erste Zeile deines Abschlussberichts erscheint als Desktop-Benachrichtigung — sie muss das Ergebnis in einem Satz tragen ("2 neue Leads — Entwürfe mit Exposé liegen bereit" oder "Keine neuen Leads in diesem Fenster"). Danach je Lead eine Zeile: Name — Interesse — persona/score — was empfohlen, angehängt und im CRM angelegt wurde.`,
+  },
+  {
+    name: `Lead-Kadenz`,
+    previousNames: ["Lead-Nachfass"],
+    schedule: "30 8 * * *",
+    enabled: true,
+    showInActivity: true,
+    pinned: false,
+    runOnNewMail: false,
+    notifyOnCompletion: false,
+    requiresOnOffice: true,
+    instruction: `Geh das Leads-Verzeichnis durch und begleite jeden offenen Lead nach festem Stufenplan bis zum Kauf oder zur Absage: Status abgleichen, fällige Nachfass-Entwürfe anlegen, vergessene Erstantworten nachholen, an Besichtigungen erinnern.
+
+BESTAND: Hole mit lead_list alle Leads. "won" und "lost" sind abgeschlossen — alles andere ist offen und wird geprüft. Arbeite die offenen Leads nach score ab: erst "high", dann "medium", dann der Rest — wenn ein Lauf nicht alles schafft, sind die aussichtsreichsten versorgt.
+
+ABGLEICH: Verlass dich nicht allein auf die gespeicherten Zeitstempel — sie veralten, wenn von Hand gemailt wurde. Prüfe für jeden offenen Lead die tatsächliche Korrespondenz mit seiner Adresse im hinterlegten Konto (ohne accountId: in allen Konten): die letzte Nachricht von ihm und die letzte an ihn. Bei vielen Leads fächere den Abgleich mit dem delegate-Tool auf. Bring den Lead mit lead_update auf den echten Stand (inboundAt/outboundAt) und führe den Status nach: Antwort da → "engaged"; angeschrieben und Antwort steht aus → "contacted".
+
+KADENZ: Für jeden Lead mit Status "contacted", der seit dem letzten Ausgang nicht geantwortet hat, gilt der Stufenplan: Tag 2, Tag 5, Tag 10, Tag 21, Tag 45 nach der letzten gesendeten Nachricht, danach alle 30 Tage — bis Antwort, Kauf oder Absage. Eine Stufe ist fällig, wenn ihre Frist erreicht ist und die Notizen sie noch nicht vermerken; führe die ausgeführten Stufen in den Notizen (lead_update, z. B. "Kadenz Tag 5: 2026-07-21"). Entwirf für die fälligste Stufe im selben Thread eine kurze, individuelle Nachfass-E-Mail (create-draft-Tool des Kontos, threadId aus den Leseergebnissen), in der Sprache des Leads und in meinem üblichen Ton — jede Stufe mit eigenem Dreh statt derselben Floskel: früh (Tag 2, Tag 5) freundlich anknüpfen und eine konkrete Frage stellen; in der Mitte (Tag 10, Tag 21) Neues bieten — eine Alternative aus dem CRM (onoffice_search/onoffice_read_estates), eine Preis- oder Verfügbarkeitsinfo, ein Besichtigungsangebot; spät (Tag 45, monatlich) mit Substanz im Gespräch bleiben (Marktupdate, neue passende Objekte, web_search), ohne Druck.
+
+ERSTANTWORT NACHHOLEN: Für jeden Lead mit Status "new", der seit mehr als 2 Tagen weder einen Entwurf noch eine gesendete Antwort hat: hole die Erstantwort nach, wie sie der Lead-Eingang angelegt hätte — Objektvorschläge (onOffice-Suche, ergänzend web_search), Exposé und Preisliste des Projekts aus der Dokumenten-Library angehängt (library_search, dann attachLibraryDocumentIds am create-draft-Tool) und ein Besichtigungsangebot, wenn die Anfrage ein Suchprofil hergibt.
+
+TERMINE: Prüfe mit onoffice_read_appointments die Termine der nächsten zwei Tage. Für jede Besichtigung mit einem Lead aus dem Verzeichnis: entwirf im bestehenden Thread eine kurze Erinnerung an den Kunden (Datum, Uhrzeit, Ort, Ansprechpartner) und lege — wenn die Anlege-Tools verfügbar sind — mit onoffice_create_task eine Erinnerungsaufgabe für mich an. Vermerke die Erinnerung in den Notizen des Leads, damit sie nicht doppelt rausgeht.
+
+MAKLERBUCH (nur wenn die Anlege-Tools in diesem Lauf verfügbar sind): Dokumentiere jede angelegte Stufe und Erinnerung als Maklerbuch-Eintrag am Lead — onoffice_create_agentslog mit datetime, addressids (die onofficeAddressId des Leads) und einer Kurzfassung als note. Ohne Adress-ID oder Anlege-Tools: kommentarlos überspringen.
+
+MASS HALTEN: Höchstens ein neuer Entwurf pro Lead und Lauf. Liegt im Thread schon ein ungesendeter Entwurf (list_drafts bzw. die Entwurfs-Tools des Kontos), erstelle keinen zweiten — erwähne ihn stattdessen im Bericht. Prüfe die Erinnerungen (memory-Tools) auf Vorgaben zu Tonfall, Frequenz oder Ausnahmen ("bei X nicht nachfassen") und halte dich daran. Sende nie — nur Entwürfe.
+
+BERICHT: Die erste Zeile fasst den Lauf in einem Satz zusammen ("3 Nachfass-Entwürfe und 1 Terminerinnerung angelegt"). Danach eine handlungsorientierte Liste, ein Punkt pro angefasstem Lead: Name — Stufe/Stand — was du getan hast — was bei mir liegt (Entwurf prüfen und senden). War nichts fällig, sag genau das in einem Satz.`,
   },
 ];
 
-const DEFAULTS_SEEDED_KEY = "automations.defaultsSeeded";
+/**
+ * Per-default seed flags ("automations.defaultSeeded.<name>"). Each default
+ * seeds at most once ever, so deleting one never brings it back — while a
+ * default added in a later version still reaches existing installs.
+ */
+const DEFAULT_SEEDED_KEY_PREFIX = "automations.defaultSeeded.";
 
 /**
  * sha256 of every instruction text a previous version of Trailin ever seeded,
- * keyed by automation name. A stored instruction whose hash appears here was
+ * keyed by the default's current name (rows found under a previousNames alias
+ * are looked up here too). A stored instruction whose hash appears here was
  * written by us and never touched by the user, so it is safe to replace with
  * the current text above — that is how prompt improvements (e.g. the digest's
  * importance ordering) reach installs that were seeded long ago.
@@ -91,7 +179,9 @@ const SUPERSEDED_INSTRUCTION_HASHES: Record<string, readonly string[]> = {
   // v14 — mirror read tools (list_threads/read_thread) and enrichment hints
   //   replaced by per-account live provider reads with delegate fan-out; the
   //   agent judges tiers itself.
-  "Morning briefing": [
+  // v15 — English wording under the name "Morning briefing", replaced by the
+  //   German default text.
+  Morgenbriefing: [
     "0998189fc3533bde38d61e1d508ec6e77378a3d73209cc8e5dbeb6f2d6511034",
     "eb629153709687168e1bd914a1bcf2f8ff2aedcbcc20003b232225b7c95eb59f",
     "e68d5f2bca75eec90583f9f9d39d1772b52a567e1f7408b343727bd44338c572",
@@ -106,7 +196,31 @@ const SUPERSEDED_INSTRUCTION_HASHES: Record<string, readonly string[]> = {
     "592cd77cd0c5c40c6a30caa663c8a910c59217c40cd5abe19a91faf442eadbc8",
     "e2a47a74653ca955ea376ba5da9731c8ae21a8e22c8602be73930facf33d7fc3",
     "399fdc4a2c5fce9ee3cc95618ee56576158053d4a0ba2f482bea56cbdf5db773",
+    "4c31b690979bff36728ab4a71ea1353a74853bb2cece4c05421d8fdfc5748c22",
   ],
+  // v1 — English wording under the name "Lead intake", replaced by the German
+  //   default text.
+  // v2 — recorded leads without acting on them; now every new lead also gets
+  //   property research (onOffice + web) and a reply draft in its thread.
+  // v3 — carried the draft-and-recommend intent only in the opening line,
+  //   without the RECHERCHE/ENTWURF sections spelling out how.
+  // v4 — no CRM step; now a new lead is also created as an onOffice address
+  //   (id stored on the lead) when the create tools are armed for automations.
+  // v5 — no persona/score assessment, no Exposé/Preisliste attachments from
+  //   the library, no agents-log entry, no new-leads-only re-run guard, and no
+  //   first-line notification contract in the report.
+  "Lead-Eingang": [
+    "d0d02bdbae32cf3590768d7c148abd732b9e419971a38ee97280c62d5e408c90",
+    "635003cdedd081fd90df6a6a032c8e9d2cb54c6963238ace4bb71ce291f103aa",
+    "e57196f34ad6c1722790e4999720be18d4edf7c6d7eec3c8908c7ad6635940bc",
+    "ee2c54c0df32f500cb7afc43f77598ea77f5834d34efcd4c14ebb65a4e08ef9d",
+    "c68e3ed7b3ae2213a5525dedcabb9194fa87a83c5bd973beec402e5c4b152d58",
+  ],
+  // v1 — shipped as "Lead-Nachfass": one generic 3-week follow-up instead of
+  //   the staged day-2/5/10/21/45-then-monthly cadence with score ordering,
+  //   library attachments on caught-up first replies, viewing reminders and
+  //   agents-log documentation.
+  "Lead-Kadenz": ["738dcb14790c079841739dfed3940bbbc96aa89654968036808d1096ab696edb"],
 };
 
 function instructionHash(text: string): string {
@@ -114,10 +228,11 @@ function instructionHash(text: string): string {
 }
 
 /**
- * Bring untouched built-in automations up to the current instruction text.
- * Idempotent by construction: once a row is rewritten its hash no longer
- * matches any superseded entry, so later boots are a no-op. Runs on every
- * start rather than behind a one-shot flag, which makes it self-healing.
+ * Bring untouched built-in automations up to the current name and instruction
+ * text — a row still carrying a previousNames alias is renamed in the same
+ * write. Idempotent by construction: once a row is rewritten its hash no
+ * longer matches any superseded entry, so later boots are a no-op. Runs on
+ * every start rather than behind a one-shot flag, which makes it self-healing.
  */
 async function refreshUnmodifiedDefaults(): Promise<void> {
   const rows = await db
@@ -129,63 +244,121 @@ async function refreshUnmodifiedDefaults(): Promise<void> {
     .from(schema.automations);
 
   for (const row of rows) {
-    const current = DEFAULT_AUTOMATIONS.find((a) => a.name === row.name);
-    if (!current || row.instruction === current.instruction) continue;
+    const current = DEFAULT_AUTOMATIONS.find(
+      (a) => a.name === row.name || a.previousNames.includes(row.name),
+    );
+    if (!current) continue;
+    if (row.name === current.name && row.instruction === current.instruction) continue;
 
-    const superseded = SUPERSEDED_INSTRUCTION_HASHES[row.name] ?? [];
-    if (!superseded.includes(instructionHash(row.instruction))) continue;
+    const superseded = SUPERSEDED_INSTRUCTION_HASHES[current.name] ?? [];
+    const untouched =
+      row.instruction === current.instruction ||
+      superseded.includes(instructionHash(row.instruction));
+    if (!untouched) continue;
 
     await db
       .update(schema.automations)
-      .set({ instruction: current.instruction })
+      .set({ name: current.name, instruction: current.instruction })
       .where(eq(schema.automations.id, row.id));
-    log.info({ automation: row.name }, "refreshed unmodified default instruction");
+    log.info({ automation: current.name }, "refreshed unmodified default automation");
   }
 }
 
 /**
- * Seed the built-in automations on first run. Idempotent and conservative:
- *  - runs its body at most once ever, guarded by a settings flag;
- *  - only populates a brand-new (empty) automations table, so an existing
- *    install upgrading to this version is left untouched — just marked seeded
- *    so no duplicates are ever injected;
- *  - because the flag persists, deleting a default does not bring it back on
- *    the next restart.
- * Independently of that one-shot seed, every call refreshes built-in
- * automations whose instruction the user never edited — see
- * refreshUnmodifiedDefaults.
- * Call this before startScheduler() so seeded defaults get scheduled on boot.
+ * Seed the built-in automations. Idempotent and conservative, per default:
+ *  - each default seeds at most once ever, guarded by its settings flag, so
+ *    deleting one never brings it back on a later restart;
+ *  - a default whose name already exists in the table is adopted (flagged
+ *    without inserting), so no duplicates are ever injected.
+ * Independently of the seed flags, every call refreshes built-in automations
+ * whose instruction the user never edited — see refreshUnmodifiedDefaults.
+ * Call this before startScheduler() so seeded defaults get scheduled on boot,
+ * and again after onOffice credentials are saved so the requiresOnOffice
+ * defaults reach an install that connected the CRM later.
  */
 export async function seedDefaultAutomations(): Promise<void> {
-  // Before the seed guard: existing installs are seeded already, and the
-  // refresh is exactly what they need.
   await refreshUnmodifiedDefaults();
 
-  if ((await getSetting(DEFAULTS_SEEDED_KEY)) === "true") return;
+  const onOfficeConfigured = (await getOnOfficeConfig()) !== null;
+  const now = Date.now();
+  for (const [i, preset] of DEFAULT_AUTOMATIONS.entries()) {
+    // Skipped without setting the seed flag, so the preset still seeds on the
+    // first call after the CRM is connected.
+    if (preset.requiresOnOffice && !onOfficeConfigured) continue;
+    // The flag of a previous name still counts as seeded, so a default that
+    // was deleted under its old name stays gone after a rename.
+    const key = `${DEFAULT_SEEDED_KEY_PREFIX}${preset.name}`;
+    const seedKeys = [key, ...preset.previousNames.map((n) => `${DEFAULT_SEEDED_KEY_PREFIX}${n}`)];
+    const flags = await Promise.all(seedKeys.map((k) => getSetting(k)));
+    if (flags.includes("true")) continue;
 
-  const [existing] = await db
-    .select({ id: schema.automations.id })
-    .from(schema.automations)
-    .limit(1);
-
-  if (!existing) {
-    const now = Date.now();
-    await db.insert(schema.automations).values(
-      DEFAULT_AUTOMATIONS.map((a, i) => ({
+    const [existing] = await db
+      .select({ id: schema.automations.id })
+      .from(schema.automations)
+      .where(eq(schema.automations.name, preset.name))
+      .limit(1);
+    if (!existing) {
+      await db.insert(schema.automations).values({
         id: randomUUID(),
-        name: a.name,
-        instruction: a.instruction,
-        schedule: a.schedule,
-        enabled: a.enabled,
-        showInActivity: a.showInActivity,
-        pinned: a.pinned,
+        name: preset.name,
+        instruction: preset.instruction,
+        schedule: preset.schedule,
+        enabled: preset.enabled,
+        showInActivity: preset.showInActivity,
+        pinned: preset.pinned,
+        runOnNewMail: preset.runOnNewMail,
+        notifyOnCompletion: preset.notifyOnCompletion,
         // Distinct, descending timestamps so the list order is deterministic:
         // the first entry is newest and thus leads the createdAt-desc feed.
         createdAt: new Date(now - i * 1000).toISOString(),
-      })),
-    );
-    log.info({ count: DEFAULT_AUTOMATIONS.length }, "seeded default automation(s)");
+      });
+      log.info({ automation: preset.name }, "seeded default automation");
+    }
+    await setSetting(key, "true");
   }
+}
 
-  await setSetting(DEFAULTS_SEEDED_KEY, "true");
+/**
+ * Ids disabled by pauseOnOfficeDefaults, so resumeOnOfficeDefaults re-enables
+ * exactly those — never an automation the user paused themselves.
+ */
+const ONOFFICE_PAUSED_IDS_KEY = "automations.onofficePausedIds";
+
+/** Every name (current and previous) a requiresOnOffice default is known by. */
+function onOfficeDefaultNames(): string[] {
+  return DEFAULT_AUTOMATIONS.filter((preset) => preset.requiresOnOffice).flatMap((preset) => [
+    preset.name,
+    ...preset.previousNames,
+  ]);
+}
+
+/**
+ * Disable the requiresOnOffice defaults when the CRM is disconnected — their
+ * runs would fire without the lead/onOffice tools they are written around.
+ * Matched by name, so a renamed copy is the user's own and keeps running.
+ */
+export async function pauseOnOfficeDefaults(): Promise<void> {
+  const rows = await db
+    .select({ id: schema.automations.id, enabled: schema.automations.enabled })
+    .from(schema.automations)
+    .where(inArray(schema.automations.name, onOfficeDefaultNames()));
+  const paused = rows.filter((row) => row.enabled).map((row) => row.id);
+  for (const id of paused) await updateAutomation(id, { enabled: false });
+  if (paused.length > 0) {
+    await setSetting(ONOFFICE_PAUSED_IDS_KEY, JSON.stringify(paused));
+    log.info({ count: paused.length }, "paused onOffice default automations");
+  }
+}
+
+/** Re-enable what pauseOnOfficeDefaults disabled, once credentials are back. */
+export async function resumeOnOfficeDefaults(): Promise<void> {
+  const stored = await getSetting(ONOFFICE_PAUSED_IDS_KEY);
+  if (!stored) return;
+  const ids = JSON.parse(stored) as string[];
+  for (const id of ids) {
+    // The user may have deleted (or re-enabled) a paused automation meanwhile.
+    await updateAutomation(id, { enabled: true }).catch(() => {});
+  }
+  await deleteSetting(ONOFFICE_PAUSED_IDS_KEY);
+  log.info({ count: ids.length }, "resumed onOffice default automations");
 }

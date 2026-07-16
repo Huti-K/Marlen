@@ -18,3 +18,5 @@ process.env.LOG_FILE = "";
 process.env.PIPEDREAM_CLIENT_ID = "";
 process.env.PIPEDREAM_CLIENT_SECRET = "";
 process.env.PIPEDREAM_PROJECT_ID = "";
+process.env.ONOFFICE_TOKEN = "";
+process.env.ONOFFICE_SECRET = "";

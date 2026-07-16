@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { beginTurn, serializeTurnCards } from "../agent/turnRecorder.js";
 import { db, schema } from "../db/index.js";
 import { env } from "../env.js";
-import { emitServerEvent } from "../events.js";
+import { emitRunNotification, emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
 import { errorMessage } from "../util.js";
 
@@ -14,6 +14,15 @@ const DEFAULT_TIMEOUT_MS =
   Number.isFinite(env.automationRunTimeoutMs) && env.automationRunTimeoutMs > 0
     ? env.automationRunTimeoutMs
     : 300_000;
+
+/** Cap on the notification body: enough for a one-line result, short enough for the OS banner. */
+const NOTIFICATION_SUMMARY_CHARS = 140;
+
+/** First line of a run's result text, truncated to the notification-body cap. */
+function notificationSummary(result: string): string {
+  const firstLine = result.split("\n", 1)[0] ?? "";
+  return firstLine.slice(0, NOTIFICATION_SUMMARY_CHARS);
+}
 
 export interface AutomationRunResult {
   /**
@@ -118,6 +127,15 @@ export async function executeAutomationRun(
       })
       .where(eq(schema.automationRuns.id, runId));
     emitServerEvent("runs");
+    if (automation.notifyOnCompletion) {
+      emitRunNotification({
+        runId,
+        automationId,
+        automationName: automation.name,
+        status: "success",
+        summary: notificationSummary(text),
+      });
+    }
     runLog.info({ durationMs: Date.now() - startedAt }, "automation run finished");
     succeeded = true;
   } catch (error) {
@@ -140,6 +158,15 @@ export async function executeAutomationRun(
       })
       .where(eq(schema.automationRuns.id, runId));
     emitServerEvent("runs");
+    if (automation.notifyOnCompletion) {
+      emitRunNotification({
+        runId,
+        automationId,
+        automationName: automation.name,
+        status: "error",
+        summary: notificationSummary(message),
+      });
+    }
   }
 
   return { started: true, succeeded, schedule: automation.schedule };

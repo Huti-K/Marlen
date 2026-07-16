@@ -73,8 +73,10 @@ function sweep(
     tiebreak,
     listAccounts: async () => Object.keys(candidatesByAccount).map(account),
     readerFor: () => ({
+      newestInbound: async () => null,
       listSentSince: async (acct) => candidatesByAccount[acct.id] ?? [],
       getMessageBody: async () => null,
+      getThread: async () => null,
     }),
   });
 }
@@ -334,7 +336,12 @@ describe("runMatchSweep — live-fetch batching and per-account failure isolatio
     await runMatchSweep({
       tiebreak: neverCalledTiebreak,
       listAccounts: async () => [account(accountId)],
-      readerFor: () => ({ listSentSince, getMessageBody: async () => null }),
+      readerFor: () => ({
+        newestInbound: async () => null,
+        listSentSince,
+        getMessageBody: async () => null,
+        getThread: async () => null,
+      }),
     });
 
     const callsForAccount = listSentSince.mock.calls.length;
@@ -369,11 +376,13 @@ describe("runMatchSweep — live-fetch batching and per-account failure isolatio
       tiebreak: neverCalledTiebreak,
       listAccounts: async () => [account(failing), account(healthy)],
       readerFor: () => ({
+        newestInbound: async () => null,
         listSentSince: async (acct) => {
           if (acct.id === failing) throw new Error("proxy timeout");
           return [message({ providerMessageId: "m-h", providerThreadId: "thread-h" })];
         },
         getMessageBody: async () => null,
+        getThread: async () => null,
       }),
     });
 

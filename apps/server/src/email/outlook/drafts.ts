@@ -10,6 +10,7 @@ import type {
 } from "../providers.js";
 import { snippetFrom, stripHtml } from "../textUtils.js";
 import { isConsumerOutlookAccount, outlookWebRoot, withOutlookLoginHint } from "../webLinks.js";
+import { addOutlookAttachments } from "./draftAttachments.js";
 import { addressListOf, GRAPH_API, type GraphRecipient, newestByReceivedDate } from "./message.js";
 
 /**
@@ -259,7 +260,17 @@ async function createOutlookDraft(
     ? await createOutlookReplyDraft(account, input, input.threadId)
     : await createStandaloneOutlookDraft(account, input);
 
-  draftsMutated(account.id);
+  // Graph can't attach files in the create call, so attachments are added to
+  // the just-created draft. A failure propagates (the error names the draft
+  // and the missing files; the draft survives for the user to fix up), but
+  // the cache invalidation still runs — the draft exists either way.
+  try {
+    if (input.attachments?.length) {
+      await addOutlookAttachments(account, res.id, input.attachments);
+    }
+  } finally {
+    draftsMutated(account.id);
+  }
   return {
     draftId: res.id,
     messageId: res.id,

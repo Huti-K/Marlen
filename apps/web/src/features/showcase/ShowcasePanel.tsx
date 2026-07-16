@@ -333,12 +333,15 @@ const DEMO_DRAFTS: AccountDrafts[] = [
 const DEMO_AUTOMATIONS: Automation[] = [
   {
     id: "auto-briefing",
-    name: "Morning briefing",
-    instruction: "Summarise what needs my attention across both inboxes.",
+    name: "Morgenbriefing",
+    instruction: "Fasse zusammen, was in beiden Postfächern meine Aufmerksamkeit braucht.",
     schedule: "0 8 * * 1-5",
     enabled: true,
     showInActivity: true,
     pinned: true,
+    leadId: null,
+    runOnNewMail: false,
+    notifyOnCompletion: false,
     createdAt: hoursAgo(720),
     nextRunAt: new Date(Date.now() + 5 * 3_600_000).toISOString(),
   },

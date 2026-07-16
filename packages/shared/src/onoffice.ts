@@ -11,6 +11,10 @@ export interface OnOfficeStatus {
   source: "settings" | "env" | null;
   /** The active API endpoint (the stable monthly one, or the latest override). */
   apiUrl: string;
+  /** Whether unattended automation runs may create CRM records (never modify/delete/send). */
+  automationCreates: boolean;
+  /** Whether chat sessions may modify, delete or send via the CRM (reads and creates are always available in chat). */
+  writeAccess: boolean;
 }
 
 /** Body of PUT /api/onoffice. Either field may be omitted to keep the saved one. */

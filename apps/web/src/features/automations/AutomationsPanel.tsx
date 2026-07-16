@@ -1,19 +1,7 @@
-import type { Automation, AutomationRun, AutomationSuggestion } from "@trailin/shared";
-import {
-  CalendarClock,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  Pin,
-  Play,
-  Plus,
-  Sparkles,
-} from "lucide-react";
+import type { Automation, AutomationSuggestion } from "@trailin/shared";
+import { CalendarClock, Loader2, Plus, Sparkles } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
-import { OpenRunInChatButton } from "@/components/OpenRunInChatButton";
-import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,32 +10,31 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
-import { LoadingRow } from "@/components/ui/feedback";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LinkButton } from "@/components/ui/link-button";
-import { Markdown } from "@/components/ui/markdown";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { AutomationCard } from "@/features/automations/AutomationCard";
 import {
   buildCron,
   DEFAULT_PRESET,
   daysInMonth,
-  monthDayLabel,
   monthName,
   parseCron,
   type SchedulePreset,
+  scheduleLabel,
   weekdayName,
   weekdayShortName,
 } from "@/features/automations/schedule";
 import { api } from "@/lib/api";
-import { dateTimeLabel } from "@/lib/dates";
+import { desktopBridge } from "@/lib/desktop";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
-import { cn, toggleRowProps } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
@@ -67,7 +54,13 @@ export function AutomationsPanel() {
   const [loading, setLoading] = React.useState(true);
   const [showForm, setShowForm] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", instruction: "", showInActivity: true });
+  const [form, setForm] = React.useState({
+    name: "",
+    instruction: "",
+    showInActivity: true,
+    runOnNewMail: false,
+    notifyOnCompletion: false,
+  });
   const [preset, setPreset] = React.useState<SchedulePreset>(DEFAULT_PRESET);
   const [cron, setCron] = React.useState("");
   const [advanced, setAdvanced] = React.useState(false);
@@ -115,7 +108,13 @@ export function AutomationsPanel() {
   });
 
   const resetForm = () => {
-    setForm({ name: "", instruction: "", showInActivity: true });
+    setForm({
+      name: "",
+      instruction: "",
+      showInActivity: true,
+      runOnNewMail: false,
+      notifyOnCompletion: false,
+    });
     setPreset(DEFAULT_PRESET);
     setCron("");
     setAdvanced(false);
@@ -187,6 +186,8 @@ export function AutomationsPanel() {
       name: automation.name,
       instruction: automation.instruction,
       showInActivity: automation.showInActivity,
+      runOnNewMail: automation.runOnNewMail,
+      notifyOnCompletion: automation.notifyOnCompletion,
     });
     const parsed = parseCron(automation.schedule);
     if (parsed) {
@@ -388,6 +389,47 @@ export function AutomationsPanel() {
             aria-label={t("automations.showInActivity")}
           />
         </div>
+
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <Label htmlFor="automation-run-on-new-mail">{t("automations.runOnNewMail")}</Label>
+            <p className="text-xs text-muted-foreground">{t("automations.runOnNewMailHint")}</p>
+          </div>
+          <Switch
+            id="automation-run-on-new-mail"
+            checked={form.runOnNewMail}
+            onCheckedChange={(v) => setForm({ ...form, runOnNewMail: v })}
+            aria-label={t("automations.runOnNewMail")}
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <Label htmlFor="automation-notify">{t("automations.notifyOnCompletion")}</Label>
+            <p className="text-xs text-muted-foreground">
+              {t("automations.notifyOnCompletionHint")}
+            </p>
+          </div>
+          <Switch
+            id="automation-notify"
+            checked={form.notifyOnCompletion}
+            onCheckedChange={(v) => {
+              setForm({ ...form, notifyOnCompletion: v });
+              // Browser tabs need a Notification grant, and requesting one is
+              // only allowed on a user gesture — this toggle is that gesture.
+              // The desktop shell notifies from its main process, no grant.
+              if (
+                v &&
+                !desktopBridge() &&
+                "Notification" in window &&
+                Notification.permission === "default"
+              ) {
+                void Notification.requestPermission();
+              }
+            }}
+            aria-label={t("automations.notifyOnCompletion")}
+          />
+        </div>
       </Dialog>
 
       {suggestions.length > 0 && (
@@ -462,32 +504,6 @@ export function AutomationsPanel() {
       />
     </div>
   );
-}
-
-/** "Weekdays · 08:00"-style label; null when the cron isn't picker-shaped. */
-function scheduleLabel(
-  schedule: string,
-  t: ReturnType<typeof useTranslation>["t"],
-  locale: string,
-): string | null {
-  const preset = parseCron(schedule);
-  if (!preset) return null;
-  switch (preset.frequency) {
-    case "daily":
-      return t("automations.scheduleLabel.daily", { time: preset.time });
-    case "weekdays":
-      return t("automations.scheduleLabel.weekdays", { time: preset.time });
-    case "custom":
-      return t("automations.scheduleLabel.custom", {
-        days: preset.weekdays.map((d) => weekdayShortName(d, locale)).join(", "),
-        time: preset.time,
-      });
-    case "date":
-      return t("automations.scheduleLabel.date", {
-        date: monthDayLabel(preset.month, preset.day, locale),
-        time: preset.time,
-      });
-  }
 }
 
 /** Multi-select day-of-week chips, Mon→Sun, used by the "custom" schedule. */
@@ -585,191 +601,5 @@ function SuggestionCard({
         </Button>
       </div>
     </Card>
-  );
-}
-
-function AutomationCard({
-  automation,
-  onChanged,
-  onEdit,
-}: {
-  automation: Automation;
-  onChanged: () => Promise<void>;
-  onEdit: () => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const [runs, setRuns] = React.useState<AutomationRun[] | null>(null);
-  const [expanded, setExpanded] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-
-  const label = scheduleLabel(automation.schedule, t, i18n.language);
-
-  const loadRuns = React.useCallback(async () => {
-    setRuns(await api.automationRuns(automation.id).catch(() => []));
-  }, [automation.id]);
-
-  React.useEffect(() => {
-    if (expanded) void loadRuns();
-  }, [expanded, loadRuns]);
-
-  // Keep polling while a run is in flight so "running" resolves on screen.
-  React.useEffect(() => {
-    if (!expanded || !runs?.some((r) => r.status === "running")) return;
-    const timer = setInterval(() => void loadRuns(), 2000);
-    return () => clearInterval(timer);
-  }, [expanded, runs, loadRuns]);
-
-  // Complements the polling: run started/finished elsewhere (schedule, chat).
-  useServerEvents(["runs"], () => {
-    if (expanded) void loadRuns();
-  });
-
-  const toggle = async (enabled: boolean) => {
-    setBusy(true);
-    try {
-      await api.updateAutomation(automation.id, { enabled });
-      await onChanged();
-    } catch (err) {
-      toast.error(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Pinning is exclusive server-side (setting one unpins any other), so a
-  // plain refetch after either direction is enough to keep every row in sync.
-  const togglePin = async () => {
-    setBusy(true);
-    try {
-      await api.setAutomationPinned(automation.id, !automation.pinned);
-      await onChanged();
-    } catch (err) {
-      toast.error(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runNow = async () => {
-    setBusy(true);
-    try {
-      await api.runAutomation(automation.id);
-      setExpanded(true);
-      // Give the run a moment to be recorded before the first poll.
-      setTimeout(() => void loadRuns(), 800);
-    } catch (err) {
-      toast.error(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Card padding="lg">
-      <div className="flex items-start justify-between gap-3">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="block min-w-0 flex-1 rounded-md text-left transition-opacity hover:opacity-80"
-        >
-          <div className="flex flex-wrap items-center gap-2 text-base font-semibold tracking-tight">
-            {automation.name}
-            <Badge
-              variant="muted"
-              className={cn("text-2xs", !label && "font-mono")}
-              title={automation.schedule}
-            >
-              {label ?? automation.schedule}
-            </Badge>
-            {!automation.enabled && <Badge variant="warning">{t("automations.paused")}</Badge>}
-            {!automation.showInActivity && (
-              <Badge variant="muted">{t("automations.hiddenFromActivity")}</Badge>
-            )}
-          </div>
-          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-            {automation.instruction}
-          </p>
-        </button>
-        <div className="flex shrink-0 items-center gap-1 pt-0.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => void togglePin()}
-            disabled={busy}
-            data-tooltip={automation.pinned ? t("automations.pinned") : t("automations.pin")}
-            aria-label={automation.pinned ? t("automations.pinned") : t("automations.pin")}
-          >
-            <Pin
-              className={cn(
-                "h-4 w-4",
-                automation.pinned ? "fill-accent/25 text-accent" : "text-muted-foreground",
-              )}
-            />
-          </Button>
-          <Switch
-            checked={automation.enabled}
-            onCheckedChange={(v) => void toggle(v)}
-            disabled={busy}
-            aria-label={t("automations.paused")}
-          />
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-4 pt-1">
-        <DisclosureToggle open={expanded} onToggle={() => setExpanded((v) => !v)}>
-          {t("automations.recentRuns")}
-        </DisclosureToggle>
-
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void runNow()} disabled={busy}>
-            <Play className="h-3.5 w-3.5 mr-1.5" /> {t("automations.runNow")}
-          </Button>
-        </div>
-      </div>
-      {expanded && (
-        <div className="mt-2 flex flex-col gap-2">
-          {!runs ? (
-            <LoadingRow />
-          ) : runs.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t("automations.noRuns")}</p>
-          ) : (
-            runs.map((run) => <RunItem key={run.id} run={run} />)
-          )}
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function RunItem({ run }: { run: AutomationRun }) {
-  const { i18n } = useTranslation();
-  const navigate = useNavigate();
-  const [expanded, setExpanded] = React.useState(false);
-  const hasResult = !!run.result;
-
-  const toggleExpanded = () => setExpanded(!expanded);
-
-  return (
-    <div className="rounded-lg bg-surface-2 p-3">
-      <div
-        className={cn("flex items-center gap-2", hasResult && "cursor-pointer")}
-        {...(hasResult ? toggleRowProps(expanded, toggleExpanded) : {})}
-      >
-        {hasResult &&
-          (expanded ? (
-            <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-          ))}
-        <RunStatusBadge status={run.status} />
-        <div className="ml-auto flex items-center gap-2">
-          <time dateTime={run.startedAt} className="text-xs text-muted-foreground">
-            {dateTimeLabel(run.startedAt, i18n.language)}
-          </time>
-          <OpenRunInChatButton runId={run.id} onNavigateToChat={() => navigate("/chat")} />
-        </div>
-      </div>
-      {expanded && hasResult && <Markdown content={run.result} className="mt-2 text-xs" />}
-    </div>
   );
 }

@@ -40,6 +40,9 @@ export const env = {
   databasePath: optional("DATABASE_PATH") ?? "./data/trailin.db",
   /** Default drop folder for the document library; a folder saved in the app wins. */
   libraryPath: optional("LIBRARY_PATH") ?? "./data/library",
+  // Where the built web app lives, when it isn't at the repo-relative default —
+  // the desktop shell (apps/desktop) sets this to its packaged copy.
+  webDistPath: optional("WEB_DIST_PATH"),
 
   agentProvider: optional("AGENT_PROVIDER") ?? "anthropic",
   agentModel: optional("AGENT_MODEL") ?? "claude-opus-4-8",

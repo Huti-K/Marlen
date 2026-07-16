@@ -15,6 +15,7 @@ import { backupRoutes } from "./routes/backup.js";
 import { chatRoutes } from "./routes/chat.js";
 import { draftRoutes } from "./routes/drafts.js";
 import { eventRoutes } from "./routes/events.js";
+import { leadsRoutes } from "./routes/leads.js";
 import { learnRoutes } from "./routes/learn.js";
 import { libraryRoutes } from "./routes/library.js";
 import { llmRoutes } from "./routes/llm.js";
@@ -83,6 +84,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(settingsRoutes);
   await app.register(draftRoutes);
   await app.register(memoryRoutes);
+  await app.register(leadsRoutes);
   await app.register(learnRoutes);
   await app.register(libraryRoutes);
   await app.register(mailRoutes);
@@ -92,7 +94,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // When the web app has been built, serve it from the same process so a
   // single `pnpm start` works on a desktop machine or a host.
-  const webDist = resolve(here, "../../web/dist");
+  const webDist = env.webDistPath ?? resolve(here, "../../web/dist");
   if (existsSync(webDist)) {
     await app.register(fastifyStatic, { root: webDist });
     app.setNotFoundHandler((req, reply) => {

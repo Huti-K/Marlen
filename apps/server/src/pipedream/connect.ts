@@ -7,7 +7,6 @@ import type {
 } from "@trailin/shared";
 import { EMAIL_APPS, POPULAR_APPS } from "@trailin/shared";
 import { deleteSetting, getSetting, setSetting } from "../db/settings.js";
-import { DEMO_ACCOUNTS, demoModeEnabled } from "../demo/accounts.js";
 import { env } from "../env.js";
 import { AppError } from "../errors.js";
 import { deleteClientSecret, readClientSecret, writeClientSecret } from "./secretFile.js";
@@ -308,14 +307,6 @@ async function fetchAccountsLive(): Promise<ConnectedAccount[]> {
  * still joins an in-flight fetch rather than starting a second one.
  */
 export async function listAccounts(opts: { refresh?: boolean } = {}): Promise<ConnectedAccount[]> {
-  // Dev-only demo overlay: prepend the synthetic mailboxes so seeded demo mail
-  // (demo/) is viewable in the UI and resolves for card account-name lookups.
-  // A best-effort live fetch still contributes any real accounts; when
-  // Pipedream isn't configured it simply adds none, so demo mode works offline.
-  if (demoModeEnabled()) {
-    const live = (await pipedreamConfigured()) ? await listRealAccounts(opts).catch(() => []) : [];
-    return [...DEMO_ACCOUNTS, ...live];
-  }
   return listRealAccounts(opts);
 }
 

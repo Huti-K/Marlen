@@ -1,3 +1,5 @@
+import type { useTranslation } from "react-i18next";
+
 /**
  * Plain-language schedule presets over cron. The server keeps storing cron
  * (node-cron is the authority); these helpers only translate between the
@@ -111,4 +113,30 @@ export function monthDayLabel(month: number, day: number, locale: string): strin
     day: "numeric",
     timeZone: "UTC",
   }).format(date);
+}
+
+/** "Weekdays · 08:00"-style label; null when the cron isn't picker-shaped. */
+export function scheduleLabel(
+  schedule: string,
+  t: ReturnType<typeof useTranslation>["t"],
+  locale: string,
+): string | null {
+  const preset = parseCron(schedule);
+  if (!preset) return null;
+  switch (preset.frequency) {
+    case "daily":
+      return t("automations.scheduleLabel.daily", { time: preset.time });
+    case "weekdays":
+      return t("automations.scheduleLabel.weekdays", { time: preset.time });
+    case "custom":
+      return t("automations.scheduleLabel.custom", {
+        days: preset.weekdays.map((d) => weekdayShortName(d, locale)).join(", "),
+        time: preset.time,
+      });
+    case "date":
+      return t("automations.scheduleLabel.date", {
+        date: monthDayLabel(preset.month, preset.day, locale),
+        time: preset.time,
+      });
+  }
 }

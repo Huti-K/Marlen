@@ -24,6 +24,12 @@ export interface AutomationInput {
   enabled?: boolean;
   showInActivity?: boolean;
   pinned?: boolean;
+  /** Also run immediately when the mail probe sees new inbound mail (automations/mailProbe.ts). */
+  runOnNewMail?: boolean;
+  /** Show a desktop notification when a run of this automation finishes. */
+  notifyOnCompletion?: boolean;
+  /** Lead this automation belongs to; it is deleted with the lead (leads/manage.ts). */
+  leadId?: string | null;
 }
 
 export interface AutomationPatch {
@@ -33,6 +39,8 @@ export interface AutomationPatch {
   enabled?: boolean;
   showInActivity?: boolean;
   pinned?: boolean;
+  runOnNewMail?: boolean;
+  notifyOnCompletion?: boolean;
 }
 
 /**
@@ -56,6 +64,13 @@ export async function createAutomation(input: AutomationInput): Promise<Automati
   if (!isValidCron(schedule)) {
     throw badRequest(`invalid cron expression: ${input.schedule}`);
   }
+  if (input.leadId) {
+    const [lead] = await db
+      .select({ id: schema.leads.id })
+      .from(schema.leads)
+      .where(eq(schema.leads.id, input.leadId));
+    if (!lead) throw badRequest(`no lead with id ${input.leadId}`);
+  }
   const automation: AutomationRow = {
     id: randomUUID(),
     name,
@@ -64,6 +79,9 @@ export async function createAutomation(input: AutomationInput): Promise<Automati
     enabled: input.enabled ?? true,
     showInActivity: input.showInActivity ?? true,
     pinned: input.pinned ?? false,
+    runOnNewMail: input.runOnNewMail ?? false,
+    notifyOnCompletion: input.notifyOnCompletion ?? false,
+    leadId: input.leadId ?? null,
     createdAt: new Date().toISOString(),
   };
   await db.insert(schema.automations).values(automation);
@@ -94,6 +112,10 @@ export async function updateAutomation(id: string, patch: AutomationPatch): Prom
   if (patch.enabled !== undefined) updates.enabled = patch.enabled;
   if (patch.showInActivity !== undefined) updates.showInActivity = patch.showInActivity;
   if (patch.pinned !== undefined) updates.pinned = patch.pinned;
+  if (patch.runOnNewMail !== undefined) updates.runOnNewMail = patch.runOnNewMail;
+  if (patch.notifyOnCompletion !== undefined) {
+    updates.notifyOnCompletion = patch.notifyOnCompletion;
+  }
   if (Object.keys(updates).length === 0) throw badRequest("nothing to update");
 
   // Must run before any mutation: pinExclusively unpins every other row,

@@ -8,14 +8,12 @@ const STORAGE_KEY = "trailin-language";
 
 /**
  * Language for the first paint: the last server-confirmed choice (mirrored in
- * localStorage), falling back to the browser locale. The server setting is the
- * source of truth — App syncs against it on load.
+ * localStorage), falling back to German — the app's default language. The
+ * server setting is the source of truth — App syncs against it on load.
  */
 function detectInitialLanguage(): Language {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (isLanguage(saved)) return saved;
-  const browser = navigator.language.slice(0, 2).toLowerCase();
-  return isLanguage(browser) ? browser : "en";
+  return isLanguage(saved) ? saved : "de";
 }
 
 /** Mirror the server-confirmed language so the next load paints correctly right away. */
@@ -26,7 +24,7 @@ export function rememberLanguage(language: Language): void {
 void i18n.use(initReactI18next).init({
   resources: { en: { translation: en }, de: { translation: de } },
   lng: detectInitialLanguage(),
-  fallbackLng: "en",
+  fallbackLng: "de",
   interpolation: { escapeValue: false }, // React already escapes
 });
 

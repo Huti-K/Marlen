@@ -21,6 +21,18 @@ import { createProviderRegistry } from "./registry.js";
  * across every provider instead of duplicated per provider.
  */
 
+/**
+ * One file to attach at draft creation. The caller passes fully resolved
+ * bytes (see library/draftAttachments.ts) — providers never fetch content
+ * themselves, and must persist the attachment on the stored draft so a later
+ * sendDraft dispatches it.
+ */
+export interface DraftAttachment {
+  filename: string;
+  mimeType: string;
+  content: Buffer;
+}
+
 export interface CreateDraftInput {
   to: string[];
   cc?: string[];
@@ -31,6 +43,8 @@ export interface CreateDraftInput {
   bodyFormat?: "text" | "html";
   /** Attach the draft to an existing conversation, where the provider supports it. */
   threadId?: string;
+  /** Files to attach, already resolved to bytes by the caller. */
+  attachments?: DraftAttachment[];
 }
 
 /** Body of DraftProvider.updateDraft: only body/subject are overridable. */
@@ -60,8 +74,8 @@ export interface DraftProvider {
    * Optional capability: not every provider can do this (yet), so routes
    * check for the method rather than assuming any one app. Absent means "not
    * supported for this account" — the route replies 400, provider-neutral.
-   * (Thread reading is not a provider concern at all — the thread viewer is
-   * served from the local mailbox mirror, email/sync/mailQuery.ts.)
+   * (Thread reading is a MailReadProvider concern — see
+   * email/read/readProviders.ts.)
    */
   updateDraft?(account: ConnectedAccount, draftId: string, patch: UpdateDraftPatch): Promise<void>;
   /**

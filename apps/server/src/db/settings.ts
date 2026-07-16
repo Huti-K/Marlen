@@ -116,6 +116,40 @@ const accountVoicesSetting = jsonArraySetting<AccountVoice>(ACCOUNT_VOICES_SETTI
 export const getAccountVoices = accountVoicesSetting.get;
 export const setAccountVoices = accountVoicesSetting.set;
 
+const ONOFFICE_AUTOMATION_CREATES_KEY = "onoffice.automationCreates";
+
+/**
+ * Whether unattended automation runs may use onOffice's create tools
+ * (address, appointment, task, relation). Off by default — mail content
+ * reaching an unattended run could otherwise plant records in the live CRM —
+ * so the user arms it explicitly under Settings → Permissions. Modify,
+ * delete and send stay interactive-only regardless of this flag.
+ */
+export async function getOnOfficeAutomationCreates(): Promise<boolean> {
+  return (await getSetting(ONOFFICE_AUTOMATION_CREATES_KEY)) === "true";
+}
+
+export async function setOnOfficeAutomationCreates(enabled: boolean): Promise<void> {
+  await setSetting(ONOFFICE_AUTOMATION_CREATES_KEY, enabled ? "true" : "false");
+}
+
+const ONOFFICE_WRITE_ACCESS_KEY = "onoffice.writeAccess";
+
+/**
+ * Whether interactive chat sessions may use onOffice's modify/delete/send
+ * tools (and raw batches). Off by default — the CRM is live business data,
+ * so the destructive surface stays read-plus-create until the user arms it
+ * under Settings → Permissions, mirroring the per-account email write access
+ * below. Unattended runs never get these tools regardless of this flag.
+ */
+export async function getOnOfficeWriteAccess(): Promise<boolean> {
+  return (await getSetting(ONOFFICE_WRITE_ACCESS_KEY)) === "true";
+}
+
+export async function setOnOfficeWriteAccess(enabled: boolean): Promise<void> {
+  await setSetting(ONOFFICE_WRITE_ACCESS_KEY, enabled ? "true" : "false");
+}
+
 const WRITE_ACCESS_SETTING_KEY = "account.writeAccess";
 const writeAccessSetting = jsonArraySetting<string>(WRITE_ACCESS_SETTING_KEY);
 

@@ -49,6 +49,30 @@ describe("loadOnOfficeTools — gating", () => {
     expect(names).toContain("onoffice_create_appointment");
   });
 
+  it("exposes reads and creates — but nothing destructive — when only creates are armed", async () => {
+    const names = (await loadOnOfficeTools({ allowWrites: false, allowCreates: true })).map(
+      (t) => t.name,
+    );
+    expect(names).toContain("onoffice_read");
+    expect(names).toContain("onoffice_create_address");
+    expect(names).toContain("onoffice_create_relation");
+    expect(names).toContain("onoffice_create_appointment");
+    expect(names).toContain("onoffice_create_task");
+    expect(names).toContain("onoffice_create_agentslog");
+    // The generic create can write any module, so it stays with the
+    // destructive surface.
+    for (const write of [
+      "onoffice_create",
+      "onoffice_modify",
+      "onoffice_delete",
+      "onoffice_do",
+      "onoffice_raw_request",
+      "onoffice_send_email",
+    ]) {
+      expect(names).not.toContain(write);
+    }
+  });
+
   it("withholds every mutating tool when writes are disallowed", async () => {
     const names = (await loadOnOfficeTools({ allowWrites: false })).map((t) => t.name);
     // Reads stay.
@@ -67,6 +91,7 @@ describe("loadOnOfficeTools — gating", () => {
       "onoffice_create_relation",
       "onoffice_create_appointment",
       "onoffice_create_task",
+      "onoffice_create_agentslog",
     ]) {
       expect(names).not.toContain(write);
     }

@@ -97,6 +97,12 @@ export const automations = sqliteTable("automations", {
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   showInActivity: integer("show_in_activity", { mode: "boolean" }).notNull().default(true),
   pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+  /** Lead this automation belongs to (leads.id, deleted with it); null for standalone ones. */
+  leadId: text("lead_id"),
+  /** Also run immediately when the mail probe sees new inbound mail. */
+  runOnNewMail: integer("run_on_new_mail", { mode: "boolean" }).notNull().default(false),
+  /** Show a desktop notification when a run finishes. */
+  notifyOnCompletion: integer("notify_on_completion", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
 });
 
@@ -186,6 +192,41 @@ export const voiceLearnRuns = sqliteTable("voice_learn_runs", {
   error: text("error"),
   startedAt: text("started_at").notNull(),
   finishedAt: text("finished_at"),
+});
+
+/**
+ * The leads directory (db/leads.ts): one row per prospect, keyed by
+ * normalized email address. Status tracks the lifecycle from first interest
+ * to won/lost; the two last_*_at columns record the latest message in each
+ * direction so follow-up automations can reason about who owes whom a reply.
+ */
+export const leads = sqliteTable("leads", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().default(""),
+  email: text("email").notNull().unique(),
+  phone: text("phone").notNull().default(""),
+  /** Connected account the correspondence runs through; "" when unknown. */
+  accountId: text("account_id").notNull().default(""),
+  source: text("source", { enum: ["email", "manual", "onoffice"] })
+    .notNull()
+    .default("email"),
+  /** Linked onOffice address record id, once the lead exists in the CRM. */
+  onofficeAddressId: text("onoffice_address_id"),
+  status: text("status", { enum: ["new", "contacted", "engaged", "qualified", "won", "lost"] })
+    .notNull()
+    .default("new"),
+  interest: text("interest").notNull().default(""),
+  /** Buyer type in a few words (e.g. "Kapitalanleger"); "" while unknown. */
+  persona: text("persona").notNull().default(""),
+  /** Estimated purchase likelihood; "" while unassessed. */
+  score: text("score", { enum: ["high", "medium", "low", ""] })
+    .notNull()
+    .default(""),
+  notes: text("notes").notNull().default(""),
+  lastInboundAt: text("last_inbound_at"),
+  lastOutboundAt: text("last_outbound_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 /**

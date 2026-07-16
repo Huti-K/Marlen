@@ -70,9 +70,11 @@ function sweep(
     extract,
     listAccounts: async () => accountIds.map(account),
     readerFor: () => ({
+      newestInbound: async () => null,
       listSentSince: async () => [],
       getMessageBody: async (_acct, providerMessageId) =>
         bodiesByMessageId[providerMessageId] ?? null,
+      getThread: async () => null,
     }),
   });
 }
@@ -198,10 +200,12 @@ describe("runExtractionSweep — unresolved sent message", () => {
       extract: neverCalledExtract,
       listAccounts: async () => [account(accountId)],
       readerFor: () => ({
+        newestInbound: async () => null,
         listSentSince: async () => [],
         getMessageBody: async () => {
           throw new Error("proxy timeout");
         },
+        getThread: async () => null,
       }),
     });
 

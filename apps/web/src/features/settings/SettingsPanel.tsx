@@ -28,7 +28,7 @@ import { Select } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ConnectionsPanel } from "@/features/connections/ConnectionsPanel";
 import { Providers } from "@/features/settings/Providers";
-import { WriteAccess } from "@/features/settings/WriteAccess";
+import { OnOfficePermissions, WriteAccess } from "@/features/settings/WriteAccess";
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { type QuickActionMode, useQuickActionMode } from "@/lib/quickActions";
@@ -142,6 +142,7 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
         }
       >
         <WriteAccess onState={setArmedCount} />
+        <OnOfficePermissions />
       </Section>
 
       <Section

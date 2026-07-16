@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, type LucideIcon, TriangleAlert, X } from "lu
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { NAV_ITEMS } from "@/lib/nav";
+import { visibleNavItems } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
@@ -118,7 +118,7 @@ export function Sidebar({ status, onClose, isCollapsed, onCollapsedChange }: Sid
           isCollapsed ? "px-3 md:px-2 md:items-center" : "px-3",
         )}
       >
-        {NAV_ITEMS.map(({ id, path, icon }) => {
+        {visibleNavItems(Boolean(status?.onofficeConfigured)).map(({ id, path, icon }) => {
           const isActive =
             location.pathname === path || (path !== "/" && location.pathname.startsWith(path));
           return (

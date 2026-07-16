@@ -158,3 +158,41 @@ describe("automation_delete", () => {
     expect(textOf(result)).toContain("No automation with id does-not-exist");
   });
 });
+
+describe("runOnNewMail and notifyOnCompletion flags", () => {
+  it("round-trips both flags through automation_create and automation_update", async () => {
+    await automationCreate.execute("call-11", {
+      name: "Mail reactor",
+      instruction: "React to new mail",
+      schedule: "0 7 * * *",
+      runOnNewMail: true,
+      notifyOnCompletion: true,
+    } as never);
+    let row = await onlyAutomation();
+    expect(row.runOnNewMail).toBe(true);
+    expect(row.notifyOnCompletion).toBe(true);
+
+    await automationUpdate.execute("call-12", {
+      id: row.id,
+      runOnNewMail: false,
+      notifyOnCompletion: false,
+    } as never);
+    row = await onlyAutomation();
+    expect(row.runOnNewMail).toBe(false);
+    expect(row.notifyOnCompletion).toBe(false);
+  });
+
+  it("defaults both flags to false when omitted on create", async () => {
+    const row = await onlyAutomation();
+    await automationDelete.execute("call-13", { id: row.id } as never);
+
+    await automationCreate.execute("call-14", {
+      name: "Plain digest",
+      instruction: "Summarize the inbox",
+      schedule: "0 7 * * *",
+    } as never);
+    const created = await onlyAutomation();
+    expect(created.runOnNewMail).toBe(false);
+    expect(created.notifyOnCompletion).toBe(false);
+  });
+});

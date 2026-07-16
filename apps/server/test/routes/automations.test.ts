@@ -97,6 +97,42 @@ describe("POST /api/automations/:id/run — not-found", () => {
   });
 });
 
+describe("automation flags — runOnNewMail and notifyOnCompletion", () => {
+  it("defaults both flags to false on create", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/automations",
+      payload: { name: "Plain digest", instruction: "summarize inbox", schedule: "0 8 * * *" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ runOnNewMail: false, notifyOnCompletion: false });
+  });
+
+  it("round-trips both flags through create and patch", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/automations",
+      payload: {
+        name: "Inbox reactor",
+        instruction: "React to new mail.",
+        schedule: "0 8 * * *",
+        runOnNewMail: true,
+        notifyOnCompletion: true,
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({ runOnNewMail: true, notifyOnCompletion: true });
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/automations/${created.json().id}`,
+      payload: { runOnNewMail: false, notifyOnCompletion: false },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json()).toMatchObject({ runOnNewMail: false, notifyOnCompletion: false });
+  });
+});
+
 describe("automation suggestions — accept and dismiss", () => {
   it("answers accept/dismiss for an unknown id with 404", async () => {
     for (const action of ["accept", "dismiss"]) {

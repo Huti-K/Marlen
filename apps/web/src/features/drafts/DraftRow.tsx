@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { ThreadHistory } from "@/components/ThreadHistory";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -319,6 +320,8 @@ export function DraftRow({
                   </div>
                 )}
               </div>
+
+              <ThreadHistory accountId={accountId} threadId={draft.threadId} />
             </div>
           )}
         </div>

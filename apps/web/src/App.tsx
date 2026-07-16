@@ -30,6 +30,7 @@ import { FocusChip } from "@/features/chat/FocusChip";
 import { HistoryList } from "@/features/chat/HistoryList";
 import { HomePanel } from "@/features/home/HomePanel";
 import { KnowledgePanel } from "@/features/knowledge/KnowledgePanel";
+import { LeadsPanel } from "@/features/leads/LeadsPanel";
 import { SettingsPanel } from "@/features/settings/SettingsPanel";
 import { SetupGate } from "@/features/setup/SetupGate";
 import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showcase — delete with its route
@@ -37,7 +38,9 @@ import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { NAV_VIEWS, SHOWCASE_NAV, type View } from "@/lib/nav";
 import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
+import { useDesktopUpdate } from "@/lib/useDesktopUpdate";
 import { useResizableWidth } from "@/lib/useResizableWidth";
+import { useRunNotifications } from "@/lib/useRunNotifications";
 import { useTheme } from "@/lib/useTheme";
 import { cn, MOD_LABEL } from "@/lib/utils";
 
@@ -53,7 +56,7 @@ function isNavView(path: string): path is View {
   return (NAV_VIEWS as readonly string[]).includes(path);
 }
 
-/** Adopt the server's language setting; on first run, seed it from the browser locale. */
+/** Adopt the server's language setting; on first run, seed it from the client's initial language (the German default unless localStorage says otherwise). */
 function useServerLanguage() {
   const { i18n } = useTranslation();
   React.useEffect(() => {
@@ -167,6 +170,8 @@ export default function App() {
   });
   useServerLanguage();
   useServerTimezone();
+  useDesktopUpdate();
+  useRunNotifications();
 
   const refreshStatus = React.useCallback(() => {
     api
@@ -402,6 +407,19 @@ export default function App() {
                   not here — this route just keeps the URL valid so it isn't redirected home. */}
               <Route path="/chat" element={null} />
               <Route path="/settings" element={<SettingsPanel onStatusChanged={refreshStatus} />} />
+              {/* Leads exist only alongside a connected onOffice CRM. While status
+                  is still loading nothing renders — redirecting then would kick a
+                  direct /leads visit home on every reload. */}
+              <Route
+                path="/leads"
+                element={
+                  status === null ? null : status.onofficeConfigured ? (
+                    <LeadsPanel />
+                  ) : (
+                    <Navigate to="/" replace />
+                  )
+                }
+              />
               <Route path="/automations" element={<AutomationsPanel />} />
               <Route path="/knowledge" element={<KnowledgePanel />} />
               {/* DEV showcase / theme lab — delete this line and the ShowcasePanel file to remove. */}
@@ -651,7 +669,7 @@ export default function App() {
       </Dialog>
       <Toaster />
       <CursorTooltip />
-      <SearchPalette />
+      <SearchPalette onofficeConfigured={Boolean(status?.onofficeConfigured)} />
       <AttachmentViewer />
     </div>
   );

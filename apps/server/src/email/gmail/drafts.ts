@@ -1,9 +1,12 @@
+import { randomUUID } from "node:crypto";
 import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
 import { moduleLogger } from "../../logger.js";
 import { proxyRequest } from "../../pipedream/connect.js";
+import { contentDisposition } from "../../routes/fileResponse.js";
 import { draftsMutated } from "../draftsService.js";
 import type {
   CreateDraftInput,
+  DraftAttachment,
   DraftProvider,
   SendDraftResult,
   UpdateDraftPatch,
@@ -15,6 +18,7 @@ import {
   headerLookup,
   type MessagePart,
   plainTextBody,
+  type ThreadGetResponse,
 } from "./message.js";
 
 /**
@@ -101,15 +105,6 @@ async function getGmailDraftDetail(
   return { body: plainTextBody(payload), cc: header("Cc"), bcc: header("Bcc") };
 }
 
-interface ThreadGetResponse {
-  messages?: {
-    id?: string;
-    internalDate?: string;
-    labelIds?: string[];
-    payload?: MessagePart & { headers?: { name: string; value: string }[] };
-  }[];
-}
-
 async function deleteGmailDraft(account: ConnectedAccount, draftId: string): Promise<void> {
   await proxyRequest(account.id, "delete", `${GMAIL_API}/drafts/${draftId}`);
   draftsMutated(account.id);
@@ -137,14 +132,53 @@ function assertSafeHeaderValue(header: string, value: string): void {
 }
 
 /**
+ * Body headers + base64 content of the text part every raw message carries —
+ * emitted at the top level of a single-part message, or as the first part of
+ * a multipart/mixed one, so a message without attachments keeps the exact
+ * byte layout it always had.
+ */
+function textPartLines(body: string, bodyFormat?: "text" | "html"): string[] {
+  return [
+    `Content-Type: text/${bodyFormat === "html" ? "html" : "plain"}; charset=UTF-8`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    Buffer.from(body, "utf8").toString("base64"),
+  ];
+}
+
+/**
+ * One attachment as MIME part lines (without boundary delimiters). The
+ * Content-Disposition carries an ASCII `filename` fallback plus the exact
+ * name via RFC 5987/6266 `filename*`, so names like "Exposé.pdf" survive.
+ */
+function attachmentPartLines(attachment: DraftAttachment): string[] {
+  // Filenames trace back to library file names on disk; a CR/LF in one would
+  // smuggle extra MIME headers, same as a recipient (see assertSafeHeaderValue).
+  assertSafeHeaderValue("attachment filename", attachment.filename);
+  const ascii = attachment.filename.replace(/[\\"]/g, "").replace(/[^\x20-\x7e]/g, "_");
+  return [
+    `Content-Type: ${attachment.mimeType}; name="${ascii}"`,
+    `Content-Disposition: ${contentDisposition("attachment", attachment.filename)}`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    attachment.content.toString("base64"),
+  ];
+}
+
+/**
  * Build the RFC822 `raw` MIME message Gmail's drafts.create/drafts.update
  * both take. Recipients are already-joined header strings (not arrays) so a
  * caller preserving an existing draft's To/Cc/Bcc can pass the header value
  * straight through without a lossy split/rejoin round-trip.
  *
- * `extraHeaders` are emitted verbatim. drafts.update replaces the whole
- * message, so an updating caller must pass back every header it wants to
- * survive — see PRESERVED_HEADERS.
+ * `extraHeaders` are emitted verbatim, always at the top level (so
+ * In-Reply-To/References keep threading intact whether or not the message is
+ * multipart). drafts.update replaces the whole message, so an updating caller
+ * must pass back every header it wants to survive — see PRESERVED_HEADERS.
+ *
+ * With attachments the message becomes multipart/mixed: the text body part
+ * first, then one part per attachment. Without them the output is the same
+ * single-part message as ever.
  */
 function buildRawMessage(input: {
   to: string;
@@ -154,24 +188,43 @@ function buildRawMessage(input: {
   body: string;
   extraHeaders?: string[];
   bodyFormat?: "text" | "html";
+  attachments?: DraftAttachment[];
 }): string {
   assertSafeHeaderValue("To", input.to);
   if (input.cc) assertSafeHeaderValue("Cc", input.cc);
   if (input.bcc) assertSafeHeaderValue("Bcc", input.bcc);
 
-  const lines = [
+  const headerLines = [
     `To: ${input.to}`,
     ...(input.cc ? [`Cc: ${input.cc}`] : []),
     ...(input.bcc ? [`Bcc: ${input.bcc}`] : []),
     `Subject: ${encodeHeaderWord(input.subject)}`,
     ...(input.extraHeaders ?? []),
     "MIME-Version: 1.0",
-    `Content-Type: text/${input.bodyFormat === "html" ? "html" : "plain"}; charset=UTF-8`,
-    "Content-Transfer-Encoding: base64",
-    "",
-    Buffer.from(input.body, "utf8").toString("base64"),
   ];
+
+  const lines =
+    input.attachments && input.attachments.length > 0
+      ? [...headerLines, ...multipartMixedLines(input.body, input.bodyFormat, input.attachments)]
+      : [...headerLines, ...textPartLines(input.body, input.bodyFormat)];
   return Buffer.from(lines.join("\r\n"), "utf8").toString("base64url");
+}
+
+/** The multipart/mixed body: text part first, then one part per attachment. */
+function multipartMixedLines(
+  body: string,
+  bodyFormat: "text" | "html" | undefined,
+  attachments: DraftAttachment[],
+): string[] {
+  const boundary = `part-${randomUUID()}`;
+  return [
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    ...textPartLines(body, bodyFormat),
+    ...attachments.flatMap((attachment) => [`--${boundary}`, ...attachmentPartLines(attachment)]),
+    `--${boundary}--`,
+  ];
 }
 
 /**
@@ -232,6 +285,7 @@ async function createGmailDraft(
     subject: input.subject,
     body: input.body,
     ...(input.bodyFormat ? { bodyFormat: input.bodyFormat } : {}),
+    ...(input.attachments?.length ? { attachments: input.attachments } : {}),
     ...(threadingHeaders
       ? {
           extraHeaders: [
@@ -251,8 +305,68 @@ async function createGmailDraft(
 }
 
 /**
+ * Depth-first walk collecting every part with a non-empty filename — Gmail's
+ * own definition of "this part is an attachment" (mirrors
+ * ./attachments.ts's collectAttachments). Small parts carry their bytes
+ * inline as base64url `body.data`; larger ones only a `body.attachmentId`.
+ */
+function collectAttachmentParts(
+  part: MessagePart | undefined,
+  out: { filename: string; mimeType: string; data?: string; attachmentId?: string }[],
+): void {
+  if (!part) return;
+  if (part.filename) {
+    out.push({
+      filename: part.filename,
+      mimeType: part.mimeType ?? "application/octet-stream",
+      ...(part.body?.data ? { data: part.body.data } : {}),
+      ...(part.body?.attachmentId ? { attachmentId: part.body.attachmentId } : {}),
+    });
+  }
+  for (const child of part.parts ?? []) collectAttachmentParts(child, out);
+}
+
+/**
+ * The draft message's attachments with their bytes resolved — inline parts
+ * decoded directly, ref-only parts downloaded via the attachments endpoint.
+ * updateGmailDraft re-embeds these when it rebuilds the raw message, since
+ * drafts.update replaces the whole message and would otherwise drop them.
+ */
+async function fetchDraftAttachments(
+  account: ConnectedAccount,
+  messageId: string,
+  payload: MessagePart | undefined,
+): Promise<DraftAttachment[]> {
+  const parts: { filename: string; mimeType: string; data?: string; attachmentId?: string }[] = [];
+  collectAttachmentParts(payload, parts);
+
+  const resolved: DraftAttachment[] = [];
+  for (const part of parts) {
+    let content: Buffer;
+    if (part.data) {
+      content = Buffer.from(part.data, "base64url");
+    } else if (part.attachmentId) {
+      const fetched = (await proxyRequest(
+        account.id,
+        "get",
+        `${GMAIL_API}/messages/${messageId}/attachments/${part.attachmentId}`,
+      )) as { data?: string };
+      if (!fetched.data) {
+        throw new Error(`Gmail returned no data for attachment "${part.filename}".`);
+      }
+      content = Buffer.from(fetched.data, "base64url");
+    } else {
+      continue;
+    }
+    resolved.push({ filename: part.filename, mimeType: part.mimeType, content });
+  }
+  return resolved;
+}
+
+/**
  * Gmail's drafts.get (format=full), read for exactly the fields
- * updateGmailDraft needs to preserve when the caller doesn't override them.
+ * updateGmailDraft needs to preserve when the caller doesn't override them —
+ * including the draft's attachments, with bytes.
  */
 async function fetchGmailDraftFull(
   account: ConnectedAccount,
@@ -265,17 +379,20 @@ async function fetchGmailDraftFull(
   body: string;
   threadId: string;
   extraHeaders: string[];
+  attachments: DraftAttachment[];
 }> {
   const full = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts/${draftId}`, {
     params: { format: "full" },
   })) as {
     message?: {
+      id?: string;
       threadId?: string;
       payload?: MessagePart & { headers?: { name: string; value: string }[] };
     };
   };
   const payload = full.message?.payload;
   const header = headerLookup(payload);
+  const messageId = full.message?.id;
   return {
     to: header("To"),
     cc: header("Cc"),
@@ -286,6 +403,7 @@ async function fetchGmailDraftFull(
     extraHeaders: PRESERVED_HEADERS.filter((name) => header(name)).map(
       (name) => `${name}: ${header(name)}`,
     ),
+    attachments: messageId ? await fetchDraftAttachments(account, messageId, payload) : [],
   };
 }
 
@@ -293,8 +411,9 @@ async function fetchGmailDraftFull(
  * Save a draft's body/subject exactly as the caller passed them — no
  * humanizer, no signature (those are the create-draft tool's job, not this
  * endpoint's). Everything the caller doesn't override (to/cc/bcc/threadId,
- * PRESERVED_HEADERS) is fetched from the current draft first, since Gmail's
- * drafts.update replaces the whole message rather than patching headers.
+ * PRESERVED_HEADERS, attachments) is fetched from the current draft first,
+ * since Gmail's drafts.update replaces the whole message rather than
+ * patching headers.
  *
  * The rebuilt message is always text/plain. A draft composed in Gmail's own
  * web UI is text/html, so saving an edit to one converts it to the plain text
@@ -314,6 +433,7 @@ async function updateGmailDraft(
     subject: input.subject ?? current.subject,
     body: input.body ?? current.body,
     extraHeaders: current.extraHeaders,
+    ...(current.attachments.length > 0 ? { attachments: current.attachments } : {}),
   });
 
   await proxyRequest(account.id, "put", `${GMAIL_API}/drafts/${draftId}`, {

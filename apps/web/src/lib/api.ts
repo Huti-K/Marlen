@@ -13,7 +13,10 @@ import type {
   ConnectTokenResponse,
   Conversation,
   EmailRef,
+  EmailThreadMessage,
   Language,
+  Lead,
+  LeadStatus,
   LearnStatus,
   LibrarySearchHit,
   LibraryStatus,
@@ -184,6 +187,12 @@ export const api = {
   onOfficeStatus: () => get<OnOfficeStatus>("/api/onoffice"),
   saveOnOffice: (body: OnOfficeConfigInput) => http<OnOfficeStatus>("PUT", "/api/onoffice", body),
   clearOnOffice: () => http<OnOfficeStatus>("DELETE", "/api/onoffice"),
+  // Arm/disarm the CRM create tools for unattended automation runs.
+  setOnOfficeAutomationCreates: (enabled: boolean) =>
+    http<OnOfficeStatus>("PUT", "/api/onoffice/automation-creates", { enabled }),
+  // Arm/disarm the CRM modify/delete/send tools for chat sessions.
+  setOnOfficeWriteAccess: (enabled: boolean) =>
+    http<OnOfficeStatus>("PUT", "/api/onoffice/write-access", { enabled }),
 
   /** Global search across chats, digests, drafts, documents and memories (command palette). */
   search: (q: string) => get<{ results: SearchResult[] }>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -263,6 +272,8 @@ export const api = {
     instruction: string;
     schedule: string;
     showInActivity?: boolean;
+    runOnNewMail?: boolean;
+    notifyOnCompletion?: boolean;
   }) => http<Automation>("POST", "/api/automations", body),
   updateAutomation: (id: string, body: Partial<Automation>) =>
     http<Automation>("PATCH", `/api/automations/${encodeURIComponent(id)}`, body),
@@ -281,6 +292,25 @@ export const api = {
     http<Automation>("POST", `/api/automations/suggestions/${encodeURIComponent(id)}/accept`),
   dismissAutomationSuggestion: (id: string) =>
     http<{ ok: boolean }>("POST", `/api/automations/suggestions/${encodeURIComponent(id)}/dismiss`),
+
+  leads: (status?: LeadStatus) =>
+    get<Lead[]>(`/api/leads${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  // Intake upsert: one lead per address — recording a known one merges instead
+  // of duplicating, and `created` says which of the two happened.
+  recordLead: (body: {
+    email: string;
+    name?: string;
+    phone?: string;
+    interest?: string;
+    notes?: string;
+  }) => http<{ lead: Lead; created: boolean }>("POST", "/api/leads", body),
+  updateLead: (id: string, patch: Partial<Omit<Lead, "id" | "email" | "source">>) =>
+    http<Lead>("PATCH", `/api/leads/${encodeURIComponent(id)}`, patch),
+  // Also deletes every automation attached to the lead.
+  deleteLead: (id: string) =>
+    http<{ ok: boolean }>("DELETE", `/api/leads/${encodeURIComponent(id)}`),
+  leadAutomations: (id: string) =>
+    get<Automation[]>(`/api/leads/${encodeURIComponent(id)}/automations`),
 
   memories: () => get<MemoryEntry[]>("/api/memories"),
   // accountId/contactId are only sent when the caller passes them explicitly —
@@ -335,6 +365,12 @@ export const api = {
   openLibraryDocument: (id: string): void => {
     openExternal(`/api/library/documents/${encodeURIComponent(id)}/open`);
   },
+  /** One thread's conversation (drafts excluded), read live — the drafts' collapsible history. */
+  threadDetail: (accountId: string, threadId: string) =>
+    get<{ subject: string; messages: EmailThreadMessage[] }>(
+      `/api/mail/threads?accountId=${encodeURIComponent(accountId)}` +
+        `&threadId=${encodeURIComponent(threadId)}`,
+    ),
   /** URL that streams an email attachment's bytes — inline for viewable types, download otherwise. */
   mailAttachmentUrl: (accountId: string, messageId: string, filename: string): string =>
     `/api/mail/attachments/open?accountId=${encodeURIComponent(accountId)}` +

@@ -1,11 +1,12 @@
-import type { ServerEvent, ServerEventTopic } from "@trailin/shared";
+import type { RunNotification, ServerEvent, ServerEventTopic } from "@trailin/shared";
 import * as React from "react";
 
 /**
- * One shared EventSource on GET /api/events. Created when the first panel
- * subscribes, closed when the last unsubscribes. Events are debounced per
+ * One shared EventSource on GET /api/events. Created when the first
+ * subscriber appears, closed when the last leaves. Events are debounced per
  * topic so a burst of server-side changes (an agent creating three drafts)
- * causes one refetch, not three.
+ * causes one refetch, not three — except "notification" events, whose
+ * payloads are each delivered (see subscribeRunNotifications).
  */
 
 const DEBOUNCE_MS = 300;
@@ -28,6 +29,7 @@ interface Subscription {
 }
 
 const subscriptions = new Set<Subscription>();
+const notificationHandlers = new Set<(notification: RunNotification) => void>();
 const timers = new Map<ServerEventTopic, ReturnType<typeof setTimeout>>();
 let source: EventSource | null = null;
 let dropped = false;
@@ -37,6 +39,11 @@ let lastAlive = 0;
 
 function markAlive(): void {
   lastAlive = Date.now();
+}
+
+/** True while anyone — topic subscription or notification handler — needs the stream. */
+function hasSubscribers(): boolean {
+  return subscriptions.size > 0 || notificationHandlers.size > 0;
 }
 
 function dispatch(topic: ServerEventTopic): void {
@@ -55,6 +62,15 @@ function connect(): void {
     try {
       event = JSON.parse(e.data) as ServerEvent;
     } catch {
+      return;
+    }
+    // "notification" events carry a payload each — the per-topic debounce
+    // would swallow all but the last of a burst, so they dispatch immediately
+    // to their own handler set instead.
+    if (event.topic === "notification") {
+      if (event.notification) {
+        for (const handler of notificationHandlers) handler(event.notification);
+      }
       return;
     }
     const pending = timers.get(event.topic);
@@ -78,7 +94,7 @@ function connect(): void {
       source = null;
       reconnectTimer ??= setTimeout(() => {
         reconnectTimer = null;
-        if (subscriptions.size > 0 && !source) connect();
+        if (hasSubscribers() && !source) connect();
       }, RECONNECT_MS);
     }
   };
@@ -116,13 +132,34 @@ function disconnect(): void {
   timers.clear();
 }
 
+/** Close the shared EventSource once the last subscriber of either kind is gone. */
+function maybeDisconnect(): void {
+  if (!hasSubscribers()) disconnect();
+}
+
 function subscribeServerEvents(topics: ServerEventTopic[], handler: () => void): () => void {
   const sub: Subscription = { topics, handler };
   subscriptions.add(sub);
   if (!source) connect();
   return () => {
     subscriptions.delete(sub);
-    if (subscriptions.size === 0) disconnect();
+    maybeDisconnect();
+  };
+}
+
+/**
+ * Payload-carrying subscription to finished notify-flagged runs. Counts as a
+ * subscriber of the shared EventSource just like a topic subscription; the
+ * handler receives every notification undebounced.
+ */
+export function subscribeRunNotifications(
+  handler: (notification: RunNotification) => void,
+): () => void {
+  notificationHandlers.add(handler);
+  if (!source) connect();
+  return () => {
+    notificationHandlers.delete(handler);
+    maybeDisconnect();
   };
 }
 

@@ -1,5 +1,5 @@
-import type { ConnectedAccount } from "@trailin/shared";
-import { Mail, ShieldCheck, TriangleAlert } from "lucide-react";
+import type { ConnectedAccount, OnOfficeStatus } from "@trailin/shared";
+import { Building2, Mail, ShieldCheck, TriangleAlert } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -153,6 +153,148 @@ export function WriteAccess({ onState }: { onState?: (armedCount: number) => voi
         confirmLabel={t("settings.permissions.confirmCta")}
         busy={confirmBusy}
         onConfirm={() => void confirmArm()}
+      />
+    </>
+  );
+}
+
+/**
+ * The onOffice rows of the Permissions section, hidden entirely while
+ * onOffice isn't configured. Two independent switches over one fetched
+ * status, both with the account rows' arm-with-confirm, disarm-immediately
+ * pattern:
+ * - write access: arms the CRM modify/delete/send tools for chat sessions —
+ *   the onOffice counterpart of the per-account email rows above;
+ * - automation creates: lets unattended automation runs create additive
+ *   records (address, appointment, task, relation).
+ */
+export function OnOfficePermissions() {
+  const { t } = useTranslation();
+  const [status, setStatus] = React.useState<OnOfficeStatus | null>(null);
+
+  React.useEffect(() => {
+    api
+      .onOfficeStatus()
+      .then(setStatus)
+      .catch(() => {});
+  }, []);
+
+  if (!status?.configured) return null;
+
+  return (
+    <>
+      <OnOfficeToggleRow
+        switchId="onoffice-write-access"
+        armed={status.writeAccess}
+        persist={(enabled) => api.setOnOfficeWriteAccess(enabled)}
+        onStatus={setStatus}
+        texts={{
+          title: t("settings.permissions.onofficeWrites.title"),
+          rowOn: t("settings.permissions.onofficeWrites.rowOn"),
+          rowOff: t("settings.permissions.onofficeWrites.rowOff"),
+          confirmTitle: t("settings.permissions.onofficeWrites.confirmTitle"),
+          confirmBody: t("settings.permissions.onofficeWrites.confirmBody"),
+          confirmCta: t("settings.permissions.onofficeWrites.confirmCta"),
+        }}
+      />
+      <OnOfficeToggleRow
+        switchId="onoffice-automation-creates"
+        armed={status.automationCreates}
+        persist={(enabled) => api.setOnOfficeAutomationCreates(enabled)}
+        onStatus={setStatus}
+        texts={{
+          title: t("settings.permissions.onoffice.title"),
+          rowOn: t("settings.permissions.onoffice.rowOn"),
+          rowOff: t("settings.permissions.onoffice.rowOff"),
+          confirmTitle: t("settings.permissions.onoffice.confirmTitle"),
+          confirmBody: t("settings.permissions.onoffice.confirmBody"),
+          confirmCta: t("settings.permissions.onoffice.confirmCta"),
+        }}
+      />
+    </>
+  );
+}
+
+/** The row's copy, resolved by the parent so keys stay literal for i18next's typing. */
+interface OnOfficeToggleTexts {
+  title: string;
+  rowOn: string;
+  rowOff: string;
+  confirmTitle: string;
+  confirmBody: string;
+  confirmCta: string;
+}
+
+/** One armable onOffice permission: warning-tinted row + confirm-before-arm dialog. */
+function OnOfficeToggleRow({
+  switchId,
+  armed,
+  persist,
+  onStatus,
+  texts,
+}: {
+  switchId: string;
+  armed: boolean;
+  persist: (enabled: boolean) => Promise<OnOfficeStatus>;
+  onStatus: (status: OnOfficeStatus) => void;
+  texts: OnOfficeToggleTexts;
+}) {
+  const [saving, setSaving] = React.useState(false);
+  const [confirmArm, setConfirmArm] = React.useState(false);
+
+  const save = async (enabled: boolean) => {
+    setSaving(true);
+    try {
+      onStatus(await persist(enabled));
+      setConfirmArm(false);
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <ListRow className={cn("py-2.5 transition-colors", armed && "bg-warning/10")}>
+        <div className="flex min-w-0 items-center gap-3">
+          <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <Label htmlFor={switchId} className="truncate text-sm font-medium">
+              {texts.title}
+            </Label>
+            <p
+              className={cn(
+                "flex items-center gap-1 text-xs",
+                armed ? "text-warning" : "text-muted-foreground",
+              )}
+            >
+              {armed ? (
+                <TriangleAlert className="h-3 w-3 shrink-0" />
+              ) : (
+                <ShieldCheck className="h-3 w-3 shrink-0" />
+              )}
+              {armed ? texts.rowOn : texts.rowOff}
+            </p>
+          </div>
+        </div>
+        <Switch
+          id={switchId}
+          tone="warning"
+          checked={armed}
+          disabled={saving}
+          onCheckedChange={(next) => (next ? setConfirmArm(true) : void save(false))}
+        />
+      </ListRow>
+
+      <ConfirmDialog
+        open={confirmArm}
+        onOpenChange={(next) => !saving && !next && setConfirmArm(false)}
+        title={texts.confirmTitle}
+        description={texts.confirmBody}
+        confirmLabel={texts.confirmCta}
+        busy={saving}
+        onConfirm={() => void save(true)}
       />
     </>
   );

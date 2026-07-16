@@ -88,6 +88,7 @@ describe("learnAccountVoice — live sampling", () => {
     let receivedSince = "";
     let receivedLimit: number | undefined;
     provider = {
+      newestInbound: async () => null,
       listSentSince: async (_account, sinceIso, opts) => {
         receivedSince = sinceIso;
         receivedLimit = opts?.limit;
@@ -99,6 +100,7 @@ describe("learnAccountVoice — live sampling", () => {
         ];
       },
       getMessageBody: async () => null,
+      getThread: async () => null,
     };
 
     await learnAccountVoice("acc_gmail");
@@ -119,10 +121,12 @@ describe("learnAccountVoice — live sampling", () => {
 
   it("truncates oversized bodies in the prompt", async () => {
     provider = {
+      newestInbound: async () => null,
       listSentSince: async () => [
         sent({ providerMessageId: "m-long", bodyText: `start-${"x".repeat(5000)}-end` }),
       ],
       getMessageBody: async () => null,
+      getThread: async () => null,
     };
 
     await learnAccountVoice("acc_gmail");
@@ -139,7 +143,12 @@ describe("learnAccountVoice — live sampling", () => {
   });
 
   it("fails with a friendly error when there is no recent sent mail", async () => {
-    provider = { listSentSince: async () => [], getMessageBody: async () => null };
+    provider = {
+      newestInbound: async () => null,
+      listSentSince: async () => [],
+      getMessageBody: async () => null,
+      getThread: async () => null,
+    };
     await expect(learnAccountVoice("acc_gmail")).rejects.toThrow(/no recent sent mail/);
     expect(oneShotCalls).toHaveLength(0);
   });

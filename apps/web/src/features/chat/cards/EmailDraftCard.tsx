@@ -1,7 +1,9 @@
 import type { AgentCard } from "@trailin/shared";
-import { BookmarkCheck, ExternalLink, PenLine } from "lucide-react";
+import { formatFileSize } from "@trailin/shared";
+import { BookmarkCheck, ExternalLink, Paperclip, PenLine } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { ThreadHistory } from "@/components/ThreadHistory";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -174,10 +176,26 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
 
           <CardBodyText text={draft.body} />
 
+          {draft.attachments && draft.attachments.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground tabular-nums">
+              {draft.attachments.map((attachment) => (
+                <span key={attachment.filename} className="flex items-center gap-1">
+                  <Paperclip className="h-3 w-3 shrink-0" />
+                  {attachment.filename}
+                  {attachment.size !== undefined && ` (${formatFileSize(attachment.size)})`}
+                </span>
+              ))}
+            </div>
+          )}
+
           {draft.signatureAppended && (
             <p className="text-xs text-muted-foreground/70">
               {t("chat.cards.draft.signatureNote")}
             </p>
+          )}
+
+          {accountId && draft.threadId && (
+            <ThreadHistory accountId={accountId} threadId={draft.threadId} />
           )}
 
           {canAct && (

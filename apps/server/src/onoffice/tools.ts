@@ -12,11 +12,15 @@ import { getOnOfficeClient } from "./config.js";
  * field names are configurable per account, so most parameters are free-form
  * records the model fills after calling onoffice_get_fields.
  *
- * Read tools (find/get/search) stay available to unattended automation runs;
- * mutating tools (create/modify/delete, send email, raw batches) are withheld
- * there — an unattended run reads attacker-controllable mail with no human to
- * review a CRM write, exactly as the email write tools are gated in
- * pipedream/mcp.ts.
+ * Read tools (find/get/search) stay available to unattended automation runs.
+ * The mutating surface splits in two: the create tools (address, appointment,
+ * task, relation — additive records, never an edit or a send) are always in
+ * chat and can be opted into for unattended runs via Settings → Permissions,
+ * while everything that modifies, deletes or sends is interactive-only AND
+ * armed by its own Settings → Permissions toggle — the CRM counterpart of
+ * per-account email write access. Unattended runs never get it: they read
+ * attacker-controllable mail with no human to review a CRM write, exactly as
+ * the email write tools are gated in pipedream/mcp.ts.
  */
 
 /** A resource id, which onOffice accepts as either a string or a number. */
@@ -128,6 +132,16 @@ const CREATE_MODULES = [
     resourcetype: "task",
     label: "Create task",
     description: "Create a task. Provide task fields (e.g. subject, responsibility, status).",
+  },
+  {
+    name: "onoffice_create_agentslog",
+    resourcetype: "agentslog",
+    label: "Create agents-log entry",
+    description:
+      "Log an activity in the agents log (Maklerbuch), e.g. an email sent to a lead or a " +
+      "follow-up step. Common fields: datetime, addressids (array), estateid, actionkind, " +
+      "actiontype, note. With addressids and estateid set, the entry also appears under the " +
+      "address's and estate's 'Offered till now' tabs.",
   },
 ] as const;
 
@@ -254,7 +268,86 @@ function buildReadTools(client: OnOfficeClient): AgentTool[] {
   ];
 }
 
-/** The mutating surface — withheld from unattended runs. */
+/**
+ * The additive surface: tools that only create new records. Unattended runs
+ * get these when the user has armed it in Settings → Permissions.
+ */
+function buildCreateTools(client: OnOfficeClient): AgentTool[] {
+  return [
+    tool({
+      name: "onoffice_create_address",
+      label: "Create address (lead/contact)",
+      description:
+        "Create a new contact/lead. Common fields: Anrede, Vorname, Name, email, phone, mobile, " +
+        "Plz, Ort, Strasse, Land, Benutzer (responsible user), newsletter_aktiv. Set " +
+        "checkDuplicate to avoid duplicates.",
+      catchToText: true,
+      params: {
+        fields: Type.Record(Type.String(), Type.Any(), { description: "Address field values." }),
+        checkDuplicate: Type.Optional(
+          Type.Boolean({ description: "If true, deduplicate against existing addresses." }),
+        ),
+      },
+      execute: async ({ fields, checkDuplicate }, ctx) => {
+        const parameters = {
+          ...fields,
+          ...(checkDuplicate !== undefined ? { checkDuplicate } : {}),
+        };
+        return textResult(
+          okText(await client.action("create", "address", { parameters }, ctx.signal)),
+        );
+      },
+    }),
+    tool({
+      name: "onoffice_create_relation",
+      label: "Create relation",
+      description:
+        "Link two records (e.g. an address to an appointment or estate). Provide the relationtype " +
+        "URN plus parentid and childid.",
+      catchToText: true,
+      params: {
+        relationtype: Type.String({
+          description:
+            "Relation type URN, e.g. urn:onoffice-de-ns:smart:2.5:relationTypes:estate:address:buyer.",
+        }),
+        parentid: resourceIdSchema,
+        childid: resourceIdSchema,
+      },
+      execute: async ({ relationtype, parentid, childid }, ctx) =>
+        textResult(
+          okText(
+            await client.action(
+              "create",
+              "relation",
+              { parameters: { relationtype, parentid, childid } },
+              ctx.signal,
+            ),
+          ),
+        ),
+    }),
+    ...CREATE_MODULES.map((mod) =>
+      tool({
+        name: mod.name,
+        label: mod.label,
+        description: mod.description,
+        catchToText: true,
+        params: {
+          fields: Type.Record(Type.String(), Type.Any(), {
+            description: "Field values for the new record.",
+          }),
+        },
+        execute: async ({ fields }, ctx) =>
+          textResult(
+            okText(
+              await client.action("create", mod.resourcetype, { parameters: fields }, ctx.signal),
+            ),
+          ),
+      }),
+    ),
+  ];
+}
+
+/** The destructive/sending surface — interactive sessions only, unconditionally. */
 function buildWriteTools(client: OnOfficeClient): AgentTool[] {
   return [
     tool({
@@ -388,30 +481,6 @@ function buildWriteTools(client: OnOfficeClient): AgentTool[] {
         textResult(okText(await client.call(actions, ctx.signal))),
     }),
     tool({
-      name: "onoffice_create_address",
-      label: "Create address (lead/contact)",
-      description:
-        "Create a new contact/lead. Common fields: Anrede, Vorname, Name, email, phone, mobile, " +
-        "Plz, Ort, Strasse, Land, Benutzer (responsible user), newsletter_aktiv. Set " +
-        "checkDuplicate to avoid duplicates.",
-      catchToText: true,
-      params: {
-        fields: Type.Record(Type.String(), Type.Any(), { description: "Address field values." }),
-        checkDuplicate: Type.Optional(
-          Type.Boolean({ description: "If true, deduplicate against existing addresses." }),
-        ),
-      },
-      execute: async ({ fields, checkDuplicate }, ctx) => {
-        const parameters = {
-          ...fields,
-          ...(checkDuplicate !== undefined ? { checkDuplicate } : {}),
-        };
-        return textResult(
-          okText(await client.action("create", "address", { parameters }, ctx.signal)),
-        );
-      },
-    }),
-    tool({
       name: "onoffice_send_email",
       label: "Send email",
       description:
@@ -453,63 +522,25 @@ function buildWriteTools(client: OnOfficeClient): AgentTool[] {
         );
       },
     }),
-    tool({
-      name: "onoffice_create_relation",
-      label: "Create relation",
-      description:
-        "Link two records (e.g. an address to an appointment or estate). Provide the relationtype " +
-        "URN plus parentid and childid.",
-      catchToText: true,
-      params: {
-        relationtype: Type.String({
-          description:
-            "Relation type URN, e.g. urn:onoffice-de-ns:smart:2.5:relationTypes:estate:address:buyer.",
-        }),
-        parentid: resourceIdSchema,
-        childid: resourceIdSchema,
-      },
-      execute: async ({ relationtype, parentid, childid }, ctx) =>
-        textResult(
-          okText(
-            await client.action(
-              "create",
-              "relation",
-              { parameters: { relationtype, parentid, childid } },
-              ctx.signal,
-            ),
-          ),
-        ),
-    }),
-    ...CREATE_MODULES.map((mod) =>
-      tool({
-        name: mod.name,
-        label: mod.label,
-        description: mod.description,
-        catchToText: true,
-        params: {
-          fields: Type.Record(Type.String(), Type.Any(), {
-            description: "Field values for the new record.",
-          }),
-        },
-        execute: async ({ fields }, ctx) =>
-          textResult(
-            okText(
-              await client.action("create", mod.resourcetype, { parameters: fields }, ctx.signal),
-            ),
-          ),
-      }),
-    ),
   ];
 }
 
 export interface LoadOnOfficeToolsOptions {
   /**
-   * Whether the mutating tools (create/modify/delete, send email, raw batches)
-   * are exposed. Defaults to true. Pass false for unattended automation runs,
-   * where a prompt-injected email must not be able to write to or send from the
-   * CRM — only the read/get surface is returned then.
+   * Whether the full mutating surface (generic create, modify/delete, send
+   * email, raw batches) is exposed. Defaults to true; pass false for
+   * unattended automation runs — a prompt-injected email must not be able to
+   * change or send from the CRM — and for chat sessions while the user hasn't
+   * armed CRM write access in Settings → Permissions. Implies the create
+   * tools.
    */
   allowWrites?: boolean;
+  /**
+   * Whether the additive create tools (address, appointment, task, relation)
+   * are exposed on their own. Defaults to false when writes are off; set for
+   * unattended runs once the user armed it in Settings → Permissions.
+   */
+  allowCreates?: boolean;
 }
 
 /**
@@ -523,7 +554,9 @@ export async function loadOnOfficeTools(
 ): Promise<AgentTool[]> {
   const client = await getOnOfficeClient();
   if (!client) return [];
+  const allowWrites = options.allowWrites ?? true;
   const tools = buildReadTools(client);
-  if (options.allowWrites ?? true) tools.push(...buildWriteTools(client));
+  if (allowWrites || options.allowCreates) tools.push(...buildCreateTools(client));
+  if (allowWrites) tools.push(...buildWriteTools(client));
   return tools;
 }

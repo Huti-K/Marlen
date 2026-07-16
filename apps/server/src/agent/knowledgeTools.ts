@@ -338,7 +338,7 @@ const automationHistory: AgentTool = tool({
     automationName: Type.Optional(
       Type.String({
         description:
-          'Only runs of the automation whose name contains this (partial match), e.g. "Morning briefing".',
+          'Only runs of the automation whose name contains this (partial match), e.g. "Morgenbriefing".',
       }),
     ),
     days: Type.Optional(

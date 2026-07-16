@@ -1,19 +1,25 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
-import type { ConnectedAccount } from "@trailin/shared";
+import { type ConnectedAccount, formatFileSize } from "@trailin/shared";
 import { toCardAccount } from "../agent/card/common.js";
 import { buildEmailDraftCard, CARD_KINDS } from "../agent/card/kinds.js";
 import { composeDraftBody } from "../agent/composition.js";
 import { defineTool, textResult } from "../agent/toolkit.js";
 import { appendDraftVersion, createDraftSnapshot, getDraftCardDetails } from "../db/draftStore.js";
 import { getWriteAccessAccounts } from "../db/settings.js";
-import { isDemoAccount } from "../demo/accounts.js";
 import "../email/registerProviders.js";
 import "../email/registerAttachmentProviders.js";
 import { getAttachmentProvider } from "../email/attachmentProviders.js";
 import { buildListAttachmentsTool, buildSaveAttachmentTool } from "../email/attachmentTool.js";
-import { type CreateDraftInput, type DraftProvider, getDraftProvider } from "../email/providers.js";
+import {
+  type CreateDraftInput,
+  type DraftAttachment,
+  type DraftProvider,
+  getDraftProvider,
+} from "../email/providers.js";
+import { resolveLibraryAttachments } from "../library/draftAttachments.js";
 import { moduleLogger } from "../logger.js";
+import { errorMessage } from "../util.js";
 import {
   type ConnectConfig,
   getConnectConfig,
@@ -229,7 +235,8 @@ function buildDraftTool(
       `supports it. The body goes through a humanizer pass before saving, which removes ` +
       `AI-sounding phrasing; the tool result reports the final saved text when it was adjusted. ` +
       `If this account has a signature configured in Settings, it is appended automatically — ` +
-      `do not write a signature block yourself.\n\n` +
+      `do not write a signature block yourself. Documents from the user's library can be ` +
+      `attached as files via attachLibraryDocumentIds.\n\n` +
       `Acts as the connected account: ${account.name}.`,
     parameters: {
       type: "object",
@@ -243,11 +250,32 @@ function buildDraftTool(
           type: "string",
           description: "Optional thread id to attach this draft to (for replies), when supported.",
         },
+        attachLibraryDocumentIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Ids of library documents (from library_list or library_search) to attach to the " +
+            "draft as files. Only library documents can be attached.",
+        },
       },
       required: ["to", "subject", "body"],
     },
     execute: async (_toolCallId, params) => {
-      const input = params as unknown as CreateDraftInput;
+      const { attachLibraryDocumentIds, ...input } = params as unknown as CreateDraftInput & {
+        attachLibraryDocumentIds?: string[];
+      };
+
+      // Attachments resolve before anything else: a bad id or an oversized
+      // set must steer the model (as result text, mirroring toolkit's
+      // catchToText) without a half-configured draft ever being created.
+      let attachments: DraftAttachment[] = [];
+      if (attachLibraryDocumentIds?.length) {
+        try {
+          attachments = await resolveLibraryAttachments(attachLibraryDocumentIds);
+        } catch (error) {
+          return textResult(errorMessage(error));
+        }
+      }
       // The compose pipeline (agent/composition.ts) runs before the body ever
       // reaches the provider, so every surface that saves a draft (chat,
       // automations) gets the same humanizer + signature treatment.
@@ -261,6 +289,7 @@ function buildDraftTool(
         ...input,
         body: composed.htmlBody ?? finalBody,
         ...(composed.htmlBody ? { bodyFormat: "html" as const } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
       });
 
       // Snapshot the plain-text semantic body for the learning loop. The
@@ -284,6 +313,12 @@ function buildDraftTool(
       }
 
       let text = `Draft created in ${account.name} (draft id ${result.draftId}). It is unsent.`;
+      if (attachments.length > 0) {
+        const listed = attachments
+          .map((a) => `${a.filename} (${formatFileSize(a.content.length)})`)
+          .join(", ");
+        text += `\nAttached: ${listed}.`;
+      }
 
       // Show the saved body once, whenever it differs from what the model
       // submitted — whether that's the humanizer, the signature, or both.
@@ -308,6 +343,14 @@ function buildDraftTool(
           body: finalBody,
           webUrl: result.webUrl,
           signatureAppended: composed.signatureAppended,
+          ...(attachments.length > 0
+            ? {
+                attachments: attachments.map((a) => ({
+                  filename: a.filename,
+                  size: a.content.length,
+                })),
+              }
+            : {}),
         },
       });
 
@@ -472,9 +515,6 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
     log.warn({ err: error }, "listing Pipedream accounts failed");
     return EMPTY_TOOLSET;
   }
-  // Demo mailboxes have no Pipedream account behind them — never open an MCP
-  // session or build a provider tool for one (it would only fail).
-  accounts = accounts.filter((account) => !isDemoAccount(account.id));
   if (accounts.length === 0) return EMPTY_TOOLSET;
 
   // Empty when providerWrites is false: every account then falls through the

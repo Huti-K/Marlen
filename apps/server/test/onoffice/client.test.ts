@@ -8,7 +8,10 @@ import { LATEST_URL, OnOfficeClient, STABLE_URL } from "../../src/onoffice/clien
  * hardcoding it, so the test pins the signing formula, not a magic string.
  */
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 function mockFetch(payload: unknown, status = 200): ReturnType<typeof vi.spyOn> {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -74,9 +77,79 @@ describe("OnOfficeClient", () => {
   });
 
   it("throws a readable error on a non-JSON response", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>gateway", { status: 502 }));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>missing", { status: 404 }));
     const client = new OnOfficeClient({ token: "t", secret: "s" });
-    await expect(client.action("read", "estate")).rejects.toThrow(/non-JSON response \(HTTP 502\)/);
+    await expect(client.action("read", "estate")).rejects.toThrow(/non-JSON response \(HTTP 404\)/);
+  });
+
+  it("throws on a top-level errorcode even when the status code is 200", async () => {
+    mockFetch({ status: { code: 200, errorcode: 137, message: "hmac invalid" } });
+    const client = new OnOfficeClient({ token: "t", secret: "s" });
+    await expect(client.action("read", "estate")).rejects.toThrow(/137.*hmac invalid/);
+  });
+
+  it("fails on an HTTP error even when the body claims success", async () => {
+    const fetchSpy = mockFetch(okEnvelope, 401);
+    const client = new OnOfficeClient({ token: "t", secret: "s" });
+    await expect(client.action("read", "estate")).rejects.toThrow(/HTTP 401/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a read-only batch on a transient network failure", async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(okEnvelope), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    const client = new OnOfficeClient({ token: "t", secret: "s" });
+
+    const pending = client.action("read", "estate");
+    const outcome = expect(pending).resolves.toBeDefined();
+    await vi.advanceTimersByTimeAsync(500);
+    await outcome;
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops after three attempts when transient failures persist", async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("<html>gateway", { status: 502 }));
+    const client = new OnOfficeClient({ token: "t", secret: "s" });
+
+    const pending = client.action("read", "estate");
+    const outcome = expect(pending).rejects.toThrow(/non-JSON response \(HTTP 502\)/);
+    await vi.advanceTimersByTimeAsync(1500);
+    await outcome;
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("gives mutating actions exactly one attempt", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new TypeError("socket hang up"));
+    const client = new OnOfficeClient({ token: "t", secret: "s" });
+    await expect(client.action("create", "address")).rejects.toThrow(
+      /request failed: socket hang up/,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts a hung request at the per-attempt deadline", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          signal?.addEventListener("abort", () => reject(signal.reason));
+        }),
+    );
+    const client = new OnOfficeClient({ token: "t", secret: "s", requestTimeoutMs: 20 });
+    await expect(client.action("create", "address")).rejects.toThrow(/timed out after 20ms/);
   });
 
   it("batches multiple actions into one signed request", async () => {

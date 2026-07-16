@@ -5,7 +5,9 @@
     "openChat": "Chat öffnen",
     "closeChat": "Chat schließen",
     "expandChat": "Chat ausklappen",
-    "collapseChat": "Chat einklappen"
+    "collapseChat": "Chat einklappen",
+    "updateReady": "Trailin {{version}} ist bereit zur Installation",
+    "updateRestart": "Jetzt neu starten"
   },
   "views": {
     "chat": {
@@ -15,6 +17,10 @@
     "home": {
       "title": "Start",
       "description": "Entwürfe, die auf Ihre Prüfung warten, und was der Assistent zuletzt getan hat."
+    },
+    "leads": {
+      "title": "Leads",
+      "description": "Alle Interessenten, die der Assistent verfolgt – von der ersten Anfrage bis zum Abschluss."
     },
     "automations": {
       "title": "Automatisierungen",
@@ -123,9 +129,7 @@
       "thread": {
         "label": "Konversation",
         "messageCount_one": "{{count}} Nachricht",
-        "messageCount_other": "{{count}} Nachrichten",
-        "to": "An:",
-        "cc": "Cc:"
+        "messageCount_other": "{{count}} Nachrichten"
       },
       "draft": {
         "badge": "Entwurf",
@@ -351,6 +355,14 @@
     "refinePrompt": "Bitte überarbeite den Entwurf \"{{subject}}\"",
     "save": "Speichern"
   },
+  "threadHistory": {
+    "show": "Verlauf anzeigen",
+    "hide": "Verlauf ausblenden",
+    "empty": "Keine früheren Nachrichten in dieser Konversation.",
+    "to": "An:",
+    "cc": "Cc:",
+    "emptyBody": "(leere Nachricht)"
+  },
   "automations": {
     "new": "Neue Automatisierung",
     "save": "Speichern",
@@ -386,6 +398,10 @@
     "instructionPlaceholder": "Fasse die ungelesenen E-Mails der letzten 24 Stunden zusammen…",
     "showInActivity": "In der Aktivität des Assistenten anzeigen",
     "showInActivityHint": "Läufe dieser Automatisierung in der Aktivität des Assistenten auf der Startseite anzeigen.",
+    "runOnNewMail": "Bei neuer E-Mail sofort ausführen",
+    "runOnNewMailHint": "Läuft zusätzlich zum Zeitplan sofort, wenn neue E-Mails eingehen.",
+    "notifyOnCompletion": "Nach jedem Lauf benachrichtigen",
+    "notifyOnCompletionHint": "Zeigt eine Desktop-Benachrichtigung, wenn ein Lauf abgeschlossen ist.",
     "pin": "Oben auf der Startseite anzeigen",
     "pinned": "Auf der Startseite angeheftet",
     "emptyTitle": "Noch keine Automatisierungen",
@@ -409,6 +425,47 @@
       "dismiss": "Verwerfen",
       "showInstruction": "Anweisung anzeigen"
     }
+  },
+  "leads": {
+    "new": "Neuer Lead",
+    "create": "Anlegen",
+    "formTitle": "Neuer Lead",
+    "formHint": "Interessenten von Hand erfassen – E-Mail-Anfragen werden automatisch abgelegt.",
+    "email": "E-Mail-Adresse",
+    "name": "Name",
+    "phone": "Telefon",
+    "interest": "Interessiert an",
+    "interestPlaceholder": "3-Zimmer-Wohnung in Mitte, bis 600.000 €…",
+    "notes": "Notizen",
+    "mergedNote": "{{email}} war schon erfasst – die Angaben wurden zusammengeführt.",
+    "filters": {
+      "all": "Alle"
+    },
+    "status": {
+      "new": "Neu",
+      "contacted": "Kontaktiert",
+      "engaged": "Im Gespräch",
+      "qualified": "Qualifiziert",
+      "won": "Gewonnen",
+      "lost": "Verloren"
+    },
+    "statusLabel": "Lead-Status",
+    "score": {
+      "high": "Chance hoch",
+      "medium": "Chance mittel",
+      "low": "Chance niedrig"
+    },
+    "scoreLabel": "Kaufwahrscheinlichkeit",
+    "lastInbound": "Antwort {{time}}",
+    "noInbound": "Noch keine Antwort",
+    "lastOutbound": "Kontaktiert {{time}}",
+    "noOutbound": "Noch nicht kontaktiert",
+    "emptyTitle": "Noch keine Leads",
+    "emptyBody": "Zeigt eine E-Mail Interesse, trägt der Assistent den Absender hier ein – oder Sie legen selbst einen an.",
+    "emptyFilteredTitle": "Keine Leads mit diesem Status",
+    "emptyFilteredBody": "Wählen Sie einen anderen Filter.",
+    "delete": "Löschen",
+    "deleteConfirm": "Lead „{{email}}“ löschen? Zugehörige Automatisierungen werden mitgelöscht."
   },
   "memory": {
     "addPlaceholder": "Etwas hinzufügen, das sich Trailin merken soll…",
@@ -521,7 +578,7 @@
       },
       "permissions": {
         "title": "Berechtigungen",
-        "description": "Was der Assistent in Ihrem Postfach darf — der Zugriff wird pro Konto vergeben, Senden und Änderungen bleiben aus, bis Sie das jeweilige Konto aktivieren."
+        "description": "Was der Assistent in Ihrem Postfach und CRM darf — Senden und Änderungen bleiben aus, bis Sie den jeweiligen Zugriff aktivieren."
       },
       "preferences": {
         "title": "Darstellung & Sprache",
@@ -551,7 +608,23 @@
       "chipOn_one": "Senden & Ändern aktiv für {{count}} Konto",
       "chipOn_other": "Senden & Ändern aktiv für {{count}} Konten",
       "chipOff": "Nur Lesen",
-      "noAccounts": "Noch keine Konten verbunden — verbinden Sie oben unter E-Mail verbinden eines."
+      "noAccounts": "Noch keine Konten verbunden — verbinden Sie oben unter E-Mail verbinden eines.",
+      "onoffice": {
+        "title": "onOffice — Automationen dürfen anlegen",
+        "rowOn": "Automationen dürfen CRM-Datensätze anlegen (Kontakte, Termine, Aufgaben, Verknüpfungen) — nie ändern, löschen oder senden.",
+        "rowOff": "Automationen lesen das CRM nur; Datensätze werden im Chat angelegt, mit Ihrer Bestätigung.",
+        "confirmTitle": "Automationen das Anlegen von onOffice-Datensätzen erlauben?",
+        "confirmBody": "Geplante Läufe (z. B. der Lead-Eingang) können dann selbstständig Kontakte, Termine, Aufgaben und Verknüpfungen in Ihrem Live-CRM anlegen — Ihre Kollegen sehen diese Datensätze. Ändern, Löschen und Senden bleiben dem Chat vorbehalten. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "Anlegen erlauben"
+      },
+      "onofficeWrites": {
+        "title": "onOffice — Ändern, Löschen & Senden",
+        "rowOn": "Darf auf Ihre Anweisung im Chat CRM-Datensätze ändern oder löschen und über das CRM senden.",
+        "rowOff": "Der Chat kann das CRM lesen und Datensätze anlegen; Ändern, Löschen und Senden bleiben aus, bis Sie es aktivieren.",
+        "confirmTitle": "Der KI Ändern, Löschen und Senden in onOffice erlauben?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung im Chat Live-CRM-Datensätze ändern und löschen sowie über onOffice senden. Geplante Läufe erhalten diese Werkzeuge nie. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "CRM-Änderungen erlauben"
+      }
     },
     "appearance": {
       "label": "Erscheinungsbild",

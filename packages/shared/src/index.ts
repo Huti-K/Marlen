@@ -246,6 +246,12 @@ export interface Automation {
   showInActivity: boolean;
   /** Exactly one automation may be pinned; its latest successful run leads the Home page. */
   pinned: boolean;
+  /** Lead this automation belongs to (deleted with it); null for standalone automations. */
+  leadId: string | null;
+  /** Also run immediately when the mail probe sees new inbound mail, besides the cron schedule. */
+  runOnNewMail: boolean;
+  /** Show a desktop notification when a run of this automation finishes. */
+  notifyOnCompletion: boolean;
   createdAt: string;
   /** Next scheduled run (ISO), null when disabled or not scheduled. */
   nextRunAt?: string | null;
@@ -300,6 +306,52 @@ export interface MissedAutomation {
   name: string;
   /** ISO of the missed scheduled slot. */
   dueAt: string;
+}
+
+/** Where a lead entered the pipeline. */
+export type LeadSource = "email" | "manual" | "onoffice";
+
+/** Estimated purchase likelihood; "" while unassessed. */
+export type LeadScore = "high" | "medium" | "low" | "";
+
+/**
+ * Lead lifecycle: "new" = recorded, no outreach yet; "contacted" = we wrote
+ * to them, awaiting reply; "engaged" = they replied, conversation ongoing;
+ * "qualified" = a serious prospect; "won"/"lost" close the lead.
+ */
+export type LeadStatus = "new" | "contacted" | "engaged" | "qualified" | "won" | "lost";
+
+/**
+ * One prospect in the leads directory, keyed by normalized email address —
+ * repeat interest from the same correspondent updates the row instead of
+ * duplicating it. Follow-up automations reference the lead via
+ * Automation.leadId and are deleted with it.
+ */
+export interface Lead {
+  id: string;
+  /** Display name; "" while unknown. */
+  name: string;
+  /** Normalized (lowercased) address — the lead's identity, unique. */
+  email: string;
+  phone: string;
+  /** Connected account the correspondence runs through; "" when unknown. */
+  accountId: string;
+  source: LeadSource;
+  /** Linked onOffice address record id, once the lead exists in the CRM. */
+  onofficeAddressId: string | null;
+  status: LeadStatus;
+  /** What they're after (property, budget, area, …), free text. */
+  interest: string;
+  /** Buyer type in a few words (e.g. "Kapitalanleger", "junge Familie"); "" while unknown. */
+  persona: string;
+  score: LeadScore;
+  notes: string;
+  /** Last email received from the lead (ISO); null before the first inbound. */
+  lastInboundAt: string | null;
+  /** Last email sent to the lead (ISO); null before the first outreach. */
+  lastOutboundAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** One unsent draft, as it currently exists in the mail account. */
@@ -373,6 +425,12 @@ export interface AppStatus {
    * accounts failed — a transient outage, not a setup problem.
    */
   emailAccountsKnown: boolean;
+  /**
+   * Whether onOffice CRM credentials are configured. The whole lead surface
+   * (leads page, lead tools, the seeded lead automations) exists only then —
+   * leads are part of the real-estate workflow, not a standalone feature.
+   */
+  onofficeConfigured: boolean;
   provider: string;
   model: string;
 }
@@ -520,10 +578,24 @@ export type ServerEventTopic =
   | "library" // library document written/changed
   | "conversations" // chat/automation conversation list changed
   | "automations" // automation definitions created/updated/deleted
-  | "learn"; // a learning sweep run was recorded
+  | "learn" // a learning sweep run was recorded
+  | "leads" // a lead was recorded, updated or deleted
+  | "notification"; // a notify-flagged automation run finished (carries the payload)
+
+/** Payload of a "notification" event — one finished run of a notify-flagged automation. */
+export interface RunNotification {
+  runId: string;
+  automationId: string;
+  automationName: string;
+  status: "success" | "error";
+  /** First line of the run's result, truncated for a notification body. */
+  summary: string;
+}
 
 export interface ServerEvent {
   topic: ServerEventTopic;
+  /** Present only on "notification" events. */
+  notification?: RunNotification;
 }
 
 /** Server-sent events streamed from POST /api/chat. */

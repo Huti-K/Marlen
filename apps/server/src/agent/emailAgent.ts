@@ -3,7 +3,13 @@ import type { Message } from "@earendil-works/pi-ai";
 import { LANGUAGE_ENGLISH_NAMES, type Language } from "@trailin/shared";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
-import { getLanguageSetting, getTimezoneSetting, getWriteAccessAccounts } from "../db/settings.js";
+import {
+  getLanguageSetting,
+  getOnOfficeAutomationCreates,
+  getOnOfficeWriteAccess,
+  getTimezoneSetting,
+  getWriteAccessAccounts,
+} from "../db/settings.js";
 import { resolveActiveModel } from "../llm/registry.js";
 import { getOnOfficeConfig } from "../onoffice/config.js";
 import { loadOnOfficeTools } from "../onoffice/tools.js";
@@ -23,6 +29,7 @@ import {
   buildKnowledgeReadTools,
   buildKnowledgeTools,
 } from "./knowledgeTools.js";
+import { leadDeleteTool, leadTools } from "./leadTools.js";
 import { streamViaModelRegistry } from "./oneShot.js";
 import { type RunHandlers, runPrompt, type TurnLogger } from "./run.js";
 import { voiceLearnTool } from "./voiceLearn.js";
@@ -231,26 +238,55 @@ export async function buildSystemPrompt(
   only when the user explicitly asks to remove one.`;
   }
 
-  // Mentioned only when credentials are configured — mirroring loadOnOfficeTools,
-  // which contributes no tools otherwise.
+  // Everything in this block exists only alongside configured onOffice
+  // credentials: the leads directory is part of the real-estate workflow, so
+  // its tools (see buildAgent) and guidance disappear together with the CRM's.
   if (await getOnOfficeConfig()) {
+    prompt += `
+- Trailin keeps a leads directory (lead_record / lead_list / lead_update): every prospect who
+  shows interest — in a property, a viewing, the user's services — belongs in it. When handling
+  such an email, record the sender with lead_record (email, name, what they're interested in, the
+  message date as inboundAt); it merges by address, so recording twice is safe. As correspondence
+  develops, keep the lead's status and last-message timestamps current with lead_update — the
+  directory is only useful when it reflects who owes whom a reply.`;
+    if (options.interactive) {
+      prompt += `
+  For follow-ups on a specific lead ("check in three days whether they answered"), create an
+  automation with automation_create and pass its leadId — the automation is then attached to the
+  lead, shown with it, and deleted with it. Write the instruction self-contained: name the lead's
+  email address, what to check (e.g. lead_list status + searching the mailbox for a reply), and
+  what to do about it (update the lead, draft a nudge — unattended runs cannot send).`;
+    }
     prompt += `
 - The user's onOffice CRM is connected — the onoffice_* tools work against it. Reach for them
   whenever a request touches contacts/leads, properties (estates), viewings/appointments or CRM
   tasks: match an email sender to their address record, find the estate an inquiry is about
   (onoffice_search first, then read the full record). Field names vary per onOffice account —
   call onoffice_get_fields before filtering on or writing any field you aren't certain exists.`;
-    prompt += options.interactive
-      ? `
+    if (options.interactive && (await getOnOfficeWriteAccess())) {
+      prompt += `
   CRM records are live business data: before any modify, delete, send or other side-effecting
   onOffice call, state exactly which record and fields you'll touch and get the user's explicit
-  confirmation.`
-      : `
+  confirmation.`;
+    } else if (options.interactive) {
+      prompt += `
+  You can read the CRM and create new records; modifying, deleting or sending via onOffice is
+  not armed. If the user asks for one of those, explain that CRM write access is granted under
+  Settings → Permissions.`;
+    } else if (await getOnOfficeAutomationCreates()) {
+      prompt += `
+  In this run you can read the CRM and create new records (onoffice_create_address — always set
+  checkDuplicate — plus appointments, tasks and relations). Modifying, deleting or sending via
+  onOffice is not possible unattended. After creating an address for a lead, store its record id
+  on the lead (lead_update, onofficeAddressId).`;
+    } else {
+      prompt += `
   Only the CRM read tools are available in this run; creating or changing CRM records is not
   possible unattended.`;
+    }
   }
 
-  const language = (await getLanguageSetting()) ?? "en";
+  const language = (await getLanguageSetting()) ?? "de";
   if (language !== "en") {
     prompt += `
 - Always answer in ${LANGUAGE_ENGLISH_NAMES[language]}, no matter what language the user's message
@@ -270,7 +306,7 @@ export async function buildSystemPrompt(
  * byte-stable across turns — see buildSystemPrompt's cache invariant.
  */
 export async function buildTurnTimeNote(): Promise<string> {
-  const language = (await getLanguageSetting()) ?? "en";
+  const language = (await getLanguageSetting()) ?? "de";
   const timezone = (await getTimezoneSetting()) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   return (
     `\n\n[Current date and time: ${formatNow(timezone, DATE_LOCALE_BY_LANGUAGE[language] ?? "en-US")} ` +
@@ -385,10 +421,21 @@ async function buildAgent(
 ): Promise<Agent> {
   // Active model comes from Settings (SQLite), falling back to .env.
   const model = await resolveActiveModel();
-  // onOffice CRM tools (native, non-Pipedream): read surface always, mutating
-  // surface only for interactive sessions — an unattended run must not write to
-  // or send from the CRM. Empty when no onOffice credentials are configured.
-  const onOfficeTools = await loadOnOfficeTools({ allowWrites: options.interactive });
+  // onOffice CRM tools (native, non-Pipedream): read surface always, the
+  // additive create tools also for unattended runs once the user armed that in
+  // Settings → Permissions, and the modify/delete/send surface only for
+  // interactive sessions that the user has additionally armed there — the
+  // CRM counterpart of per-account email write access. An unattended run must
+  // never be able to change or send from the CRM regardless. Empty when no
+  // onOffice credentials are configured.
+  const onOfficeTools = await loadOnOfficeTools({
+    allowWrites: options.interactive && (await getOnOfficeWriteAccess()),
+    allowCreates: options.interactive || (await getOnOfficeAutomationCreates()),
+  });
+  // The leads directory belongs to the real-estate workflow: without CRM
+  // credentials the whole lead surface (tools here, prompt guidance, the
+  // seeded lead automations, the web page) is absent.
+  const onOfficeConfigured = (await getOnOfficeConfig()) !== null;
   const agent = new Agent({
     initialState: {
       systemPrompt: await buildSystemPrompt({ interactive: options.interactive }),
@@ -416,6 +463,11 @@ async function buildAgent(
         // on every tick, so mail content must never be able to plant or
         // alter one.
         ...(options.interactive ? automationManageTools : []),
+        // Lead rows are inert structured data (never executed), so intake and
+        // updates stay available unattended — that's how mail becomes leads.
+        // Deleting cascades over the lead's automations: interactive only.
+        ...(onOfficeConfigured ? leadTools : []),
+        ...(onOfficeConfigured && options.interactive ? [leadDeleteTool] : []),
         buildDelegateTool(toolset.readTools),
         ...(options.interactive ? [voiceLearnTool] : []),
         composeBriefingTool,

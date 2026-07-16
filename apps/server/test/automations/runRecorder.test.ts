@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Agent } from "@earendil-works/pi-agent-core";
+import type { ServerEvent } from "@trailin/shared";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import type { AgentSession } from "../../src/agent/emailAgent.js";
 import type { RunHandlers, TurnLogger } from "../../src/agent/run.js";
@@ -24,6 +25,7 @@ const { runPrompt } = await import("../../src/agent/run.js");
 const { executeAutomationRun, sweepOrphanedRuns } = await import(
   "../../src/automations/runRecorder.js"
 );
+const { onServerEvent } = await import("../../src/events.js");
 const { eq } = await import("drizzle-orm");
 
 afterAll(() => {
@@ -125,6 +127,7 @@ async function insertAutomation(
     schedule: string;
     name: string;
     instruction: string;
+    notifyOnCompletion: boolean;
   }> = {},
 ): Promise<string> {
   const id = randomUUID();
@@ -136,9 +139,19 @@ async function insertAutomation(
     enabled: overrides.enabled ?? true,
     showInActivity: true,
     pinned: false,
+    notifyOnCompletion: overrides.notifyOnCompletion ?? false,
     createdAt: new Date().toISOString(),
   });
   return id;
+}
+
+/** Collect every "notification" event the run under test emits; callers must unsubscribe. */
+function captureNotifications(): { events: ServerEvent[]; unsubscribe: () => void } {
+  const events: ServerEvent[] = [];
+  const unsubscribe = onServerEvent((event) => {
+    if (event.topic === "notification") events.push(event);
+  });
+  return { events, unsubscribe };
 }
 
 async function latestRunFor(automationId: string) {
@@ -247,6 +260,105 @@ describe("executeAutomationRun", () => {
     const result = await executeAutomationRun(missingId);
     expect(result).toEqual({ started: false, succeeded: false });
     expect(await latestRunFor(missingId)).toBeUndefined();
+  });
+});
+
+describe("executeAutomationRun — completion notifications", () => {
+  it("emits a notification event after a successful run when the flag is set", async () => {
+    const automationId = await insertAutomation({ name: "Notify me", notifyOnCompletion: true });
+    const agent = new FakeAgent();
+    _setSessionsForTest(sessionsFor(agent));
+    const { events, unsubscribe } = captureNotifications();
+    try {
+      const resultPromise = executeAutomationRun(automationId);
+      await agent.whenPrompted;
+      agent.emit({
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: "First line.\nSecond line." },
+      });
+      agent.resolveTurn();
+      await resultPromise;
+    } finally {
+      unsubscribe();
+    }
+
+    const run = await latestRunFor(automationId);
+    expect(events).toEqual([
+      {
+        topic: "notification",
+        notification: {
+          runId: run?.id,
+          automationId,
+          automationName: "Notify me",
+          status: "success",
+          summary: "First line.",
+        },
+      },
+    ]);
+  });
+
+  it("emits an error notification after a failed run when the flag is set", async () => {
+    const automationId = await insertAutomation({ notifyOnCompletion: true });
+    const agent = new FakeAgent();
+    _setSessionsForTest(sessionsFor(agent));
+    const { events, unsubscribe } = captureNotifications();
+    try {
+      const resultPromise = executeAutomationRun(automationId);
+      await agent.whenPrompted;
+      agent.rejectTurn(new Error("model exploded"));
+      await resultPromise;
+    } finally {
+      unsubscribe();
+    }
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.notification).toMatchObject({
+      automationId,
+      status: "error",
+      summary: expect.stringContaining("model exploded"),
+    });
+  });
+
+  it("truncates the summary to the first line's leading 140 characters", async () => {
+    const automationId = await insertAutomation({ notifyOnCompletion: true });
+    const agent = new FakeAgent();
+    _setSessionsForTest(sessionsFor(agent));
+    const { events, unsubscribe } = captureNotifications();
+    try {
+      const resultPromise = executeAutomationRun(automationId);
+      await agent.whenPrompted;
+      agent.emit({
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: `${"x".repeat(200)}\nsecond line` },
+      });
+      agent.resolveTurn();
+      await resultPromise;
+    } finally {
+      unsubscribe();
+    }
+
+    expect(events[0]?.notification?.summary).toBe("x".repeat(140));
+  });
+
+  it("emits nothing when the flag is off", async () => {
+    const automationId = await insertAutomation();
+    const agent = new FakeAgent();
+    _setSessionsForTest(sessionsFor(agent));
+    const { events, unsubscribe } = captureNotifications();
+    try {
+      const resultPromise = executeAutomationRun(automationId);
+      await agent.whenPrompted;
+      agent.emit({
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: "All caught up." },
+      });
+      agent.resolveTurn();
+      await resultPromise;
+    } finally {
+      unsubscribe();
+    }
+
+    expect(events).toEqual([]);
   });
 });
 

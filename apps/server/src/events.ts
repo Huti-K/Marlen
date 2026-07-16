@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { ServerEvent, ServerEventTopic } from "@trailin/shared";
+import type { RunNotification, ServerEvent, ServerEventTopic } from "@trailin/shared";
 
 /**
  * In-process bus for "data changed" notifications, fanned out to the web UI
@@ -11,6 +11,11 @@ bus.setMaxListeners(0);
 
 export function emitServerEvent(topic: ServerEventTopic): void {
   bus.emit("event", { topic } satisfies ServerEvent);
+}
+
+/** Emit a "notification" event — the one topic that carries a payload (a finished notify-flagged run). */
+export function emitRunNotification(notification: RunNotification): void {
+  bus.emit("event", { topic: "notification", notification } satisfies ServerEvent);
 }
 
 /** Subscribe to every server event; returns an unsubscribe function. */

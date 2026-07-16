@@ -148,13 +148,30 @@ function parseEmailThreadCard(
 // state; both they and parseAgentCard funnel through buildEmailDraftCard so
 // the required-field rule lives once.
 
+/** Validates one raw attachment entry of a draft preview. `filename` is required; a malformed size is dropped, not the entry. */
+function coerceDraftAttachment(value: unknown): { filename: string; size?: number } | undefined {
+  if (!isRecord(value) || !isNonEmptyString(value.filename)) return undefined;
+  return {
+    filename: value.filename,
+    ...(typeof value.size === "number" && Number.isFinite(value.size)
+      ? { size: Math.max(0, Math.round(value.size)) }
+      : {}),
+  };
+}
+
 /** Validates a raw draft-shaped value. draftId/subject/body are required; everything else is dropped when malformed rather than failing the whole draft. */
 export function coerceDraftPreview(value: unknown): DraftPreview | undefined {
   if (!isRecord(value)) return undefined;
-  const { draftId, threadId, subject, to, cc, bcc, body, webUrl, signatureAppended } = value;
+  const { draftId, threadId, subject, to, cc, bcc, body, webUrl, signatureAppended, attachments } =
+    value;
   if (!isString(draftId) || !isString(subject) || !isString(body)) return undefined;
   const ccList = toStringArray(cc);
   const bccList = toStringArray(bcc);
+  const attachmentList = Array.isArray(attachments)
+    ? attachments
+        .map(coerceDraftAttachment)
+        .filter((a): a is { filename: string; size?: number } => a !== undefined)
+    : undefined;
   return {
     draftId,
     ...(isString(threadId) ? { threadId } : {}),
@@ -165,6 +182,7 @@ export function coerceDraftPreview(value: unknown): DraftPreview | undefined {
     body,
     ...(isString(webUrl) ? { webUrl } : {}),
     ...(typeof signatureAppended === "boolean" ? { signatureAppended } : {}),
+    ...(attachmentList && attachmentList.length > 0 ? { attachments: attachmentList } : {}),
   };
 }
 

@@ -107,6 +107,31 @@ export async function runAutomation(
   await retireIfOneOff(automationId, result);
 }
 
+// Automation ids asked to run again while a run of theirs was in flight. A Set,
+// so however many requests land mid-run, each automation gets exactly one
+// follow-up (the follow-up sees everything that arrived during the run).
+const pendingRuns = new Set<string>();
+
+/**
+ * Run an automation now, coalescing instead of dropping: a request landing
+ * while a run is in flight queues exactly one follow-up run, however many
+ * such requests arrive. The mail probe's entry point — a mail burst mid-run
+ * yields one catch-up pass over everything the running instance missed.
+ * Cron ticks keep runAutomation's drop semantics. The isRunning check and the
+ * runAutomation call below share one event-loop turn (no await between them),
+ * the same atomicity KeyedJobs documents for its drop-when-busy callers.
+ */
+export async function requestRun(automationId: string): Promise<void> {
+  if (runJobs.isRunning(automationId)) {
+    pendingRuns.add(automationId);
+    return;
+  }
+  await runAutomation(automationId);
+  while (pendingRuns.delete(automationId)) {
+    await runAutomation(automationId);
+  }
+}
+
 /**
  * Enabled automations whose most recent scheduled slot elapsed without being
  * covered by a run — node-cron only fires while the process is alive, so a slot

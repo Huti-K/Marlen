@@ -22,7 +22,7 @@ import { IconChip } from "@/components/ui/icon-chip";
 import { Kbd } from "@/components/ui/kbd";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
-import { NAV_ITEMS, SHOWCASE_NAV } from "@/lib/nav";
+import { SHOWCASE_NAV, visibleNavItems } from "@/lib/nav";
 import { setPendingDraftFocus, setPendingKnowledgeFocus } from "@/lib/paletteFocus";
 import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 import { cn, MOD_LABEL } from "@/lib/utils";
@@ -157,7 +157,7 @@ interface Section {
   rows: Row[];
 }
 
-export function SearchPalette() {
+export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: boolean }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [open, setOpen] = React.useState(false);
@@ -262,14 +262,14 @@ export function SearchPalette() {
 
   const pages = React.useMemo<PageItem[]>(
     () =>
-      NAV_ITEMS.map((nav) => ({
+      visibleNavItems(onofficeConfigured).map((nav) => ({
         id: nav.id,
         path: nav.path,
         icon: nav.icon,
         title: t(`views.${nav.id}.title`),
         description: t(`views.${nav.id}.description`),
       })),
-    [t],
+    [t, onofficeConfigured],
   );
 
   /**

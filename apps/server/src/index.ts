@@ -3,6 +3,7 @@ import { recoverInterruptedTurns } from "./agent/turnRecorder.js";
 import { reconcileVoiceLearns } from "./agent/voiceLearnService.js";
 import { buildApp } from "./app.js";
 import { seedDefaultAutomations } from "./automations/defaults.js";
+import { startMailProbe, stopMailProbe } from "./automations/mailProbe.js";
 import { startScheduler, stopScheduler } from "./automations/scheduler.js";
 import { startNightlySuggest, stopNightlySuggest } from "./automations/suggestService.js";
 import { startNightlyLearning, stopNightlyLearning } from "./email/learn/extractService.js";
@@ -20,6 +21,9 @@ async function main(): Promise<void> {
   // everything (defaults included) for this boot.
   await seedDefaultAutomations();
   await startScheduler();
+  // The new-mail probe: runs runOnNewMail-flagged automations as soon as new
+  // inbound mail shows up in any connected account (automations/mailProbe.ts).
+  startMailProbe();
   // Close out any chat/automation turn left dangling by a mid-turn restart.
   await recoverInterruptedTurns();
 
@@ -46,6 +50,7 @@ async function main(): Promise<void> {
   // anything else that closes the instance.
   app.addHook("onClose", async () => {
     stopScheduler();
+    stopMailProbe();
     stopDraftMatching();
     stopNightlyLearning();
     stopNightlySuggest();

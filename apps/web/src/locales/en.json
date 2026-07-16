@@ -5,7 +5,9 @@
     "openChat": "Open chat",
     "closeChat": "Close chat",
     "expandChat": "Expand chat",
-    "collapseChat": "Collapse chat"
+    "collapseChat": "Collapse chat",
+    "updateReady": "Trailin {{version}} is ready to install",
+    "updateRestart": "Restart now"
   },
   "views": {
     "chat": {
@@ -15,6 +17,10 @@
     "home": {
       "title": "Home",
       "description": "Drafts waiting for your review, and what the agent has been doing."
+    },
+    "leads": {
+      "title": "Leads",
+      "description": "Every prospect the agent is tracking, from first inquiry to closed."
     },
     "automations": {
       "title": "Automations",
@@ -123,9 +129,7 @@
       "thread": {
         "label": "Thread",
         "messageCount_one": "{{count}} message",
-        "messageCount_other": "{{count}} messages",
-        "to": "To:",
-        "cc": "Cc:"
+        "messageCount_other": "{{count}} messages"
       },
       "draft": {
         "badge": "Draft",
@@ -351,6 +355,14 @@
     "refinePrompt": "Please refine the draft \"{{subject}}\"",
     "save": "Save"
   },
+  "threadHistory": {
+    "show": "Show conversation",
+    "hide": "Hide conversation",
+    "empty": "No earlier messages in this conversation.",
+    "to": "To:",
+    "cc": "Cc:",
+    "emptyBody": "(empty message)"
+  },
   "automations": {
     "new": "New automation",
     "save": "Save",
@@ -386,6 +398,10 @@
     "instructionPlaceholder": "Summarize all unread emails from the last 24 hours…",
     "showInActivity": "Show in agent activity",
     "showInActivityHint": "Include this automation's runs in the Home activity feed.",
+    "runOnNewMail": "Run immediately when new mail arrives",
+    "runOnNewMailHint": "Also runs immediately when new inbound mail is detected, in addition to the schedule.",
+    "notifyOnCompletion": "Notify when a run finishes",
+    "notifyOnCompletionHint": "Shows a desktop notification when a run completes.",
     "pin": "Show at top of Home",
     "pinned": "Pinned to Home",
     "emptyTitle": "No automations yet",
@@ -409,6 +425,47 @@
       "dismiss": "Dismiss",
       "showInstruction": "Show instruction"
     }
+  },
+  "leads": {
+    "new": "New lead",
+    "create": "Create",
+    "formTitle": "New lead",
+    "formHint": "Record a prospect by hand — email inquiries are filed automatically.",
+    "email": "Email address",
+    "name": "Name",
+    "phone": "Phone",
+    "interest": "Interested in",
+    "interestPlaceholder": "3-room flat in Mitte, up to €600k…",
+    "notes": "Notes",
+    "mergedNote": "{{email}} was already recorded — the details were merged.",
+    "filters": {
+      "all": "All"
+    },
+    "status": {
+      "new": "New",
+      "contacted": "Contacted",
+      "engaged": "Engaged",
+      "qualified": "Qualified",
+      "won": "Won",
+      "lost": "Lost"
+    },
+    "statusLabel": "Lead status",
+    "score": {
+      "high": "High intent",
+      "medium": "Medium intent",
+      "low": "Low intent"
+    },
+    "scoreLabel": "Purchase likelihood",
+    "lastInbound": "Heard from them {{time}}",
+    "noInbound": "No reply yet",
+    "lastOutbound": "Contacted {{time}}",
+    "noOutbound": "No outreach yet",
+    "emptyTitle": "No leads yet",
+    "emptyBody": "When an email shows someone interested, the agent records them here — or add one yourself.",
+    "emptyFilteredTitle": "No leads with this status",
+    "emptyFilteredBody": "Try another filter.",
+    "delete": "Delete",
+    "deleteConfirm": "Delete lead “{{email}}”? Automations attached to this lead are deleted too."
   },
   "memory": {
     "addPlaceholder": "Add something Trailin should remember…",
@@ -521,7 +578,7 @@
       },
       "permissions": {
         "title": "Permissions",
-        "description": "What the assistant is allowed to do in your mailbox — access is granted per account, and sending and changes stay off until you arm each one."
+        "description": "What the assistant is allowed to do in your mailbox and CRM — sending and changes stay off until you arm each access."
       },
       "preferences": {
         "title": "Preferences",
@@ -551,7 +608,23 @@
       "chipOn_one": "Send & change on for {{count}} account",
       "chipOn_other": "Send & change on for {{count}} accounts",
       "chipOff": "Read-only",
-      "noAccounts": "No accounts connected yet — connect one under Connect email above."
+      "noAccounts": "No accounts connected yet — connect one under Connect email above.",
+      "onoffice": {
+        "title": "onOffice — automations may create records",
+        "rowOn": "Automations may create CRM records (contacts, appointments, tasks, links) — never edit, delete or send.",
+        "rowOff": "Automations only read the CRM; records are created in chat, with your confirmation.",
+        "confirmTitle": "Let automations create onOffice records?",
+        "confirmBody": "Scheduled runs (e.g. lead intake) can then create contacts, appointments, tasks and links in your live CRM on their own — your colleagues will see those records. Editing, deleting and sending stay chat-only. You can turn this off anytime.",
+        "confirmCta": "Allow creating records"
+      },
+      "onofficeWrites": {
+        "title": "onOffice — edit, delete & send",
+        "rowOn": "May modify or delete CRM records and send through the CRM when you ask it to in chat.",
+        "rowOff": "Chat can read the CRM and create records; editing, deleting and sending stay off until you arm this.",
+        "confirmTitle": "Allow the AI to edit, delete and send in onOffice?",
+        "confirmBody": "Once on, the assistant can modify and delete live CRM records and send through onOffice when you ask it to in chat. Scheduled runs never get these tools. You can turn this off anytime.",
+        "confirmCta": "Allow CRM changes"
+      }
     },
     "appearance": {
       "label": "Appearance",

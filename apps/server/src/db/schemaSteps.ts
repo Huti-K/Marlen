@@ -6,9 +6,10 @@
  *
  * Step 1 uses IF NOT EXISTS throughout so it can adopt a database whose
  * tables already exist but whose user_version is still 0; later steps are
- * plain DDL. There is deliberately no downgrade or data-upgrade path (dev
- * policy): when a step can't express a change, delete data/trailin.db* and
- * let boot recreate it.
+ * plain DDL. User databases live through every update, so a step must bring
+ * existing data forward, never destroy it (no DROP or lossy rewrite without
+ * copying into the new shape). There is no downgrade path: db/index.ts
+ * refuses to open a database newer than this list.
  */
 export const SCHEMA_STEPS: readonly string[] = [
   // 1: full base schema — chat, automations, settings, memories, library,
@@ -336,5 +337,50 @@ export const SCHEMA_STEPS: readonly string[] = [
       created_at TEXT NOT NULL,
       decided_at TEXT
     );
+  `,
+  // 14: the leads directory (db/leads.ts) — one row per prospect, keyed by
+  // normalized email address — plus the automations linkage: a lead's
+  // follow-up automations reference it and are deleted with it. The single
+  // defaultsSeeded flag gives way to per-default seed flags
+  // (automations/defaults.ts), so its settings row goes.
+  `
+    CREATE TABLE leads (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL DEFAULT '',
+      account_id TEXT NOT NULL DEFAULT '',
+      source TEXT NOT NULL DEFAULT 'email',
+      onoffice_address_id TEXT,
+      status TEXT NOT NULL DEFAULT 'new',
+      interest TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      last_inbound_at TEXT,
+      last_outbound_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX idx_leads_email ON leads(email);
+    CREATE INDEX idx_leads_status ON leads(status, updated_at);
+    ALTER TABLE automations ADD COLUMN lead_id TEXT;
+    DELETE FROM settings WHERE key = 'automations.defaultsSeeded';
+  `,
+  // 15: lead qualification — persona (buyer type in a few words) and score
+  // (estimated purchase likelihood: high/medium/low, '' while unassessed),
+  // filled by the intake automation and used to prioritize follow-ups.
+  `
+    ALTER TABLE leads ADD COLUMN persona TEXT NOT NULL DEFAULT '';
+    ALTER TABLE leads ADD COLUMN score TEXT NOT NULL DEFAULT '';
+  `,
+  // 16: per-automation triggers beyond cron — run_on_new_mail lets the mail
+  // probe start the automation when new inbound mail lands; notify_on_completion
+  // raises a desktop notification when a run finishes. The UPDATE arms both on
+  // the Lead-Eingang default for existing installs (seed flags block re-seeding
+  // and refreshUnmodifiedDefaults only rewrites name/instruction); the flags are
+  // visible in the UI, so a false name hit is user-correctable.
+  `
+    ALTER TABLE automations ADD COLUMN run_on_new_mail INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE automations ADD COLUMN notify_on_completion INTEGER NOT NULL DEFAULT 0;
+    UPDATE automations SET run_on_new_mail = 1, notify_on_completion = 1 WHERE name = 'Lead-Eingang';
   `,
 ];

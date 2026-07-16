@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { AppStatus } from "@trailin/shared";
 import { EMAIL_APPS } from "@trailin/shared";
 import { activeModelConfigured, getActiveModelIds } from "../llm/registry.js";
+import { getOnOfficeConfig } from "../onoffice/config.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
 
 export const accountRoutes: FastifyPluginAsyncTypebox = async (app) => {
@@ -29,6 +30,7 @@ export const accountRoutes: FastifyPluginAsyncTypebox = async (app) => {
       modelConfigured: await activeModelConfigured(),
       emailAccounts,
       emailAccountsKnown,
+      onofficeConfigured: (await getOnOfficeConfig()) !== null,
       provider,
       model,
     };
