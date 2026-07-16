@@ -68,7 +68,13 @@ workflow changes needed.
 2. Repo secrets: `MAC_CERT_P12` (the .p12, base64-encoded),
    `MAC_CERT_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`
    (appleid.apple.com → app-specific passwords), `APPLE_TEAM_ID`.
-3. Done — the next tagged release is signed + notarized, and macOS
+3. In `release.yml`, give the mac leg its own package step (duplicate the
+   step with `if: runner.os == 'macOS'` / `'Windows'`) and set the env vars
+   only there: `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
+   `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`. Never set them to empty
+   values on the other platform — electron-builder treats an empty
+   `CSC_LINK` as a certificate path and the build fails on it.
+4. Done — the next tagged release is signed + notarized, and macOS
    auto-updates start working.
 
 **Windows** (optional — removes SmartScreen; updates work without it):
