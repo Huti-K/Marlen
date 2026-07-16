@@ -42,7 +42,8 @@
       "includes": [
         "apps/web/src/components/ErrorBoundary.tsx",
         "apps/web/src/lib/api.ts",
-        "scripts/**"
+        "scripts/**",
+        "apps/desktop/scripts/**"
       ],
       "linter": {
         "rules": {

@@ -1,0 +1,44 @@
+# Packaging + update feed for the desktop shell. Input is build/app (assembled
+# by scripts/build.mjs, node_modules installed by the dist script); output
+# lands in dist/. `publish` doubles as the electron-updater feed baked into
+# the app: releases live on the GitHub repo, and a published release is what
+# running apps offer as an update.
+appId: app.trailin.desktop
+productName: Trailin
+directories:
+  app: build/app
+  output: dist
+  # Holds icon.png (rendered from icon.svg — the web logo on an Apple-grid
+  # tile); electron-builder derives the platform formats (icns/ico) from it.
+  buildResources: resources
+
+# Plain files instead of an asar archive: the server runs as a utility child
+# process reading its bundle and the web dist straight from disk, and
+# better-sqlite3's native binary would need unpacking anyway.
+asar: false
+
+publish:
+  provider: github
+  owner: Huti-K
+  repo: Trailin
+
+mac:
+  category: public.app-category.productivity
+  # zip is what electron-updater consumes on macOS; dmg is for humans.
+  target:
+    - dmg
+    - zip
+
+win:
+  target: nsis
+  # Windows code signing via Azure Trusted Signing — uncomment when the Azure
+  # account exists and the AZURE_* secrets are enabled in release.yml. Values
+  # come from the Trusted Signing resource (README → Signing).
+  # azureSignOptions:
+  #   endpoint: https://weu.codesigning.azure.net
+  #   codeSigningAccountName: <trusted-signing-account>
+  #   certificateProfileName: <certificate-profile>
+
+linux:
+  target: AppImage
+  category: Office

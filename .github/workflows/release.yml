@@ -1,0 +1,60 @@
+# The update feed: pushing a v* tag builds the desktop app for all three
+# platforms and uploads the installers to a draft GitHub release. Publishing
+# that release is what makes running apps see the update (electron-updater
+# polls the repo's releases). Bump apps/desktop/package.json's version to
+# match the tag before tagging — that version is what installed apps compare
+# against.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Web build
+        run: pnpm --filter @trailin/web build
+
+      - name: Package & upload to draft release
+        run: pnpm --filter @trailin/desktop dist -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Never hunt the runner keychain for identities — signing is driven
+          # purely by the explicit secrets below; while they're unset, builds
+          # ship unsigned (fine for Windows/Linux, macOS needs them).
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # macOS signing + notarization — activates by itself once these repo
+          # secrets exist (Developer ID Application cert as base64 .p12, plus
+          # the Apple-ID notarization credentials); empty values are ignored.
+          # Guarded to the mac runner: CSC_LINK would otherwise be picked up
+          # as a Windows cert too.
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CERT_P12 || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CERT_PASSWORD || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows signing (Azure Trusted Signing) — uncomment together with
+          # the azureSignOptions block in electron-builder.yml (see README).
+          # AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          # AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          # AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}

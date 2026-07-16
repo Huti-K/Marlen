@@ -6,6 +6,9 @@ dist/
 !.env.example
 # Runtime state: SQLite DB + stored credentials (auth.json)
 apps/server/data/
+# Assembled desktop app (bundles + staged node_modules); installers land in
+# apps/desktop/dist/, covered by the global dist/ rule above.
+apps/desktop/build/
 .claude/settings.local.json
 .DS_Store
 *.log

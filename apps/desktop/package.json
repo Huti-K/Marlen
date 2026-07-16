@@ -1,0 +1,26 @@
+{
+  "name": "@trailin/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.12.0",
+  "scripts": {
+    "dev": "node scripts/build.mjs && npm --prefix build/app install --omit=dev --no-audit --no-fund && electron-rebuild --module-dir build/app && electron build/app",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "bundle": "node scripts/build.mjs",
+    "dist": "node scripts/build.mjs && npm --prefix build/app install --omit=dev --no-audit --no-fund && electron-builder"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@types/node": "^24.0.0",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "electron-log": "^5.4.4",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.9.3"
+  }
+}
