@@ -3,8 +3,10 @@ import { Type } from "@sinclair/typebox";
 import type { AccountVoice } from "@trailin/shared";
 import { createMemory, deleteMemory, listMemories } from "../db/memories.js";
 import { getAccountVoices, setAccountVoices } from "../db/settings.js";
+import { finishVoiceLearnRun, markVoiceLearnRunning } from "../db/voiceRuns.js";
 import { normalizeAddressSet } from "../email/learn/addressSubject.js";
 import { getMailReadProvider, type SentMessage } from "../email/read/readProviders.js";
+import { errorMessage } from "../util.js";
 // Side-effect import: populates the MailReadProvider registry.
 import "../email/read/registerReadProviders.js";
 import { moduleLogger } from "../logger.js";
@@ -144,7 +146,7 @@ function buildReportStyleTool(onReport: (report: LearnedVoice) => void): AgentTo
  * account-scoped memories) and signature (on AccountVoice). Fetching the
  * samples plus one model round-trip — expect 10-60s. Called by
  * voiceLearnTool's execute below (interactive chat) and by voiceLearnService
- * (the accept-on-connect background run).
+ * (the automatic on-connect and boot-reconcile background runs).
  */
 export async function learnAccountVoice(accountId: string): Promise<AccountVoice> {
   const account = (await listAccounts()).find((a) => a.id === accountId);
@@ -244,7 +246,18 @@ export const voiceLearnTool: AgentTool = tool({
   params: {},
   catchToText: true,
   execute: async (_params, { account }) => {
-    const voice = await learnAccountVoice(account.id);
+    // Keep the per-account run state (db/voiceRuns.ts) truthful for this
+    // path too: a chat-initiated learn that succeeds must clear a stale
+    // error badge in Settings, and one that fails must show up there.
+    await markVoiceLearnRunning(account.id);
+    let voice: AccountVoice;
+    try {
+      voice = await learnAccountVoice(account.id);
+    } catch (error) {
+      await finishVoiceLearnRun(account.id, errorMessage(error));
+      throw error;
+    }
+    await finishVoiceLearnRun(account.id);
 
     // Look the saved directives back up by id so the reply can quote them
     // — learnAccountVoice only returns the voice record, not their text.

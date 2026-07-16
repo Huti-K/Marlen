@@ -3,8 +3,14 @@ import type { ServerEvent } from "@trailin/shared";
 import { onServerEvent } from "../events.js";
 import { openSse } from "./sse.js";
 
-/** Comment frames keep proxies and browsers from dropping the idle stream. */
-const HEARTBEAT_MS = 25_000;
+/**
+ * Named "ping" events keep proxies from dropping the idle stream AND give the
+ * client a liveness signal it can watch: a proxy may swallow the upstream's
+ * end without closing the browser-side socket, so a stream that stops pinging
+ * is the client's only way to detect it is dead (see web lib/serverEvents.ts).
+ * Comment frames can't serve that role — EventSource never surfaces them.
+ */
+const HEARTBEAT_MS = 15_000;
 
 /** Live "data changed" notifications for the web UI, as one SSE stream. */
 export const eventRoutes: FastifyPluginAsyncTypebox = async (app) => {
@@ -20,7 +26,7 @@ export const eventRoutes: FastifyPluginAsyncTypebox = async (app) => {
     const stream = openSse<ServerEvent>(reply, () => teardown());
     const unsubscribe = onServerEvent((event) => stream.send(event));
     const heartbeat = setInterval(() => {
-      reply.raw.write(": ping\n\n");
+      reply.raw.write("event: ping\ndata: {}\n\n");
     }, HEARTBEAT_MS);
     // One teardown for both ways a stream dies — client disconnect (openSse's
     // close callback) and server shutdown (the onClose hook above). The

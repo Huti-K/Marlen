@@ -12,6 +12,7 @@ import {
   FileText,
   Mail,
   Newspaper,
+  RefreshCw,
   Wrench,
 } from "lucide-react";
 import * as React from "react";
@@ -26,6 +27,7 @@ import { ErrorBanner, LoadingRow, Notice } from "@/components/ui/feedback";
 import { Markdown } from "@/components/ui/markdown";
 import { Select } from "@/components/ui/select";
 import { AgentCardView } from "@/features/chat/cards";
+import { BriefingCard } from "@/features/chat/cards/BriefingCard";
 import { DraftRow } from "@/features/drafts/DraftRow";
 import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
 import { CollapsibleSectionTitle } from "@/features/home/CollapsibleSectionTitle";
@@ -39,6 +41,7 @@ import {
 import type { View } from "@/lib/nav";
 import { takePendingDraftFocus } from "@/lib/paletteFocus";
 import { useServerEvents } from "@/lib/serverEvents";
+import { toast } from "@/lib/toast";
 import { subscribeTrailin } from "@/lib/trailinEvents";
 import { cn, errorMessage, toggleRowProps } from "@/lib/utils";
 
@@ -572,10 +575,32 @@ function ActivityRunCard({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = React.useState(defaultExpanded);
+  // A run whose turn produced a briefing card is represented by that card
+  // alone — the same body the BriefingHero renders — since the prose result
+  // and the raw tool cards only restate what the briefing already carries.
+  const briefing = findBriefingCard(run);
   const cards = run.cards ?? [];
   const hasResult = !!run.result;
-  const expandable = hasResult || cards.length > 0;
+  const expandable = !!briefing || hasResult || cards.length > 0;
   const toggleExpanded = () => setExpanded(!expanded);
+
+  // Re-run a failed automation in place. Fire-and-forget on the server (202):
+  // the resulting "runs" server event reloads the feed, where the fresh run
+  // appears as its own running row. Hidden for a deleted automation (null
+  // automationName) — there is nothing left to run.
+  const [retrying, setRetrying] = React.useState(false);
+  const canRetry = run.status === "error" && run.automationName !== null;
+  const retry = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRetrying(true);
+    try {
+      await api.runAutomation(run.automationId);
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <div
@@ -598,6 +623,18 @@ function ActivityRunCard({
               ))}
           </p>
           <div className="flex shrink-0 items-center gap-2">
+            {canRetry && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("common.retry")}
+                data-tooltip={t("common.retry")}
+                disabled={retrying}
+                onClick={(e) => void retry(e)}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", retrying && "animate-spin")} />
+              </Button>
+            )}
             <OpenRunInChatButton runId={run.id} onNavigateToChat={() => onNavigate("chat")} />
             <RunStatusBadge status={run.status} />
             <span className="text-xs tabular-nums text-muted-foreground">
@@ -605,14 +642,19 @@ function ActivityRunCard({
             </span>
           </div>
         </div>
-        {expanded && hasResult && (
+        {expanded && (briefing || hasResult) && (
           <div className="mt-1 border-t border-border pt-3">
-            <Markdown content={run.result} className="text-sm text-foreground/90" />
+            {briefing ? (
+              <BriefingCard card={briefing} colors={colors} bare />
+            ) : (
+              <Markdown content={run.result} className="text-sm text-foreground/90" />
+            )}
           </div>
         )}
       </article>
       {/* Sibling blocks, never nested in the row's surface (DESIGN.md: no card-in-card). */}
       {expanded &&
+        !briefing &&
         cards.map(({ toolCallId, card }) => (
           <AgentCardView key={toolCallId} card={card} colors={colors} />
         ))}

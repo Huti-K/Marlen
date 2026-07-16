@@ -1,22 +1,18 @@
-import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
+import { createAutomation, deleteAutomation, updateAutomation } from "../automations/manage.js";
 import {
   findMissedAutomations,
   getNextRunAt,
-  isValidCron,
-  refreshSchedule,
   runAutomation,
   runMissedAutomations,
-  unschedule,
 } from "../automations/scheduler.js";
-import { deleteConversationCascade } from "../db/conversationStore.js";
-import { db, schema, sqlite } from "../db/index.js";
+import { decideSuggestion, listPendingSuggestions } from "../db/automationSuggestions.js";
+import { db, schema } from "../db/index.js";
 import { likeContains, likePattern } from "../db/like.js";
-import { badRequest, requireRow } from "../errors.js";
-import { emitServerEvent } from "../events.js";
+import { notFound, requireRow } from "../errors.js";
 
 const runsQuery = Type.Object({
   q: Type.Optional(Type.String()),
@@ -42,17 +38,6 @@ const automationPatchBody = Type.Object({
   enabled: Type.Optional(Type.Boolean()),
   showInActivity: Type.Optional(Type.Boolean()),
   pinned: Type.Optional(Type.Boolean()),
-});
-
-/**
- * Exactly one automation may be pinned. Clearing every other row and setting
- * this one happen as a single SQLite transaction so two concurrent "pin"
- * requests can never both leave a row pinned — whichever transaction commits
- * last wins, and the invariant (at most one pinned row) always holds.
- */
-const pinExclusively = sqlite.transaction((id: string) => {
-  sqlite.prepare("UPDATE automations SET pinned = 0 WHERE id != ?").run(id);
-  sqlite.prepare("UPDATE automations SET pinned = 1 WHERE id = ?").run(id);
 });
 
 /** Join condition linking a run to its automation, shared by every runs query and its count. */
@@ -185,105 +170,53 @@ export const automationRoutes: FastifyPluginAsyncTypebox = async (app) => {
     return reply.code(202).send({ started });
   });
 
+  /** Pending proposals from the suggestion sweep, for the Automations page's accept/dismiss queue. */
+  app.get("/api/automations/suggestions", async () => listPendingSuggestions());
+
+  /** Accept a suggestion: create the automation it proposes, then retire the suggestion. */
+  app.post(
+    "/api/automations/suggestions/:id/accept",
+    { schema: { params: idParams } },
+    async (req) => {
+      const suggestions = await listPendingSuggestions();
+      const suggestion = suggestions.find((s) => s.id === req.params.id);
+      if (!suggestion) throw notFound("no pending suggestion with this id");
+      const automation = await createAutomation({
+        name: suggestion.name,
+        instruction: suggestion.instruction,
+        schedule: suggestion.schedule,
+      });
+      // Only after the automation exists — a failed create leaves the
+      // suggestion pending instead of silently swallowing the proposal.
+      await decideSuggestion(req.params.id, "accepted");
+      return automation;
+    },
+  );
+
+  app.post(
+    "/api/automations/suggestions/:id/dismiss",
+    { schema: { params: idParams } },
+    async (req) => {
+      const decided = await decideSuggestion(req.params.id, "dismissed");
+      if (!decided) throw notFound("no pending suggestion with this id");
+      return { ok: true };
+    },
+  );
+
   app.post("/api/automations", { schema: { body: automationBody } }, async (req) => {
-    const { name, instruction, schedule } = req.body;
-    if (!name.trim() || !instruction.trim() || !schedule.trim()) {
-      throw badRequest("name, instruction and schedule are required");
-    }
-    if (!isValidCron(schedule.trim())) {
-      throw badRequest(`invalid cron expression: ${schedule}`);
-    }
-    const automation = {
-      id: randomUUID(),
-      name: name.trim(),
-      instruction: instruction.trim(),
-      schedule: schedule.trim(),
-      enabled: req.body.enabled ?? true,
-      showInActivity: req.body.showInActivity ?? true,
-      pinned: req.body.pinned ?? false,
-      createdAt: new Date().toISOString(),
-    };
-    await db.insert(schema.automations).values(automation);
-    if (automation.pinned) pinExclusively(automation.id);
-    await refreshSchedule(automation.id);
-    emitServerEvent("automations");
-    return automation;
+    return createAutomation(req.body);
   });
 
   app.patch(
     "/api/automations/:id",
     { schema: { params: idParams, body: automationPatchBody } },
     async (req) => {
-      const updates: Record<string, unknown> = {};
-      if (req.body.name !== undefined) {
-        const name = req.body.name?.trim();
-        if (!name) throw badRequest("name must not be empty");
-        updates.name = name;
-      }
-      if (req.body.instruction !== undefined) {
-        const instruction = req.body.instruction?.trim();
-        if (!instruction) throw badRequest("instruction must not be empty");
-        updates.instruction = instruction;
-      }
-      if (req.body.schedule !== undefined) {
-        if (!isValidCron(req.body.schedule.trim())) {
-          throw badRequest(`invalid cron expression: ${req.body.schedule}`);
-        }
-        updates.schedule = req.body.schedule.trim();
-      }
-      if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
-      if (req.body.showInActivity !== undefined) updates.showInActivity = req.body.showInActivity;
-      if (req.body.pinned !== undefined) updates.pinned = req.body.pinned;
-      if (Object.keys(updates).length === 0) throw badRequest("nothing to update");
-
-      // Must run before any mutation: pinExclusively unpins every other row,
-      // so a PATCH for a nonexistent id must never reach it — otherwise a
-      // pinned: true request for a bad id would unpin every real automation
-      // and then still 404.
-      await requireRow(
-        db
-          .select({ id: schema.automations.id })
-          .from(schema.automations)
-          .where(eq(schema.automations.id, req.params.id)),
-        "not found",
-      );
-
-      await db
-        .update(schema.automations)
-        .set(updates)
-        .where(eq(schema.automations.id, req.params.id));
-      if (updates.pinned === true) pinExclusively(req.params.id);
-      await refreshSchedule(req.params.id);
-      emitServerEvent("automations");
-
-      return requireRow(
-        db.select().from(schema.automations).where(eq(schema.automations.id, req.params.id)),
-        "not found",
-      );
+      return updateAutomation(req.params.id, req.body);
     },
   );
 
   app.delete("/api/automations/:id", { schema: { params: idParams } }, async (req) => {
-    unschedule(req.params.id);
-
-    // Each run also created a conversation (id = run id) plus its user/
-    // assistant message rows (see automations/runRecorder.ts) — nothing else
-    // ever cleans those up, so without this they'd linger forever in the
-    // chat sidebar's Automations section, orphaned from a deleted automation.
-    // Each cascade is its own transaction (db/conversationStore.ts) — the
-    // same atomicity guarantee routes/chat.ts gets for a single conversation,
-    // applied once per run here.
-    const runs = await db
-      .select({ id: schema.automationRuns.id })
-      .from(schema.automationRuns)
-      .where(eq(schema.automationRuns.automationId, req.params.id));
-    for (const run of runs) deleteConversationCascade(run.id);
-
-    await db.delete(schema.automations).where(eq(schema.automations.id, req.params.id));
-    await db
-      .delete(schema.automationRuns)
-      .where(eq(schema.automationRuns.automationId, req.params.id));
-    emitServerEvent("automations");
+    await deleteAutomation(req.params.id);
     return { ok: true };
   });
 

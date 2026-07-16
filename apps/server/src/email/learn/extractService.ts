@@ -1,6 +1,8 @@
 import cron, { type ScheduledTask } from "node-cron";
+import { recordLearnRun } from "../../db/learnRuns.js";
 import { getTimezoneSetting } from "../../db/settings.js";
 import { moduleLogger } from "../../logger.js";
+import { errorMessage } from "../../util.js";
 import { runExtractionSweep } from "./extractor.js";
 import { runMatchSweep } from "./matcher.js";
 
@@ -17,18 +19,48 @@ const log = moduleLogger("learn-extract");
  * Each sweep runs the draft-vs-sent matcher first: extraction only sees
  * pairs the matcher has resolved, so matching immediately before it keeps a
  * same-day send from waiting on the match loop's slower cadence.
+ *
+ * Every sweep — including one that found nothing to learn — is recorded via
+ * db/learnRuns.ts, feeding the Knowledge page's learning-activity history.
  */
 
 const NIGHTLY_CRON = "0 3 * * *";
 
 let task: ScheduledTask | null = null;
 
-function runSweep(reason: "boot" | "scheduled"): void {
-  runMatchSweep()
-    .then(() => runExtractionSweep())
-    .catch((error: unknown) => {
-      log.warn({ err: error, reason }, "nightly learning sweep failed to run");
+/** One full sweep (match, then extract), recorded whatever the outcome. Never throws. */
+export async function runLearningSweep(reason: "boot" | "scheduled"): Promise<void> {
+  const startedAt = new Date().toISOString();
+  let matched = 0;
+  try {
+    matched = (await runMatchSweep()).matched;
+    const extracted = await runExtractionSweep();
+    await recordLearnRun({
+      reason,
+      status: "ok",
+      matched,
+      ...extracted,
+      error: null,
+      startedAt,
+      finishedAt: new Date().toISOString(),
     });
+  } catch (error) {
+    log.warn({ err: error, reason }, "learning sweep failed to run");
+    await recordLearnRun({
+      reason,
+      status: "error",
+      matched,
+      pending: 0,
+      identical: 0,
+      learned: 0,
+      lessons: 0,
+      error: errorMessage(error),
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    }).catch((recordError: unknown) => {
+      log.warn({ err: recordError }, "failed to record the learning sweep's failure");
+    });
+  }
 }
 
 export async function startNightlyLearning(): Promise<void> {
@@ -36,10 +68,16 @@ export async function startNightlyLearning(): Promise<void> {
   const timezone = (await getTimezoneSetting()) ?? undefined;
   task = cron.schedule(
     NIGHTLY_CRON,
-    () => runSweep("scheduled"),
+    () => void runLearningSweep("scheduled"),
     timezone ? { timezone } : undefined,
   );
-  runSweep("boot");
+  void runLearningSweep("boot");
+}
+
+/** When the nightly sweep will fire next; null while it isn't scheduled. */
+export function nextLearnRunAt(): string | null {
+  const next = task?.getNextRun();
+  return next ? next.toISOString() : null;
 }
 
 /** Destroy the nightly cron task; a sweep already running finishes on its own. */

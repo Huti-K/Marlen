@@ -4,6 +4,7 @@ import { type ConnectedAccount, EMAIL_APPS } from "@trailin/shared";
 import "../email/registerProviders.js";
 import { resetSessions } from "../agent/emailAgent.js";
 import { startVoiceLearnOnConnect } from "../agent/voiceLearnService.js";
+import { deleteVoiceLearnRun } from "../db/voiceRuns.js";
 import { invalidateDraftsCache } from "../email/draftsService.js";
 import { env } from "../env.js";
 import { badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
@@ -136,10 +137,11 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
   );
 
   /**
-   * Learn the account's writing voice from its own sent mail, offered right
-   * after an email account is linked (the user accepts the prompt). Runs in
-   * the background — sent mail is read live from the provider — so this
-   * returns as soon as the job is launched.
+   * Learn the account's writing voice from its own sent mail. The connect
+   * flow calls this automatically for a freshly linked email account, and
+   * the Settings account row's retry button calls it again after a failed
+   * attempt. Runs in the background — sent mail is read live from the
+   * provider — so this returns as soon as the job is launched.
    */
   app.post(
     "/api/pipedream/accounts/:id/learn-voice",
@@ -172,6 +174,8 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
       invalidateDraftsCache(req.params.id);
       // The account list itself just changed.
       invalidateAccountsCache();
+      // Drop the account's voice-learn attempt state with it.
+      await deleteVoiceLearnRun(req.params.id);
       return { ok: true };
     },
   );

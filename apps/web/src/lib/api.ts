@@ -6,6 +6,7 @@ import type {
   AppStatus,
   Automation,
   AutomationRun,
+  AutomationSuggestion,
   ChatMessage,
   ChatStreamEvent,
   ConnectedAccount,
@@ -13,6 +14,7 @@ import type {
   Conversation,
   EmailRef,
   Language,
+  LearnStatus,
   LibrarySearchHit,
   LibraryStatus,
   LlmProviderInfo,
@@ -27,6 +29,7 @@ import type {
   PipedreamStatus,
   RunFeedItem,
   SearchResult,
+  VoiceLearnRun,
 } from "@trailin/shared";
 import i18n from "@/lib/i18n";
 import { openExternal } from "@/lib/utils";
@@ -175,6 +178,8 @@ export const api = {
     http<{ ok: boolean }>("DELETE", `/api/pipedream/accounts/${encodeURIComponent(id)}`),
   learnAccountVoice: (id: string) =>
     http<{ ok: boolean }>("POST", `/api/pipedream/accounts/${encodeURIComponent(id)}/learn-voice`),
+  // Each account's latest automatic voice-learn attempt (running/ok/error).
+  voiceLearnRuns: () => get<VoiceLearnRun[]>("/api/learn/voice-runs"),
 
   onOfficeStatus: () => get<OnOfficeStatus>("/api/onoffice"),
   saveOnOffice: (body: OnOfficeConfigInput) => http<OnOfficeStatus>("PUT", "/api/onoffice", body),
@@ -270,6 +275,12 @@ export const api = {
     http<{ ok: boolean }>("POST", `/api/automations/${encodeURIComponent(id)}/run`),
   automationRuns: (id: string) =>
     get<AutomationRun[]>(`/api/automations/${encodeURIComponent(id)}/runs`),
+  automationSuggestions: () => get<AutomationSuggestion[]>("/api/automations/suggestions"),
+  // Accepting creates the proposed automation server-side and returns it.
+  acceptAutomationSuggestion: (id: string) =>
+    http<Automation>("POST", `/api/automations/suggestions/${encodeURIComponent(id)}/accept`),
+  dismissAutomationSuggestion: (id: string) =>
+    http<{ ok: boolean }>("POST", `/api/automations/suggestions/${encodeURIComponent(id)}/dismiss`),
 
   memories: () => get<MemoryEntry[]>("/api/memories"),
   // accountId/contactId are only sent when the caller passes them explicitly —
@@ -296,6 +307,8 @@ export const api = {
     }),
   deleteMemory: (id: string) =>
     http<{ ok: boolean }>("DELETE", `/api/memories/${encodeURIComponent(id)}`),
+  // Recent draft-vs-sent learning sweeps and when the next nightly one fires.
+  learnStatus: () => get<LearnStatus>("/api/learn/status"),
 
   library: () => get<LibraryStatus>("/api/library"),
   setLibraryFolder: (folder: string) =>

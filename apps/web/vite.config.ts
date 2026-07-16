@@ -16,6 +16,17 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:3001",
         changeOrigin: true,
+        // http-proxy leaves the browser-side response open when the backend
+        // closes mid-stream, which turns open SSE connections (/api/events)
+        // into silent zombies across a server restart. Destroying the
+        // response lets EventSource see the drop and reconnect.
+        configure(proxy) {
+          proxy.on("proxyRes", (proxyRes, _req, res) => {
+            proxyRes.on("close", () => {
+              if (!res.writableEnded) res.destroy();
+            });
+          });
+        },
       },
     },
   },

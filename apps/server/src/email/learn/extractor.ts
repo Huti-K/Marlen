@@ -62,6 +62,17 @@ export interface ExtractSweepDeps {
   readerFor?: (app: string) => MailReadProvider | null;
 }
 
+export interface ExtractSweepResult {
+  /** Sent-but-unlearned drafts pending when the sweep started. */
+  pending: number;
+  /** Pairs stamped learned without a lesson — the draft was sent unchanged. */
+  identical: number;
+  /** Edited pairs consumed by extraction this sweep. */
+  learned: number;
+  /** Style memories created from those pairs. */
+  lessons: number;
+}
+
 /**
  * One sweep's worth of the nightly extraction pass: every sent-but-unlearned
  * agent_drafts snapshot whose sent message the provider can still serve is
@@ -75,12 +86,12 @@ export interface ExtractSweepDeps {
  * left unstamped for a later night — dropping a lesson is fine, learning
  * the wrong one is not.
  */
-export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<void> {
+export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<ExtractSweepResult> {
   const extract = deps.extract ?? defaultExtract;
   const readerFor = deps.readerFor ?? getMailReadProvider;
 
   const sentDrafts = await listUnlearnedSentDrafts();
-  if (sentDrafts.length === 0) return;
+  if (sentDrafts.length === 0) return { pending: 0, identical: 0, learned: 0, lessons: 0 };
 
   const accounts = await (deps.listAccounts ?? listAccounts)();
   const accountById = new Map(accounts.map((account) => [account.id, account]));
@@ -165,4 +176,5 @@ export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<v
   if (identical > 0 || learned > 0) {
     log.info({ identical, learned, lessons }, "nightly learning sweep done");
   }
+  return { pending: sentDrafts.length, identical, learned, lessons };
 }

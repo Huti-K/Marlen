@@ -143,6 +143,26 @@ export const libraryDocuments = sqliteTable("library_documents", {
   indexedAt: text("indexed_at").notNull(),
 });
 
+/**
+ * Proposed automations from the nightly suggestion sweep
+ * (automations/suggestService.ts). Pending rows show on the Automations page
+ * with accept/dismiss; decided rows stay (pruned to a recent window) as dedup
+ * context so a later sweep doesn't re-suggest what the user already answered.
+ */
+export const automationSuggestions = sqliteTable("automation_suggestions", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  instruction: text("instruction").notNull(),
+  schedule: text("schedule").notNull(),
+  /** The recurring pattern the sweep saw — shown to the user as the "why". */
+  rationale: text("rationale").notNull(),
+  status: text("status", { enum: ["pending", "accepted", "dismissed"] })
+    .notNull()
+    .default("pending"),
+  createdAt: text("created_at").notNull(),
+  decidedAt: text("decided_at"),
+});
+
 export const automationRuns = sqliteTable("automation_runs", {
   id: text("id").primaryKey(),
   automationId: text("automation_id").notNull(),
@@ -152,4 +172,37 @@ export const automationRuns = sqliteTable("automation_runs", {
   cards: text("cards"),
   startedAt: text("started_at").notNull(),
   finishedAt: text("finished_at"),
+});
+
+/**
+ * An account's latest voice-learn attempt (db/voiceRuns.ts): the automatic
+ * style analysis of its sent mail. One row per account, overwritten on
+ * retry — "error" persists until a rerun succeeds, backing the retry
+ * affordance on the Settings account rows.
+ */
+export const voiceLearnRuns = sqliteTable("voice_learn_runs", {
+  accountId: text("account_id").primaryKey(),
+  status: text("status", { enum: ["running", "ok", "error"] }).notNull(),
+  error: text("error"),
+  startedAt: text("started_at").notNull(),
+  finishedAt: text("finished_at"),
+});
+
+/**
+ * One completed draft-vs-sent learning sweep (db/learnRuns.ts): what
+ * triggered it and what it found, pruned to the newest handful of rows —
+ * the Knowledge page's learning-activity history.
+ */
+export const learnRuns = sqliteTable("learn_runs", {
+  id: text("id").primaryKey(),
+  reason: text("reason", { enum: ["boot", "scheduled"] }).notNull(),
+  status: text("status", { enum: ["ok", "error"] }).notNull(),
+  matched: integer("matched").notNull().default(0),
+  pending: integer("pending").notNull().default(0),
+  identical: integer("identical").notNull().default(0),
+  learned: integer("learned").notNull().default(0),
+  lessons: integer("lessons").notNull().default(0),
+  error: text("error"),
+  startedAt: text("started_at").notNull(),
+  finishedAt: text("finished_at").notNull(),
 });

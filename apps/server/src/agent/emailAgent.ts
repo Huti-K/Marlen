@@ -9,6 +9,7 @@ import { getOnOfficeConfig } from "../onoffice/config.js";
 import { loadOnOfficeTools } from "../onoffice/tools.js";
 import { type EmailToolset, loadEmailTools } from "../pipedream/mcp.js";
 import { buildAccountsContext } from "./accounts.js";
+import { automationManageTools } from "./automationTools.js";
 import { composeBriefingTool } from "./briefingTool.js";
 import { parseStoredCards } from "./cards.js";
 import { presentChoicesTool } from "./choicesTool.js";
@@ -217,6 +218,17 @@ export async function buildSystemPrompt(
   asks for more there, explain that write access is granted per account under Settings →
   Permissions.`;
     }
+
+    // The automation-management tools exist only in interactive sessions, so
+    // only those sessions are told about them.
+    prompt += `
+- When the user wants something done on a schedule — recurring ("every morning…", "each Friday…")
+  or once at a later date ("on the 15th…") — set it up with automation_create instead of doing it
+  once and letting the request drop, then tell them what you created (name, schedule, next run).
+  Each automation runs its instruction as an unattended agent run and posts the result to the Home
+  activity feed. Show and adjust existing ones with automation_list and automation_update
+  (enabled: false pauses); automation_delete also erases the automation's run history, so use it
+  only when the user explicitly asks to remove one.`;
   }
 
   // Mentioned only when credentials are configured — mirroring loadOnOfficeTools,
@@ -399,6 +411,11 @@ async function buildAgent(
         // malicious email would otherwise be injected into every later
         // session's system prompt. Same read-only surface delegate workers get.
         ...(options.interactive ? buildKnowledgeTools() : buildKnowledgeReadTools()),
+        // Automation management is interactive-only for the same reason: an
+        // automation's instruction is a standing prompt executed unattended
+        // on every tick, so mail content must never be able to plant or
+        // alter one.
+        ...(options.interactive ? automationManageTools : []),
         buildDelegateTool(toolset.readTools),
         ...(options.interactive ? [voiceLearnTool] : []),
         composeBriefingTool,

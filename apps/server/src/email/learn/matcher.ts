@@ -153,12 +153,17 @@ async function matchDraft(
   return true;
 }
 
-export async function runMatchSweep(deps: MatchSweepDeps = {}): Promise<void> {
+export interface MatchSweepResult {
+  /** Drafts this sweep matched to a sent message. */
+  matched: number;
+}
+
+export async function runMatchSweep(deps: MatchSweepDeps = {}): Promise<MatchSweepResult> {
   const tiebreak = deps.tiebreak ?? defaultTiebreak;
   const readerFor = deps.readerFor ?? getMailReadProvider;
 
   const openDrafts = await listOpenDraftSnapshots();
-  if (openDrafts.length === 0) return;
+  if (openDrafts.length === 0) return { matched: 0 };
 
   const byAccount = new Map<string, OpenDraftSnapshot[]>();
   for (const draft of openDrafts) {
@@ -204,4 +209,5 @@ export async function runMatchSweep(deps: MatchSweepDeps = {}): Promise<void> {
     log.info({ matched }, "draft-vs-sent match sweep done");
     emitServerEvent("drafts");
   }
+  return { matched };
 }

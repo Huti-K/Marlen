@@ -17,6 +17,8 @@ interface DefaultAutomation {
   schedule: string;
   enabled: boolean;
   showInActivity: boolean;
+  /** Leads the Home page as the pinned hero. At most one default may set this. */
+  pinned: boolean;
   instruction: string;
 }
 
@@ -26,6 +28,7 @@ const DEFAULT_AUTOMATIONS: DefaultAutomation[] = [
     schedule: "0 8 * * *",
     enabled: true,
     showInActivity: true,
+    pinned: true,
     instruction: `Across all connected email accounts, review the mail from the last 24 hours — triage it, draft the replies that are warranted, and publish the result as a structured briefing.
 
 REVIEW: Mail is read live from each provider through per-account read tools — their names start with verbs like find/list/search, each one's description says which account it acts as, and with several accounts of one app the names carry an account suffix. For each connected email account, list the messages from the last 24 hours: use a date-bounded query where the account's tool supports one, otherwise list newest-first and stop at the 24-hour boundary — never let the digest reach further back. Fan the per-account reviews out with the delegate tool, one self-contained task per account that names the account and says what to report back (sender, subject, one-line gist, threadId, and whether a reply from me seems needed), rather than working through accounts serially. Read a thread in full (the account's thread/message get tool) only when it will become a briefing item or a draft — subjects and snippets from the listing are enough to dismiss the rest. A live read can take seconds and occasionally time out; retry once with a narrower query, and if an account stays unreachable, say so in the briefing instead of silently skipping it.
@@ -175,6 +178,7 @@ export async function seedDefaultAutomations(): Promise<void> {
         schedule: a.schedule,
         enabled: a.enabled,
         showInActivity: a.showInActivity,
+        pinned: a.pinned,
         // Distinct, descending timestamps so the list order is deterministic:
         // the first entry is newest and thus leads the createdAt-desc feed.
         createdAt: new Date(now - i * 1000).toISOString(),

@@ -15,6 +15,7 @@ import { backupRoutes } from "./routes/backup.js";
 import { chatRoutes } from "./routes/chat.js";
 import { draftRoutes } from "./routes/drafts.js";
 import { eventRoutes } from "./routes/events.js";
+import { learnRoutes } from "./routes/learn.js";
 import { libraryRoutes } from "./routes/library.js";
 import { llmRoutes } from "./routes/llm.js";
 import { mailRoutes } from "./routes/mail.js";
@@ -82,6 +83,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(settingsRoutes);
   await app.register(draftRoutes);
   await app.register(memoryRoutes);
+  await app.register(learnRoutes);
   await app.register(libraryRoutes);
   await app.register(mailRoutes);
   await app.register(eventRoutes);

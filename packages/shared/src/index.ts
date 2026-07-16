@@ -251,6 +251,27 @@ export interface Automation {
   nextRunAt?: string | null;
 }
 
+/**
+ * One proposed automation from the nightly suggestion sweep (the recurring
+ * request patterns found in recent chat history), awaiting the user's
+ * accept/dismiss on the Automations page. Decided rows are kept as dedup
+ * context for later sweeps, never shown again.
+ */
+export interface AutomationSuggestion {
+  id: string;
+  name: string;
+  /** Ready-to-run instruction, same shape an Automation carries. */
+  instruction: string;
+  /** Standard 5-field cron expression. */
+  schedule: string;
+  /** The recurring pattern the sweep saw — why this is being suggested. */
+  rationale: string;
+  status: "pending" | "accepted" | "dismissed";
+  createdAt: string;
+  /** When the user accepted or dismissed it; null while pending. */
+  decidedAt: string | null;
+}
+
 export interface AutomationRun {
   id: string;
   automationId: string;
@@ -391,6 +412,55 @@ export interface MemoryEntry {
   updatedAt: string;
 }
 
+/**
+ * One recorded run of the draft-vs-sent learning sweep (match + extraction),
+ * shown on the Knowledge page so "did the loop run, and what did it find"
+ * is answerable without reading server logs.
+ */
+export interface LearnRun {
+  id: string;
+  /** "boot" = the catch-up sweep right after server start, "scheduled" = the nightly 03:00 run. */
+  reason: "boot" | "scheduled";
+  status: "ok" | "error";
+  /** Drafts newly matched to a sent message by this run's match pass. */
+  matched: number;
+  /** Sent-but-unlearned drafts pending when extraction started. */
+  pending: number;
+  /** Pairs stamped learned without a lesson — the draft was sent unchanged. */
+  identical: number;
+  /** Edited pairs consumed by extraction this run. */
+  learned: number;
+  /** Style memories created from those pairs. */
+  lessons: number;
+  /** Failure detail when status is "error". */
+  error: string | null;
+  startedAt: string;
+  finishedAt: string;
+}
+
+/** GET /api/learn/status: recent sweep runs (newest first) and the next scheduled one. */
+export interface LearnStatus {
+  runs: LearnRun[];
+  /** ISO timestamp of the next nightly sweep; null while the cron isn't scheduled. */
+  nextRunAt: string | null;
+}
+
+/**
+ * An account's latest voice-learn attempt (the automatic style analysis of
+ * its sent mail). One record per account, overwritten on retry; "error"
+ * stays until a rerun succeeds, so a failed or skipped learn is visible and
+ * retryable from Settings instead of silently lost.
+ */
+export interface VoiceLearnRun {
+  accountId: string;
+  status: "running" | "ok" | "error";
+  /** Why the attempt failed or was skipped, when status is "error". */
+  error: string | null;
+  startedAt: string;
+  /** Null while the attempt is still running. */
+  finishedAt: string | null;
+}
+
 /** One file of the local document library (the drop folder). */
 export interface LibraryDocument {
   id: string;
@@ -449,7 +519,8 @@ export type ServerEventTopic =
   | "memories" // agent memory saved/updated/deleted
   | "library" // library document written/changed
   | "conversations" // chat/automation conversation list changed
-  | "automations"; // automation definitions created/updated/deleted
+  | "automations" // automation definitions created/updated/deleted
+  | "learn"; // a learning sweep run was recorded
 
 export interface ServerEvent {
   topic: ServerEventTopic;

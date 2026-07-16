@@ -1,5 +1,14 @@
-import type { Automation, AutomationRun } from "@trailin/shared";
-import { CalendarClock, ChevronDown, ChevronUp, Loader2, Pin, Play, Plus } from "lucide-react";
+import type { Automation, AutomationRun, AutomationSuggestion } from "@trailin/shared";
+import {
+  CalendarClock,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Pin,
+  Play,
+  Plus,
+  Sparkles,
+} from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -54,6 +63,7 @@ function looksLikeCron(expr: string): boolean {
 export function AutomationsPanel() {
   const { t, i18n } = useTranslation();
   const [automations, setAutomations] = React.useState<Automation[]>([]);
+  const [suggestions, setSuggestions] = React.useState<AutomationSuggestion[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [showForm, setShowForm] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -75,7 +85,12 @@ export function AutomationsPanel() {
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      setAutomations(await api.automations());
+      const [automationRows, suggestionRows] = await Promise.all([
+        api.automations(),
+        api.automationSuggestions(),
+      ]);
+      setAutomations(automationRows);
+      setSuggestions(suggestionRows);
     } catch (err) {
       toast.error(err);
     } finally {
@@ -87,12 +102,15 @@ export function AutomationsPanel() {
     void refresh();
   }, [refresh]);
 
-  // Server-side changes (agent tools, scheduled runs): refetch without the
-  // loading gate — toggling it would unmount the cards and drop their state.
+  // Server-side changes (agent tools, scheduled runs, the suggestion sweep):
+  // refetch without the loading gate — toggling it would unmount the cards
+  // and drop their state.
   useServerEvents(["automations"], () => {
-    void api
-      .automations()
-      .then(setAutomations)
+    void Promise.all([api.automations(), api.automationSuggestions()])
+      .then(([automationRows, suggestionRows]) => {
+        setAutomations(automationRows);
+        setSuggestions(suggestionRows);
+      })
       .catch(() => {});
   });
 
@@ -372,6 +390,29 @@ export function AutomationsPanel() {
         </div>
       </Dialog>
 
+      {suggestions.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div>
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              {t("automations.suggestions.title")}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {t("automations.suggestions.hint")}
+            </p>
+          </div>
+          {suggestions.map((suggestion, i) => (
+            <div
+              key={suggestion.id}
+              className="animate-in-up"
+              style={{ animationDelay: `${i * 45}ms` }}
+            >
+              <SuggestionCard suggestion={suggestion} onDecided={refresh} />
+            </div>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex flex-col gap-3">
           {[0, 1].map((i) => (
@@ -481,6 +522,69 @@ function WeekdayToggle({
         );
       })}
     </div>
+  );
+}
+
+/** One pending proposal from the suggestion sweep: rationale up front, instruction behind a disclosure, accept/dismiss to decide. */
+function SuggestionCard({
+  suggestion,
+  onDecided,
+}: {
+  suggestion: AutomationSuggestion;
+  onDecided: () => Promise<void>;
+}) {
+  const { t, i18n } = useTranslation();
+  const [busy, setBusy] = React.useState(false);
+  const [showInstruction, setShowInstruction] = React.useState(false);
+
+  const label = scheduleLabel(suggestion.schedule, t, i18n.language);
+
+  const decide = async (action: "accept" | "dismiss") => {
+    setBusy(true);
+    try {
+      if (action === "accept") await api.acceptAutomationSuggestion(suggestion.id);
+      else await api.dismissAutomationSuggestion(suggestion.id);
+      await onDecided();
+    } catch (err) {
+      toast.error(err);
+      // Only on failure — on success the refetch removes this card entirely.
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card padding="lg">
+      <div className="flex flex-wrap items-center gap-2 text-base font-semibold tracking-tight">
+        {suggestion.name}
+        <Badge
+          variant="muted"
+          className={cn("text-2xs", !label && "font-mono")}
+          title={suggestion.schedule}
+        >
+          {label ?? suggestion.schedule}
+        </Badge>
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">{suggestion.rationale}</p>
+      <div className="mt-2">
+        <DisclosureToggle open={showInstruction} onToggle={() => setShowInstruction((v) => !v)}>
+          {t("automations.suggestions.showInstruction")}
+        </DisclosureToggle>
+        {showInstruction && (
+          <p className="mt-2 whitespace-pre-wrap rounded-lg bg-surface-2 p-3 text-xs text-muted-foreground">
+            {suggestion.instruction}
+          </p>
+        )}
+      </div>
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={() => void decide("dismiss")} disabled={busy}>
+          {t("automations.suggestions.dismiss")}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => void decide("accept")} disabled={busy}>
+          {busy && <Loader2 className="animate-spin" />}
+          {t("automations.suggestions.accept")}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

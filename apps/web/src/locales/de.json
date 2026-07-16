@@ -289,10 +289,10 @@
     "advancedCustom": "Eigenes Pipedream-Projekt",
     "editNote": "Notiz bearbeiten",
     "notePlaceholder": "Wofür dieses Konto ist — der Assistent liest diese Notiz",
-    "learnVoiceTitle": "Schreibstil lernen?",
-    "learnVoiceBody": "Trailin kann die gesendeten E-Mails von {{name}} analysieren, um deinen Ton zu treffen und deine Signatur zu übernehmen, wenn Entwürfe für dich erstellt werden. Das läuft im Hintergrund, und du kannst das Gelernte in den Einstellungen ändern oder entfernen.",
-    "learnVoiceConfirm": "Meinen Stil lernen",
-    "learnVoiceStarted": "Dein Schreibstil von {{name}} wird gelernt – er erscheint in Kürze in den Einstellungen."
+    "learnVoiceStarted": "Dein Schreibstil von {{name}} wird gelernt – er erscheint in Kürze in den Einstellungen.",
+    "voiceLearning": "Stil wird gelernt…",
+    "voiceLearnFailed": "Stil-Lernen fehlgeschlagen",
+    "voiceLearnRetry": "Schreibstil erneut lernen"
   },
   "home": {
     "setupBanner": "Trailin ist noch nicht fertig eingerichtet, der Assistent erreicht Ihre E-Mails noch nicht.",
@@ -401,6 +401,13 @@
       "running": "läuft",
       "success": "erfolgreich",
       "error": "Fehler"
+    },
+    "suggestions": {
+      "title": "Vorgeschlagene Automatisierungen",
+      "hint": "Muster aus Ihren letzten Chats — übernehmen Sie einen Vorschlag, um ihn zu planen, oder verwerfen Sie ihn dauerhaft.",
+      "accept": "Automatisierung hinzufügen",
+      "dismiss": "Verwerfen",
+      "showInstruction": "Anweisung anzeigen"
     }
   },
   "memory": {
@@ -452,7 +459,21 @@
         "filterContactsHint": "Nur Kontakt-Erinnerungen anzeigen",
         "contacts": "Kontakte",
         "contact": "Kontakt",
-        "contactPlaceholder": "E-Mail-Adresse des Kontakts"
+        "contactPlaceholder": "E-Mail-Adresse des Kontakts",
+        "learning": {
+          "toggle": "Lernaktivität",
+          "description": "Trailin lernt Ihren Schreibstil, indem es seine Entwürfe mit dem vergleicht, was Sie tatsächlich gesendet haben — geprüft beim Start und jede Nacht gegen 3:00.",
+          "nextRun": "Nächste Prüfung {{time}}.",
+          "empty": "Noch keine Prüfungen aufgezeichnet — die nächste läuft heute Nacht oder beim nächsten Start.",
+          "reasonBoot": "Start",
+          "reasonScheduled": "nächtlich",
+          "runFailed": "Prüfung fehlgeschlagen: {{error}}",
+          "runNothing": "Nichts Gesendetes zum Lernen",
+          "runNoChanges_one": "{{count}} gesendeter Entwurf geprüft — keine Änderungen zum Lernen",
+          "runNoChanges_other": "{{count}} gesendete Entwürfe geprüft — keine Änderungen zum Lernen",
+          "runLessons_one": "{{count}} Stil-Lektion gelernt",
+          "runLessons_other": "{{count}} Stil-Lektionen gelernt"
+        }
       },
       "library": {
         "title": "Dokumente",

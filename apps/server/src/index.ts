@@ -1,8 +1,10 @@
 import { resetSessions } from "./agent/emailAgent.js";
 import { recoverInterruptedTurns } from "./agent/turnRecorder.js";
+import { reconcileVoiceLearns } from "./agent/voiceLearnService.js";
 import { buildApp } from "./app.js";
 import { seedDefaultAutomations } from "./automations/defaults.js";
 import { startScheduler, stopScheduler } from "./automations/scheduler.js";
+import { startNightlySuggest, stopNightlySuggest } from "./automations/suggestService.js";
 import { startNightlyLearning, stopNightlyLearning } from "./email/learn/extractService.js";
 import { startDraftMatching, stopDraftMatching } from "./email/learn/matchService.js";
 import { env } from "./env.js";
@@ -26,6 +28,13 @@ async function main(): Promise<void> {
   // nightly extraction diffs draft vs. sent to learn style lessons.
   startDraftMatching();
   await startNightlyLearning();
+  // The automation-suggestion sweep: recurring chat requests become pending
+  // suggestions on the Automations page (automations/suggestService.ts).
+  await startNightlySuggest();
+  // Voice-learn catch-up: any email account never attempted (missed connect
+  // trigger, or linked before automatic learning) gets its style analyzed
+  // now. Off the boot critical path — it records its own outcomes.
+  void reconcileVoiceLearns();
 
   // Index the document drop folder and keep watching it.
   await startLibrary((message) => app.log.info(message));
@@ -39,6 +48,7 @@ async function main(): Promise<void> {
     stopScheduler();
     stopDraftMatching();
     stopNightlyLearning();
+    stopNightlySuggest();
     stopLibrary();
     await resetSessions();
   });

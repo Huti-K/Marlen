@@ -46,6 +46,7 @@ import { toast } from "@/lib/toast";
 import { subscribeTrailin } from "@/lib/trailinEvents";
 import { usePagedVisible } from "@/lib/usePagedVisible";
 import { cn, errorMessage, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
+import { LearnActivity } from "./LearnActivity";
 
 /** Connected accounts whose name looks like an email address — the only ones
  *  relevant to memory scoping (a Notion or Slack connection has no sent mail
@@ -772,6 +773,8 @@ function MemoryStrip({
             {remaining > 0 && <ShowMoreButton count={remaining} onClick={showMore} />}
           </div>
         )}
+
+        <LearnActivity />
       </div>
     </Card>
   );

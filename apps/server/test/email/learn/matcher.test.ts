@@ -68,7 +68,7 @@ async function neverCalledTiebreak(): Promise<string | null> {
 function sweep(
   candidatesByAccount: Record<string, SentMessage[]>,
   tiebreak: SweepDeps["tiebreak"] = neverCalledTiebreak,
-): Promise<void> {
+): ReturnType<typeof runMatchSweep> {
   return runMatchSweep({
     tiebreak,
     listAccounts: async () => Object.keys(candidatesByAccount).map(account),

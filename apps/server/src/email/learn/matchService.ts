@@ -14,7 +14,9 @@ const MATCH_INTERVAL_MS = 30 * 60_000;
 
 const loop = new JobLoop({
   name: "learn-match",
-  run: () => runMatchSweep(),
+  run: async () => {
+    await runMatchSweep();
+  },
   intervalMs: MATCH_INTERVAL_MS,
 });
 

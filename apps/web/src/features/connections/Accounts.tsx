@@ -6,8 +6,9 @@ import {
   EMAIL_APPS,
   type EmailApp,
   type PipedreamApp,
+  type VoiceLearnRun,
 } from "@trailin/shared";
-import { Inbox, Loader2, Mail, PenLine, Plus, Trash2 } from "lucide-react";
+import { Inbox, Loader2, Mail, PenLine, Plus, RotateCcw, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ import {
   useOnOfficeStatus,
 } from "@/features/settings/OnOffice";
 import { api } from "@/lib/api";
+import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { cn, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
 
@@ -143,10 +145,9 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const [results, setResults] = React.useState<PipedreamApp[] | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [removing, setRemoving] = React.useState(false);
-  // The just-linked email account awaiting the "learn your writing style?"
-  // accept/decline, and whether that accept is being launched.
-  const [learnPrompt, setLearnPrompt] = React.useState<ConnectedAccount | null>(null);
-  const [learnStarting, setLearnStarting] = React.useState(false);
+  // Each account's latest automatic voice-learn attempt — "running" shows a
+  // progress badge on the row, "error" a failure badge plus the retry button.
+  const [voiceRuns, setVoiceRuns] = React.useState<VoiceLearnRun[]>([]);
   const [colors, setColors] = React.useState<AccountColor[]>([]);
   const [voices, setVoices] = React.useState<AccountVoice[]>([]);
   const [signatureAccountId, setSignatureAccountId] = React.useState<string | null>(null);
@@ -231,6 +232,25 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     }
   }, []);
 
+  const loadVoiceRuns = React.useCallback(async () => {
+    try {
+      setVoiceRuns(await api.voiceLearnRuns());
+    } catch {
+      /* the badges just stay absent */
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadVoiceRuns();
+  }, [loadVoiceRuns]);
+
+  // A learn attempt starting/finishing emits "learn"; a finished one also
+  // saved the voice (signature), so both are refreshed together.
+  useServerEvents(["learn"], () => {
+    void loadVoiceRuns();
+    void loadVoices();
+  });
+
   React.useEffect(() => {
     void loadVoices();
     void Promise.all([load(), loadColors()]).then(([accts, saved]) => {
@@ -241,7 +261,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const connect = async (app: string) => {
     setBusy(app);
     // Account ids present before this link, so onSuccess can single out the
-    // one that was just added and offer to learn its writing style.
+    // one that was just added and start learning its writing style.
     const priorIds = new Set((accounts ?? []).map((a) => a.id));
     try {
       // Lazy-loaded: the Connect SDK is only needed when linking an account,
@@ -269,9 +289,19 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
           void load().then((next) => {
             if (next) {
               void loadColors().then((saved) => ensureColors(next, saved));
-              // Offer voice learning for a freshly linked email account.
+              // Start voice learning for the freshly linked email account
+              // right away — no consent step. Should this trigger get lost
+              // (popup quirk, list lag), the server's boot reconcile pass
+              // picks the account up, so a miss is recoverable either way.
               const added = next.find((a) => !priorIds.has(a.id) && isEmailApp(a.app));
-              if (added) setLearnPrompt(added);
+              if (added) {
+                void api
+                  .learnAccountVoice(added.id)
+                  .then(() =>
+                    toast.success(t("connections.learnVoiceStarted", { name: added.name })),
+                  )
+                  .catch((err: unknown) => toast.error(err));
+              }
             }
             onChanged?.();
           });
@@ -289,19 +319,13 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     }
   };
 
-  // Accept the post-connect prompt: kick off background voice learning. The
-  // server waits for the fresh account's sent mail to sync before analyzing,
-  // so results land in Settings a little later — the toast sets that expectation.
-  const startLearn = async (account: ConnectedAccount) => {
-    setLearnStarting(true);
+  // Rerun a failed (or skipped) voice-learn attempt from the account row.
+  const retryLearn = async (account: ConnectedAccount) => {
     try {
       await api.learnAccountVoice(account.id);
       toast.success(t("connections.learnVoiceStarted", { name: account.name }));
     } catch (err) {
       toast.error(err);
-    } finally {
-      setLearnStarting(false);
-      setLearnPrompt(null);
     }
   };
 
@@ -518,6 +542,38 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {(() => {
+                      // Voice-learn status: in-flight and failed attempts are
+                      // shown; a finished learn needs no chip of its own.
+                      const run = voiceRuns.find((r) => r.accountId === account.id);
+                      if (run?.status === "running") {
+                        return (
+                          <Badge variant="muted">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            {t("connections.voiceLearning")}
+                          </Badge>
+                        );
+                      }
+                      if (run?.status === "error") {
+                        return (
+                          <>
+                            <Badge variant="destructive" data-tooltip={run.error ?? undefined}>
+                              {t("connections.voiceLearnFailed")}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => void retryLearn(account)}
+                              aria-label={t("connections.voiceLearnRetry")}
+                              data-tooltip={t("connections.voiceLearnRetry")}
+                            >
+                              <RotateCcw />
+                            </Button>
+                          </>
+                        );
+                      }
+                      return null;
+                    })()}
                     <Badge variant={account.healthy ? "success" : "destructive"}>
                       {account.healthy ? t("connections.healthy") : t("connections.unhealthy")}
                     </Badge>
@@ -571,16 +627,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
         confirmLabel={t("connections.disconnect")}
         busy={removing}
         onConfirm={() => confirmId && void remove(confirmId)}
-      />
-      <ConfirmDialog
-        open={learnPrompt !== null}
-        onOpenChange={(next) => !next && setLearnPrompt(null)}
-        title={t("connections.learnVoiceTitle")}
-        description={t("connections.learnVoiceBody", { name: learnPrompt?.name ?? "" })}
-        confirmLabel={t("connections.learnVoiceConfirm")}
-        variant="default"
-        busy={learnStarting}
-        onConfirm={() => learnPrompt && void startLearn(learnPrompt)}
       />
     </div>
   );

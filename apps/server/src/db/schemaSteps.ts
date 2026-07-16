@@ -292,4 +292,49 @@ export const SCHEMA_STEPS: readonly string[] = [
     DROP TABLE IF EXISTS contacts;
     DELETE FROM settings WHERE key IN ('sync.backfillDays', 'contacts.recentThreadsLimit');
   `,
+  // 11: learning-sweep run log (db/learnRuns.ts) — one row per draft-vs-sent
+  // sweep, pruned to the newest handful, feeding the Knowledge page's
+  // learning-activity history.
+  `
+    CREATE TABLE learn_runs (
+      id TEXT PRIMARY KEY,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL,
+      matched INTEGER NOT NULL DEFAULT 0,
+      pending INTEGER NOT NULL DEFAULT 0,
+      identical INTEGER NOT NULL DEFAULT 0,
+      learned INTEGER NOT NULL DEFAULT 0,
+      lessons INTEGER NOT NULL DEFAULT 0,
+      error TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT NOT NULL
+    );
+  `,
+  // 12: per-account voice-learn attempt state (db/voiceRuns.ts) — latest
+  // automatic style-analysis run per account, so a failed or skipped learn
+  // is visible and retryable in Settings.
+  `
+    CREATE TABLE voice_learn_runs (
+      account_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      error TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT
+    );
+  `,
+  // 13: proposed automations from the nightly suggestion sweep
+  // (db/automationSuggestions.ts) — pending rows await accept/dismiss on the
+  // Automations page; decided rows remain as dedup context for later sweeps.
+  `
+    CREATE TABLE automation_suggestions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      instruction TEXT NOT NULL,
+      schedule TEXT NOT NULL,
+      rationale TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      decided_at TEXT
+    );
+  `,
 ];

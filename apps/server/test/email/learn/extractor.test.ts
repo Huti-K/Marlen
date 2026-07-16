@@ -65,7 +65,7 @@ function sweep(
   accountIds: string[],
   bodiesByMessageId: Record<string, string>,
   extract: SweepDeps["extract"] = neverCalledExtract,
-): Promise<void> {
+): ReturnType<typeof runExtractionSweep> {
   return runExtractionSweep({
     extract,
     listAccounts: async () => accountIds.map(account),

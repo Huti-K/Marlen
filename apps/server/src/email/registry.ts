@@ -1,7 +1,7 @@
 /**
  * Generic name -> implementation registry, shared by every provider kind
- * (draft, attachment, sync). Each kind's own file (./providers.ts,
- * ./attachmentProviders.ts, ./sync/syncProviders.ts) binds its own
+ * (draft, attachment, read). Each kind's own file (./providers.ts,
+ * ./attachmentProviders.ts, ./read/readProviders.ts) binds its own
  * `register`/`get` pair off one of these instead of hand-rolling the same
  * Map — the interface, doc comments, and registration call sites stay in
  * those files; this module only holds the storage.

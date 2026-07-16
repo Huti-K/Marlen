@@ -12,8 +12,16 @@ const tempDir = mkdtempSync(join(tmpdir(), "trailin-voicelearn-"));
 const originalDatabasePath = process.env.DATABASE_PATH;
 process.env.DATABASE_PATH = join(tempDir, "test.db");
 
-const { runVoiceLearnOnConnect } = await import("../../src/agent/voiceLearnService.js");
+const { runVoiceLearnOnConnect, reconcileVoiceLearns } = await import(
+  "../../src/agent/voiceLearnService.js"
+);
+const { listVoiceLearnRuns } = await import("../../src/db/voiceRuns.js");
+const { setAccountVoices } = await import("../../src/db/settings.js");
 const { sqlite } = await import("../../src/db/index.js");
+
+async function runStateFor(accountId: string) {
+  return (await listVoiceLearnRuns()).find((run) => run.accountId === accountId);
+}
 
 afterAll(() => {
   sqlite.close();
@@ -43,18 +51,20 @@ function makeDeps(overrides: Partial<VoiceLearnDeps> = {}): VoiceLearnDeps {
 }
 
 describe("runVoiceLearnOnConnect", () => {
-  it("probes for sent mail and learns", async () => {
+  it("probes for sent mail, learns, and records the attempt as ok", async () => {
     const deps = makeDeps();
     await runVoiceLearnOnConnect("acc_gmail", deps);
     expect(deps.hasSentMail).toHaveBeenCalledTimes(1);
     expect(deps.learn).toHaveBeenCalledWith("acc_gmail");
+    expect(await runStateFor("acc_gmail")).toMatchObject({ status: "ok", error: null });
   });
 
-  it("skips entirely when no LLM is configured", async () => {
+  it("skips when no LLM is configured, recording a retryable error", async () => {
     const deps = makeDeps({ modelConfigured: vi.fn(async () => false) });
-    await runVoiceLearnOnConnect("acc_gmail", deps);
+    await runVoiceLearnOnConnect("acc_no_llm", deps);
     expect(deps.hasSentMail).not.toHaveBeenCalled();
     expect(deps.learn).not.toHaveBeenCalled();
+    expect(await runStateFor("acc_no_llm")).toMatchObject({ status: "error" });
   });
 
   it("skips accounts that are not email providers", async () => {
@@ -62,14 +72,32 @@ describe("runVoiceLearnOnConnect", () => {
     const deps = makeDeps({ listAccounts: vi.fn(async () => [slack]) });
     await runVoiceLearnOnConnect("acc_slack", deps);
     expect(deps.learn).not.toHaveBeenCalled();
+    expect(await runStateFor("acc_slack")).toMatchObject({ status: "error" });
   });
 
-  it("skips without learning when the account has no sent mail", async () => {
+  it("skips without learning when the account has no sent mail, recording why", async () => {
     const deps = makeDeps({ hasSentMail: vi.fn(async () => false) });
     await runVoiceLearnOnConnect("acc_gmail", deps);
     expect(deps.hasSentMail).toHaveBeenCalledTimes(1);
     expect(deps.sleep).not.toHaveBeenCalled();
     expect(deps.learn).not.toHaveBeenCalled();
+    expect(await runStateFor("acc_gmail")).toMatchObject({
+      status: "error",
+      error: "no sent mail found to learn from",
+    });
+  });
+
+  it("records a thrown learn as a failed attempt", async () => {
+    const deps = makeDeps({
+      learn: vi.fn(async () => {
+        throw new Error("model exploded");
+      }),
+    });
+    await runVoiceLearnOnConnect("acc_gmail", deps);
+    expect(await runStateFor("acc_gmail")).toMatchObject({
+      status: "error",
+      error: "model exploded",
+    });
   });
 
   it("retries a throwing probe a bounded number of times, then learns if one succeeds", async () => {
@@ -115,5 +143,40 @@ describe("runVoiceLearnOnConnect", () => {
     await first;
     // Only the first run reached learn; the second was deduped away.
     expect(learn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("reconcileVoiceLearns", () => {
+  const email = (id: string): ConnectedAccount => ({ ...gmailAccount, id, name: `${id}@x.com` });
+
+  it("learns only never-attempted email accounts", async () => {
+    // acc_gmail already has a run row from the tests above; acc_voiced has a
+    // saved voice from an earlier (pre-run-log) learn; acc_chat is not email.
+    await setAccountVoices([{ accountId: "acc_voiced", learnedAt: "2026-01-01T00:00:00.000Z" }]);
+    const slack: ConnectedAccount = { ...gmailAccount, id: "acc_chat", app: "slack" };
+    const deps = makeDeps({
+      listAccounts: vi.fn(async () => [
+        email("acc_gmail"),
+        email("acc_voiced"),
+        email("acc_fresh"),
+        slack,
+      ]),
+    });
+
+    await reconcileVoiceLearns(deps);
+
+    expect(deps.learn).toHaveBeenCalledTimes(1);
+    expect(deps.learn).toHaveBeenCalledWith("acc_fresh");
+    expect(await runStateFor("acc_fresh")).toMatchObject({ status: "ok" });
+  });
+
+  it("does nothing (and records nothing) while no LLM is configured", async () => {
+    const deps = makeDeps({
+      modelConfigured: vi.fn(async () => false),
+      listAccounts: vi.fn(async () => [email("acc_unconfigured")]),
+    });
+    await reconcileVoiceLearns(deps);
+    expect(deps.learn).not.toHaveBeenCalled();
+    expect(await runStateFor("acc_unconfigured")).toBeUndefined();
   });
 });

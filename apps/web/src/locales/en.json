@@ -289,10 +289,10 @@
     "advancedCustom": "Own Pipedream project",
     "editNote": "Edit note",
     "notePlaceholder": "What this account is for — the agent reads this note",
-    "learnVoiceTitle": "Learn your writing style?",
-    "learnVoiceBody": "Trailin can study {{name}}'s sent mail to match your tone and pick up your signature when it drafts for you. This runs in the background and you can change or remove what it learns in Settings.",
-    "learnVoiceConfirm": "Learn my style",
-    "learnVoiceStarted": "Learning your writing style from {{name}} — it'll appear in Settings shortly."
+    "learnVoiceStarted": "Learning your writing style from {{name}} — it'll appear in Settings shortly.",
+    "voiceLearning": "Learning style…",
+    "voiceLearnFailed": "Style learning failed",
+    "voiceLearnRetry": "Retry learning writing style"
   },
   "home": {
     "setupBanner": "Trailin isn't fully set up, the agent can't reach your mail yet.",
@@ -401,6 +401,13 @@
       "running": "running",
       "success": "success",
       "error": "error"
+    },
+    "suggestions": {
+      "title": "Suggested automations",
+      "hint": "Patterns from your recent chats — accept one to schedule it, or dismiss it and it won't come back.",
+      "accept": "Add automation",
+      "dismiss": "Dismiss",
+      "showInstruction": "Show instruction"
     }
   },
   "memory": {
@@ -452,7 +459,21 @@
         "filterContactsHint": "Show only contact memories",
         "contacts": "Contacts",
         "contact": "Contact",
-        "contactPlaceholder": "Contact's email address"
+        "contactPlaceholder": "Contact's email address",
+        "learning": {
+          "toggle": "Learning activity",
+          "description": "Trailin learns your writing style by comparing drafts it wrote with what you actually sent — checked at startup and every night around 3:00.",
+          "nextRun": "Next check {{time}}.",
+          "empty": "No checks recorded yet — the next one runs tonight or at the next start.",
+          "reasonBoot": "startup",
+          "reasonScheduled": "nightly",
+          "runFailed": "Check failed: {{error}}",
+          "runNothing": "Nothing sent to learn from",
+          "runNoChanges_one": "{{count}} sent draft checked — no changes to learn from",
+          "runNoChanges_other": "{{count}} sent drafts checked — no changes to learn from",
+          "runLessons_one": "Learned {{count}} style lesson",
+          "runLessons_other": "Learned {{count}} style lessons"
+        }
       },
       "library": {
         "title": "Documents",
