@@ -38,7 +38,3 @@ win:
   #   endpoint: https://weu.codesigning.azure.net
   #   codeSigningAccountName: <trusted-signing-account>
   #   certificateProfileName: <certificate-profile>
-
-linux:
-  target: AppImage
-  category: Office

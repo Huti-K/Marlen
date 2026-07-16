@@ -36,7 +36,7 @@ runtime deps — the app then dies on `Cannot find package 'fastify'`.
 
 1. Bump `version` in `apps/desktop/package.json`.
 2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`.
-3. The `release.yml` workflow builds macOS/Windows/Linux installers and
+3. The `release.yml` workflow builds macOS and Windows installers and
    uploads them to a **draft** GitHub release.
 4. Publish the release. Running apps with an update token poll every 4 hours
    (and on launch), download in the background, and show a "restart to
@@ -55,7 +55,7 @@ Security → "Open Anyway" (and macOS auto-update stays off until signing).
 
 ## Signing
 
-Unsigned status quo: **Windows/Linux** install and auto-update fine (Windows
+Unsigned status quo: **Windows** installs and auto-updates fine (Windows
 shows a one-time SmartScreen warning on first install); **macOS** blocks
 unsigned builds at Gatekeeper and electron-updater won't apply updates there.
 `release.yml` is pre-wired — signing turns on by adding repo secrets, no
