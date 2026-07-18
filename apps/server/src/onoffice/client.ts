@@ -6,7 +6,7 @@ import { moduleLogger } from "../logger.js";
  * addresses/leads, emails, appointments, tasks, relations). onOffice is not in
  * Pipedream's catalog and authenticates with a token + secret rather than
  * OAuth, so it rides its own native path instead of the Pipedream MCP sessions
- * in pipedream/mcp.ts — this client talks to the HTTP API directly.
+ * in agent/emailToolset.ts — this client talks to the HTTP API directly.
  *
  * Every request is a POST to a single endpoint; each action is individually
  * HMAC-signed (hmac_version 2). Each HTTP attempt runs under a hard deadline,

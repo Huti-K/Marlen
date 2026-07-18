@@ -15,7 +15,6 @@ import { resolveActiveModel } from "../llm/registry.js";
 import { moduleLogger } from "../logger.js";
 import { getOnOfficeConfig } from "../onoffice/config.js";
 import { loadOnOfficeTools } from "../onoffice/tools.js";
-import { type EmailToolset, loadEmailTools } from "../pipedream/mcp.js";
 import { prompts } from "../prompts.js";
 import { isWhatsAppLinked } from "../whatsapp/session.js";
 import { buildWhatsAppTools } from "../whatsapp/tools.js";
@@ -28,6 +27,7 @@ import { compactedMessages, maybeCompact } from "./compaction.js";
 import { buildDelegateTool } from "./delegate.js";
 import { listDraftsTool } from "./draftTools.js";
 import { decoratePrompt, parseStoredRefs } from "./emailRefs.js";
+import { type EmailToolset, loadEmailTools } from "./emailToolset.js";
 import { buildFileAccessContext, buildFileTools } from "./fileTools.js";
 import {
   buildKnowledgeContext,
@@ -133,7 +133,7 @@ export async function buildSystemPrompt(caps?: SessionCapabilities): Promise<str
     // Scheduled automations run with no human to review a send before it goes
     // out, so loadEmailTools withholds every provider write tool for this run
     // regardless of any account's permission grants (see providerWrites in
-    // pipedream/mcp.ts) — say so plainly rather than let the interactive
+    // agent/emailToolset.ts) — say so plainly rather than let the interactive
     // permissions copy below imply sending is possible here.
     prompt += `
 - Unattended scheduled run: provider write actions (send, reply, forward, label, move, delete) are

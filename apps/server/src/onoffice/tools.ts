@@ -20,7 +20,7 @@ import { getOnOfficeClient } from "./config.js";
  * interactive-only AND armed by its own toggle there — the CRM counterpart
  * of the per-account permission grants. Unattended runs never get it: they read
  * attacker-controllable mail with no human to review a CRM write, exactly as
- * the email write tools are gated in pipedream/mcp.ts.
+ * the email write tools are gated in agent/emailToolset.ts.
  */
 
 /** A resource id, which onOffice accepts as either a string or a number. */

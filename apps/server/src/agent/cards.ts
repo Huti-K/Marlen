@@ -19,7 +19,7 @@ import { parseEmailRef } from "./emailRefs.js";
  * The AgentCard system: every kind's shape rules and the parse dispatch that
  * turns tool `details` payloads into cards the chat can render. Each kind
  * keeps the same split: coerce* validates one untrusted entry, build*
- * assembles the card its emitting tool publishes (pipedream/mcp.ts's draft
+ * assembles the card its emitting tool publishes (agent/emailToolset.ts's draft
  * tools, briefingTool, choicesTool, attachmentTool), and its arm in
  * CARD_PARSERS (below) revalidates a stored or round-tripped payload. What a
  * card means for conversation focus lives with the focus logic itself
@@ -79,7 +79,7 @@ export function parseCardAccount(value: unknown): CardAccount | undefined {
 }
 
 // email_draft — a saved or rewritten draft preview. The create/update draft
-// tools (pipedream/mcp.ts) assemble the raw draft object from trusted local
+// tools (agent/emailToolset.ts) assemble the raw draft object from trusted local
 // state; both they and parseAgentCard funnel through buildEmailDraftCard so
 // the required-field rule lives once.
 

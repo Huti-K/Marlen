@@ -10,8 +10,9 @@ import { errorMessage } from "../utils/util.js";
 import { accountNameMap, resolveAccountParam } from "./accounts.js";
 
 /**
- * Typed factory for the app's own agent tools (MCP-wrapped tools keep raw
- * pass-through schemas via defineTool below). Parameters are
+ * Typed factory for the app's own agent tools (MCP-wrapped tools keep their
+ * raw pass-through schemas as plain AgentTool literals — see
+ * emailToolset.ts). Parameters are
  * declared once as TypeBox properties: the JSON schema the model sees and the
  * `params` type execute receives both derive from that one declaration, so
  * they cannot drift, and every call is re-validated here — direct invocations
@@ -37,19 +38,6 @@ export function textResult(value: string, card?: AgentCard) {
     content: [{ type: "text" as const, text: value }],
     details: card,
   };
-}
-
-/**
- * Identity helper for declaring a tool literal that keeps its own raw JSON
- * schema instead of going through `tool` below (MCP pass-through, one-shot
- * report tools). pi's `AgentTool["parameters"]` is typed as its typebox
- * `TSchema`, an empty interface any JSON Schema object already satisfies
- * structurally — so a tool literal passed through this function's `AgentTool`
- * parameter type needs no `as AgentTool["parameters"]` cast on its
- * `parameters` block; it's inferred from context like any other typed literal.
- */
-export function defineTool(definition: AgentTool): AgentTool {
-  return definition;
 }
 
 export interface ToolCtx {

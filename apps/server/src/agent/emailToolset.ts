@@ -1,36 +1,41 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { Type } from "@sinclair/typebox";
 import { type AccountPermissions, type ConnectedAccount, formatFileSize } from "@trailin/shared";
-import { buildListAttachmentsTool, buildSaveAttachmentTool } from "../agent/attachmentTool.js";
-import { buildEmailDraftCard, cardNote, toCardAccount } from "../agent/cards.js";
-import { composeDraftBody } from "../agent/composition.js";
-import { defineTool, textResult } from "../agent/toolkit.js";
 import { appendDraftVersion, createDraftSnapshot, getDraftCardDetails } from "../db/draftStore.js";
 import { getAccountPermissions } from "../db/settings.js";
 import { getAttachmentProvider } from "../email/attachmentProviders.js";
-import {
-  type CreateDraftInput,
-  type DraftAttachment,
-  type DraftProvider,
-  getDraftProvider,
-} from "../email/providers.js";
+import { type DraftAttachment, type DraftProvider, getDraftProvider } from "../email/providers.js";
 import { resolveLibraryAttachments } from "../library/draftAttachments.js";
 import { moduleLogger } from "../logger.js";
-import { errorMessage } from "../utils/util.js";
 import {
   type ConnectConfig,
   getConnectConfig,
   getPipedreamAccessToken,
   listAccounts,
-} from "./connect.js";
+} from "../pipedream/connect.js";
 import {
   callWithRevival,
   connectForAccount,
   type McpSession,
   type McpSessionBox,
-} from "./mcpSession.js";
+} from "../pipedream/mcpSession.js";
+import { errorMessage } from "../utils/util.js";
+import { buildListAttachmentsTool, buildSaveAttachmentTool } from "./attachmentTool.js";
+import { buildEmailDraftCard, cardNote, toCardAccount } from "./cards.js";
+import { composeDraftBody } from "./composition.js";
+import { textResult, tool } from "./toolkit.js";
 
-const log = moduleLogger("mcp");
+/**
+ * Assembles the agent's per-account email toolset: each connected account's
+ * MCP tools wrapped under the verb/grant registration policy below, plus
+ * Trailin's own draft and attachment tools for apps with the matching
+ * provider. The MCP transport itself (Connect config, session lifecycle,
+ * revival) lives in pipedream/ — this module only decides which tools a
+ * session gets and what they look like to the model.
+ */
+
+const log = moduleLogger("emailToolset");
 
 /** Appended to the create/update draft tools' result text alongside their card. */
 const DRAFT_CARD_NOTE = cardNote("the draft", "Don't repeat its subject or body in your reply.");
@@ -249,7 +254,7 @@ function buildDraftTool(
   name: string,
   provider: DraftProvider,
 ): AgentTool {
-  return defineTool({
+  return tool({
     name,
     label: "Create email draft",
     description:
@@ -261,32 +266,27 @@ function buildDraftTool(
       `Documents from the user's library can be ` +
       `attached as files via attachLibraryDocumentIds.\n\n` +
       `Acts as the connected account: ${account.name}.`,
-    parameters: {
-      type: "object",
-      properties: {
-        to: { type: "array", items: { type: "string" }, description: "Recipient email addresses." },
-        cc: { type: "array", items: { type: "string" }, description: "Cc addresses." },
-        bcc: { type: "array", items: { type: "string" }, description: "Bcc addresses." },
-        subject: { type: "string", description: "Subject line." },
-        body: { type: "string", description: "Plain-text body of the draft." },
-        threadId: {
-          type: "string",
+    params: {
+      to: Type.Array(Type.String(), { description: "Recipient email addresses." }),
+      cc: Type.Optional(Type.Array(Type.String(), { description: "Cc addresses." })),
+      bcc: Type.Optional(Type.Array(Type.String(), { description: "Bcc addresses." })),
+      subject: Type.String({ description: "Subject line." }),
+      body: Type.String({ description: "Plain-text body of the draft." }),
+      threadId: Type.Optional(
+        Type.String({
           description: "Optional thread id to attach this draft to (for replies), when supported.",
-        },
-        attachLibraryDocumentIds: {
-          type: "array",
-          items: { type: "string" },
+        }),
+      ),
+      attachLibraryDocumentIds: Type.Optional(
+        Type.Array(Type.String(), {
           description:
             "Ids of library documents (from library_list or library_search) to attach to the " +
             "draft as files. Only library documents can be attached.",
-        },
-      },
-      required: ["to", "subject", "body"],
+        }),
+      ),
     },
-    execute: async (_toolCallId, params) => {
-      const { attachLibraryDocumentIds, ...input } = params as unknown as CreateDraftInput & {
-        attachLibraryDocumentIds?: string[];
-      };
+    execute: async (params) => {
+      const { attachLibraryDocumentIds, ...input } = params;
 
       // Attachments resolve before anything else: a bad id or an oversized
       // set must steer the model (as result text, mirroring toolkit's
@@ -388,7 +388,7 @@ function buildUpdateDraftTool(
   name: string,
   updateDraft: NonNullable<DraftProvider["updateDraft"]>,
 ): AgentTool {
-  return defineTool({
+  return tool({
     name,
     label: "Update email draft",
     description:
@@ -399,21 +399,14 @@ function buildUpdateDraftTool(
       `pass as draft creation. Recipients cannot be changed; if the user ` +
       `wants different recipients, discard and create a new draft instead.\n\n` +
       `Acts as the connected account: ${account.name}.`,
-    parameters: {
-      type: "object",
-      properties: {
-        draftId: { type: "string", description: "Id of the existing draft to rewrite." },
-        body: { type: "string", description: "The full replacement plain-text body." },
-        subject: { type: "string", description: "Replacement subject line, if it changes." },
-      },
-      required: ["draftId"],
+    params: {
+      draftId: Type.String({ description: "Id of the existing draft to rewrite." }),
+      body: Type.Optional(Type.String({ description: "The full replacement plain-text body." })),
+      subject: Type.Optional(
+        Type.String({ description: "Replacement subject line, if it changes." }),
+      ),
     },
-    execute: async (_toolCallId, params) => {
-      const { draftId, body, subject } = params as {
-        draftId: string;
-        body?: string;
-        subject?: string;
-      };
+    execute: async ({ draftId, body, subject }) => {
       if (body === undefined && subject === undefined) {
         return textResult("Nothing to update: pass a new body and/or subject.");
       }

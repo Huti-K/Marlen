@@ -19,7 +19,7 @@ import { textResult, tool } from "./toolkit.js";
  * AttachmentProvider — the provider fetches attachment listings and bytes in
  * its own wire format; everything here (attachment selection, extension
  * validation, library ingest, result text) is provider-neutral. The caller
- * (pipedream/mcp.ts) wires this once per live account whose app has a
+ * (agent/emailToolset.ts) wires this once per live account whose app has a
  * provider, alongside the MCP-bridged tools — copy the shape of
  * buildDraftTool there.
  */
