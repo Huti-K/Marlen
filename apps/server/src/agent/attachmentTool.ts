@@ -9,7 +9,7 @@ import {
   resolveAttachmentBytes,
 } from "../email/attachmentProviders.js";
 import { LIBRARY_EXTENSIONS, SUPPORTED_FORMATS, saveUpload } from "../library/ingest.js";
-import { inlineForMime, mimeForExt } from "../routes/fileResponse.js";
+import { inlineForMime, mimeForExt } from "../utils/fileResponse.js";
 import { errorMessage } from "../utils/util.js";
 import { buildAttachmentsCard, toCardAccount } from "./cards.js";
 import { textResult, tool } from "./toolkit.js";

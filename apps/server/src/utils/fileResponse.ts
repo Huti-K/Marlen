@@ -1,9 +1,8 @@
 /**
- * Shared file-serving helpers for the routes that stream original bytes to the
- * browser — the document library (routes/library.ts) and email attachments
- * (routes/mail.ts). Both derive the served MIME from the filename extension,
- * never from a caller-supplied type, so foreign content can never be served
- * as executable text/html on the app origin.
+ * Shared helpers for serving stored or foreign file bytes to the browser.
+ * The served MIME always derives from the filename extension, never from a
+ * caller-supplied type, so foreign content can never be served as executable
+ * text/html on the app origin.
  */
 
 /** Map a file extension (no leading dot required) to a browser-friendly MIME type. */

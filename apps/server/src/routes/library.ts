@@ -9,8 +9,8 @@ import { deleteDocument, getLibraryDir, saveUpload, setLibraryFolder } from "../
 import { pickFolder } from "../library/pickFolder.js";
 import { getDocument, listDocuments, type SearchHit, searchChunks } from "../library/store.js";
 import { trimSnippet } from "../search/snippets.js";
+import { contentDisposition, inlineForMime, mimeForExt } from "../utils/fileResponse.js";
 import { errorMessage } from "../utils/util.js";
-import { contentDisposition, inlineForMime, mimeForExt } from "./fileResponse.js";
 
 const UPLOAD_LIMIT = 64 * 1024 * 1024;
 

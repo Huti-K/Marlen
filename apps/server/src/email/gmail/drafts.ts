@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
 import { moduleLogger } from "../../logger.js";
 import { proxyRequest } from "../../pipedream/connect.js";
-import { contentDisposition } from "../../routes/fileResponse.js";
+import { contentDisposition } from "../../utils/fileResponse.js";
 import { mapWithConcurrency } from "../../utils/jobs.js";
 import { draftsMutated } from "../draftsCache.js";
 import {

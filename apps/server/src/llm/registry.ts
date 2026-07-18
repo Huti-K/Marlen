@@ -3,6 +3,7 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { LlmProviderInfo, ModelSettings } from "@trailin/shared";
 import { getSetting, setSetting } from "../db/settings.js";
 import { env } from "../env.js";
+import { badRequest } from "../errors.js";
 import { moduleLogger } from "../logger.js";
 import { credentialStore } from "./credentialStore.js";
 
@@ -26,7 +27,7 @@ export async function getActiveModelIds(): Promise<{ provider: string; model: st
 
 export async function setActiveModelIds(provider: string, model: string): Promise<void> {
   if (!modelRegistry.getModel(provider, model)) {
-    throw new Error(`Unknown model "${model}" for provider "${provider}".`);
+    throw badRequest(`Unknown model "${model}" for provider "${provider}".`);
   }
   await setSetting("llm.provider", provider);
   await setSetting("llm.model", model);
@@ -36,7 +37,7 @@ export async function resolveActiveModel(): Promise<Model<Api>> {
   const { provider, model } = await getActiveModelIds();
   const resolved = modelRegistry.getModel(provider, model);
   if (!resolved) {
-    throw new Error(
+    throw badRequest(
       `Unknown model "${model}" for provider "${provider}". Pick a model in Settings.`,
     );
   }
@@ -157,7 +158,7 @@ export async function getModelSettings(): Promise<ModelSettings> {
 
 export async function saveApiKey(providerId: string, apiKey: string): Promise<void> {
   if (!modelRegistry.getProvider(providerId)) {
-    throw new Error(`Unknown provider "${providerId}"`);
+    throw badRequest(`Unknown provider "${providerId}"`);
   }
   await credentialStore.modify(providerId, async () => ({ type: "api_key", key: apiKey }));
 }

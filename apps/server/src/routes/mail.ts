@@ -7,8 +7,8 @@ import { getMailReadProvider, type ThreadDetail } from "../email/read/readProvid
 import { badRequest, notFound, toProviderError } from "../errors.js";
 import { saveUpload } from "../library/ingest.js";
 import { listAccounts } from "../pipedream/connect.js";
+import { contentDisposition, inlineForMime, mimeForExt } from "../utils/fileResponse.js";
 import { errorMessage } from "../utils/util.js";
-import { contentDisposition, inlineForMime, mimeForExt } from "./fileResponse.js";
 
 /**
  * On-demand mailbox access for the web UI: attachment bytes for the chat's

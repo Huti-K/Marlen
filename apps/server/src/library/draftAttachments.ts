@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { formatFileSize } from "@trailin/shared";
 import type { DraftAttachment } from "../email/providers.js";
-import { mimeForExt } from "../routes/fileResponse.js";
+import { mimeForExt } from "../utils/fileResponse.js";
 import { getLibraryDir, resolveLibraryPath } from "./ingest.js";
 import * as store from "./store.js";
 
