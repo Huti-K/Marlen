@@ -39,5 +39,8 @@ jobs:
       - name: Web build
         run: pnpm --filter @trailin/web build
 
-      - name: Tests
+      - name: Server tests
         run: pnpm --filter @trailin/server test
+
+      - name: Web tests
+        run: pnpm --filter @trailin/web test

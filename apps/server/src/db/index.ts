@@ -10,7 +10,7 @@ import { SCHEMA_STEPS } from "./schemaSteps.js";
  * Lazy singleton: importing this module never touches the filesystem — the
  * database file is created, opened, and DDL-initialized on first use. That
  * keeps `buildApp()` importable by tests, which point DATABASE_PATH at a
- * scratch file (test/setup.ts) before any query runs. Statement modules that
+ * scratch file before any query runs. Statement modules that
  * want module-scope prepared statements or transactions use `lazyStatement` /
  * `lazyTransaction` below for the same reason.
  */

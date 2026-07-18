@@ -7,15 +7,16 @@ description: Build, run, and drive Trailin (server + web UI) to verify changes e
 
 ## Cheapest first: unit tests
 
-`pnpm --filter @trailin/server test` (vitest; tests in `apps/server/test/`,
-mirroring `src/`). Run these before spinning up a server.
+`pnpm --filter @trailin/server test` (vitest; tests in `apps/server/test/`).
+Run these before spinning up a server.
 
 Route handlers are testable without a socket: `buildApp()` from `src/app.ts`
-returns the configured Fastify instance, drive it with `app.inject()` (see
-`test/app.test.ts`, `test/routes/memories.test.ts`). `test/setup.ts` gives
-every worker its own scratch DATABASE_PATH and neutralizes credentials, so
-these tests never touch real data or the network. Always `await app.close()`
-in afterAll — it releases the DB handle via an onClose hook.
+returns the configured Fastify instance; drive it with `app.inject()`. Tests
+isolate the db themselves: in `beforeAll`, point `process.env.DATABASE_PATH`
+at a scratch file, then dynamically import the modules under test — `env.ts`
+reads the variable at import time (any file under `test/` shows the pattern).
+Always `await app.close()` in afterAll — it releases the DB handle via an
+onClose hook.
 
 ## Launch an isolated server instance
 

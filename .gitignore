@@ -20,3 +20,7 @@ CLAUDE.md
 CONTEXT.md
 # Graphify knowledge-graph index (local dev tool output)
 graphify-out/
+
+# Local agent rules — deliberately unpublished
+AGENTS.md
+REFACTOR.md

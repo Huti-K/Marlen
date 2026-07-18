@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Enforces the CLAUDE.md conventions that no linter rule covers:
+ * Enforces the working-rule conventions that no linter rule covers:
  *
  *  1. Source files stay under 800 lines (seed/fixture data exempt).
  *  2. Tests live in apps/server/test/, never colocated in a src/ tree.
@@ -41,7 +41,7 @@ for (const file of files) {
   }
 
   if (COLOCATED_TEST.test(file)) {
-    errors.push(`${file}: tests live in apps/server/test/ (mirroring src/), never in src/`);
+    errors.push(`${file}: tests live in the package's test/ directory, never in src/`);
   }
 
   const lineCount = text.split("\n").length;

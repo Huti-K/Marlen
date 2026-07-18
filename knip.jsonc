@@ -11,7 +11,7 @@
       "entry": ["scripts/*.mjs"]
     },
     "apps/server": {
-      "entry": ["test/setup.ts", "test/**/*.test.ts"],
+      "entry": ["test/**/*.test.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
       // pino transports are resolved as strings (require.resolve in
       // logger.ts), invisible to import analysis.

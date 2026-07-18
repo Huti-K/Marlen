@@ -119,7 +119,6 @@ const accountVoicesSetting = jsonArraySetting<AccountVoice>(ACCOUNT_VOICES_SETTI
 
 /** All persisted per-account voice-learn records (style-memory bookkeeping). */
 export const getAccountVoices = accountVoicesSetting.get;
-export const setAccountVoices = accountVoicesSetting.set;
 
 // Serializes patchAccountVoice calls: the voices live as one JSON array under
 // one key, so two unserialized read-modify-write cycles interleaving across
