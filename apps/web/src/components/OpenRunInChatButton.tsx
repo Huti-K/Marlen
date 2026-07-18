@@ -1,7 +1,7 @@
 import { MessageSquareShare } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { openRunInChat } from "@/lib/runNavigation";
+import { openRunInChat } from "@/lib/quickActions";
 
 /** Per-run "continue in chat" icon action shared by the activity feeds. */
 export function OpenRunInChatButton({

@@ -61,10 +61,8 @@ export interface OnOfficeClientConfig {
   requestTimeoutMs?: number;
 }
 
-/** onOffice's monthly stable endpoint. */
+/** onOffice's monthly stable endpoint; a configured apiUrl overrides it. */
 export const STABLE_URL = "https://api.onoffice.de/api/stable/api.php";
-/** The rolling latest endpoint, opted into via config. */
-export const LATEST_URL = "https://api.onoffice.de/api/latest/api.php";
 
 export class OnOfficeClient {
   private readonly token: string;

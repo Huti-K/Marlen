@@ -14,7 +14,7 @@ import { likeContains, likePattern } from "../db/like.js";
 import { buildFtsMatch } from "../db/sql.js";
 import { badRequest, conflict, requireRow } from "../errors.js";
 import { emitServerEvent } from "../events.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 import { openSse } from "./sse.js";
 
 const conversationsQuery = Type.Object({

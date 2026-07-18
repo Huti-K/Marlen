@@ -3,17 +3,21 @@ import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
 import { moduleLogger } from "../../logger.js";
 import { proxyRequest } from "../../pipedream/connect.js";
 import { contentDisposition } from "../../routes/fileResponse.js";
-import { draftsMutated } from "../draftsService.js";
-import type {
-  CreateDraftInput,
-  DraftAttachment,
-  DraftProvider,
-  SendDraftResult,
-  UpdateDraftPatch,
+import { mapWithConcurrency } from "../../utils/jobs.js";
+import { draftsMutated } from "../draftsCache.js";
+import {
+  type CreateDraftInput,
+  DRAFTS_LIST_LIMIT,
+  type DraftAttachment,
+  type DraftProvider,
+  type SendDraftResult,
+  type UpdateDraftPatch,
 } from "../providers.js";
 import { gmailDraftUrl } from "../webLinks.js";
+import { downloadGmailAttachment } from "./attachments.js";
 import {
   decodeHtmlEntities,
+  forEachAttachmentPart,
   GMAIL_API,
   headerLookup,
   type MessagePart,
@@ -30,7 +34,7 @@ import {
  * gmailDraftProvider is this module's entire interface.
  *
  * `listDrafts` is a pure live fetch — no caching in here. Caching lives one
- * layer up in ../draftsService.ts, shared across every provider; every
+ * layer up in ../draftsCache.ts, shared across every provider; every
  * mutation below ends with its `draftsMutated` epilogue (invalidate, then
  * emit "drafts") so the SSE-driven refetch isn't served the old list.
  */
@@ -51,15 +55,20 @@ interface DraftGetResponse {
   };
 }
 
-async function listGmailDrafts(account: ConnectedAccount, limit = 15): Promise<EmailDraft[]> {
+/** Concurrency cap for the per-draft metadata fetches behind one list call. */
+const LIST_CONCURRENCY = 5;
+
+async function listGmailDrafts(account: ConnectedAccount): Promise<EmailDraft[]> {
   const list = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts`, {
-    params: { maxResults: String(limit) },
+    params: { maxResults: String(DRAFTS_LIST_LIMIT) },
   })) as DraftsListResponse;
 
-  // Fetch each draft's metadata in parallel — independent Gmail round-trips;
-  // the list should wait on the slowest one, not the sum of all of them.
-  const settled = await Promise.all(
-    (list.drafts ?? []).map(async (entry): Promise<EmailDraft | null> => {
+  // Fetch each draft's metadata concurrently (bounded) — independent Gmail
+  // round-trips; the list waits on the slowest few, not the sum of all.
+  const fetched = await mapWithConcurrency(
+    list.drafts ?? [],
+    LIST_CONCURRENCY,
+    async (entry): Promise<EmailDraft | null> => {
       try {
         const full = (await proxyRequest(account.id, "get", `${GMAIL_API}/drafts/${entry.id}`, {
           params: { format: "metadata" },
@@ -78,14 +87,18 @@ async function listGmailDrafts(account: ConnectedAccount, limit = 15): Promise<E
           webUrl: gmailDraftUrl(account.name, entry.message.id),
           ...(snippet ? { snippet } : {}),
         };
-      } catch {
+      } catch (error) {
         // Skip a single unreadable draft rather than failing the whole list.
+        log.warn(
+          { err: error, accountId: account.id, draftId: entry.id },
+          "draft metadata fetch failed — leaving it out of the list",
+        );
         return null;
       }
-    }),
+    },
   );
   // Newest first.
-  return settled
+  return fetched
     .filter((d): d is EmailDraft => d !== null)
     .sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -134,12 +147,11 @@ function assertSafeHeaderValue(header: string, value: string): void {
 /**
  * Body headers + base64 content of the text part every raw message carries —
  * emitted at the top level of a single-part message, or as the first part of
- * a multipart/mixed one, so a message without attachments keeps the exact
- * byte layout it always had.
+ * a multipart/mixed one.
  */
-function textPartLines(body: string, bodyFormat?: "text" | "html"): string[] {
+function textPartLines(body: string): string[] {
   return [
-    `Content-Type: text/${bodyFormat === "html" ? "html" : "plain"}; charset=UTF-8`,
+    "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: base64",
     "",
     Buffer.from(body, "utf8").toString("base64"),
@@ -187,7 +199,6 @@ function buildRawMessage(input: {
   subject: string;
   body: string;
   extraHeaders?: string[];
-  bodyFormat?: "text" | "html";
   attachments?: DraftAttachment[];
 }): string {
   assertSafeHeaderValue("To", input.to);
@@ -205,23 +216,19 @@ function buildRawMessage(input: {
 
   const lines =
     input.attachments && input.attachments.length > 0
-      ? [...headerLines, ...multipartMixedLines(input.body, input.bodyFormat, input.attachments)]
-      : [...headerLines, ...textPartLines(input.body, input.bodyFormat)];
+      ? [...headerLines, ...multipartMixedLines(input.body, input.attachments)]
+      : [...headerLines, ...textPartLines(input.body)];
   return Buffer.from(lines.join("\r\n"), "utf8").toString("base64url");
 }
 
 /** The multipart/mixed body: text part first, then one part per attachment. */
-function multipartMixedLines(
-  body: string,
-  bodyFormat: "text" | "html" | undefined,
-  attachments: DraftAttachment[],
-): string[] {
+function multipartMixedLines(body: string, attachments: DraftAttachment[]): string[] {
   const boundary = `part-${randomUUID()}`;
   return [
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "",
     `--${boundary}`,
-    ...textPartLines(body, bodyFormat),
+    ...textPartLines(body),
     ...attachments.flatMap((attachment) => [`--${boundary}`, ...attachmentPartLines(attachment)]),
     `--${boundary}--`,
   ];
@@ -284,7 +291,6 @@ async function createGmailDraft(
     ...(input.bcc?.length ? { bcc: input.bcc.join(", ") } : {}),
     subject: input.subject,
     body: input.body,
-    ...(input.bodyFormat ? { bodyFormat: input.bodyFormat } : {}),
     ...(input.attachments?.length ? { attachments: input.attachments } : {}),
     ...(threadingHeaders
       ? {
@@ -298,37 +304,32 @@ async function createGmailDraft(
 
   const res = (await proxyRequest(account.id, "post", `${GMAIL_API}/drafts`, {
     body: { message: { raw, ...(input.threadId ? { threadId: input.threadId } : {}) } },
-  })) as { id: string; message: { id: string; threadId: string } };
+  })) as { id?: unknown; message?: { id?: unknown; threadId?: unknown } };
 
   draftsMutated(account.id);
-  return { draftId: res.id, messageId: res.message.id, threadId: res.message.threadId };
+  return {
+    draftId: requireResponseString(res.id, "draft id"),
+    messageId: requireResponseString(res.message?.id, "message id"),
+    threadId: requireResponseString(res.message?.threadId, "thread id"),
+  };
 }
 
 /**
- * Depth-first walk collecting every part with a non-empty filename — Gmail's
- * own definition of "this part is an attachment" (mirrors
- * ./attachments.ts's collectAttachments). Small parts carry their bytes
- * inline as base64url `body.data`; larger ones only a `body.attachmentId`.
+ * Narrow one field of a drafts.create response before it is dereferenced —
+ * the proxy can answer an error envelope instead of the API shape, and a
+ * descriptive failure beats a bare TypeError from inside a cast.
  */
-function collectAttachmentParts(
-  part: MessagePart | undefined,
-  out: { filename: string; mimeType: string; data?: string; attachmentId?: string }[],
-): void {
-  if (!part) return;
-  if (part.filename) {
-    out.push({
-      filename: part.filename,
-      mimeType: part.mimeType ?? "application/octet-stream",
-      ...(part.body?.data ? { data: part.body.data } : {}),
-      ...(part.body?.attachmentId ? { attachmentId: part.body.attachmentId } : {}),
-    });
+function requireResponseString(value: unknown, field: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`Gmail draft response carries no ${field} — unexpected response shape.`);
   }
-  for (const child of part.parts ?? []) collectAttachmentParts(child, out);
+  return value;
 }
 
 /**
- * The draft message's attachments with their bytes resolved — inline parts
- * decoded directly, ref-only parts downloaded via the attachments endpoint.
+ * The draft message's attachments with their bytes resolved — inline
+ * base64url `body.data` parts decoded directly, ref-only parts (which carry
+ * just a `body.attachmentId`) downloaded via the attachments endpoint.
  * updateGmailDraft re-embeds these when it rebuilds the raw message, since
  * drafts.update replaces the whole message and would otherwise drop them.
  */
@@ -338,7 +339,14 @@ async function fetchDraftAttachments(
   payload: MessagePart | undefined,
 ): Promise<DraftAttachment[]> {
   const parts: { filename: string; mimeType: string; data?: string; attachmentId?: string }[] = [];
-  collectAttachmentParts(payload, parts);
+  forEachAttachmentPart(payload, (part, filename) => {
+    parts.push({
+      filename,
+      mimeType: part.mimeType ?? "application/octet-stream",
+      ...(part.body?.data ? { data: part.body.data } : {}),
+      ...(part.body?.attachmentId ? { attachmentId: part.body.attachmentId } : {}),
+    });
+  });
 
   const resolved: DraftAttachment[] = [];
   for (const part of parts) {
@@ -346,15 +354,12 @@ async function fetchDraftAttachments(
     if (part.data) {
       content = Buffer.from(part.data, "base64url");
     } else if (part.attachmentId) {
-      const fetched = (await proxyRequest(
-        account.id,
-        "get",
-        `${GMAIL_API}/messages/${messageId}/attachments/${part.attachmentId}`,
-      )) as { data?: string };
-      if (!fetched.data) {
-        throw new Error(`Gmail returned no data for attachment "${part.filename}".`);
-      }
-      content = Buffer.from(fetched.data, "base64url");
+      content = await downloadGmailAttachment(
+        account,
+        messageId,
+        part.attachmentId,
+        `attachment "${part.filename}"`,
+      );
     } else {
       continue;
     }
@@ -409,7 +414,7 @@ async function fetchGmailDraftFull(
 
 /**
  * Save a draft's body/subject exactly as the caller passed them — no
- * humanizer, no signature (those are the create-draft tool's job, not this
+ * humanizer (that is the create-draft tool's job, not this
  * endpoint's). Everything the caller doesn't override (to/cc/bcc/threadId,
  * PRESERVED_HEADERS, attachments) is fetched from the current draft first,
  * since Gmail's drafts.update replaces the whole message rather than

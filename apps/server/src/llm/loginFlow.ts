@@ -1,7 +1,8 @@
-import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
+import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
 import type { LoginFlowStatus } from "@trailin/shared";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 import { credentialStore } from "./credentialStore.js";
+import { modelRegistry } from "./registry.js";
 
 /**
  * Manages the single in-flight OAuth login. pi-ai's login flows are
@@ -13,7 +14,7 @@ interface Flow {
   providerName: string;
   status: LoginFlowStatus;
   pendingInput?: (value: string) => void;
-  pendingSelect?: (optionId: string | undefined) => void;
+  pendingSelect?: (optionId: string) => void;
   abort: AbortController;
 }
 
@@ -33,19 +34,19 @@ export function startLogin(
     throw new Error(`A login for "${flow.providerName}" is already in progress. Cancel it first.`);
   }
 
-  const oauthProvider = getOAuthProvider(providerId);
-  if (!oauthProvider) {
+  const oauth = modelRegistry.getProvider(providerId)?.auth.oauth;
+  if (!oauth) {
     throw new Error(`Provider "${providerId}" has no subscription login. Use an API key instead.`);
   }
 
   const abort = new AbortController();
   const f: Flow = {
     providerId,
-    providerName: oauthProvider.name,
+    providerName: oauth.name,
     abort,
     status: {
       providerId,
-      providerName: oauthProvider.name,
+      providerName: oauth.name,
       done: false,
     },
   };
@@ -59,36 +60,51 @@ export function startLogin(
       });
     });
 
-  oauthProvider
-    .login({
-      signal: abort.signal,
-      onAuth: (info) => {
-        f.status.authUrl = info.url;
-        f.status.instructions = info.instructions;
-      },
-      onDeviceCode: (info) => {
-        f.status.deviceCode = {
-          userCode: info.userCode,
-          verificationUri: info.verificationUri,
+  // Selections and text/secret/manual-code prompts park the flow until the
+  // web UI answers via provideLoginSelection/provideLoginInput; cancel
+  // rejects so the login promise settles.
+  const handlePrompt = (prompt: AuthPrompt): Promise<string> => {
+    if (prompt.type === "select") {
+      return new Promise<string>((resolveSelect, rejectSelect) => {
+        f.status.select = {
+          message: prompt.message,
+          options: prompt.options.map(({ id, label }) => ({ id, label })),
         };
-      },
-      onPrompt: (prompt) => {
-        f.status.prompt = { message: prompt.message, placeholder: prompt.placeholder };
-        return waitForInput();
-      },
-      onManualCodeInput: () => waitForInput(),
-      onSelect: (prompt) =>
-        new Promise<string | undefined>((resolveSelect) => {
-          f.status.select = { message: prompt.message, options: [...prompt.options] };
-          f.pendingSelect = resolveSelect;
-          abort.signal.addEventListener("abort", () => resolveSelect(undefined), { once: true });
-        }),
-      onProgress: (message) => log.info(`[llm-auth:${providerId}] ${message}`),
-    })
-    .then(async (creds) => {
-      await credentialStore.modify(providerId, async () => ({ type: "oauth", ...creds }));
+        f.pendingSelect = resolveSelect;
+        abort.signal.addEventListener("abort", () => rejectSelect(new Error("cancelled")), {
+          once: true,
+        });
+      });
+    }
+    f.status.prompt = { message: prompt.message, placeholder: prompt.placeholder };
+    return waitForInput();
+  };
+
+  const handleEvent = (event: AuthEvent): void => {
+    switch (event.type) {
+      case "auth_url":
+        f.status.authUrl = event.url;
+        f.status.instructions = event.instructions;
+        break;
+      case "device_code":
+        f.status.deviceCode = {
+          userCode: event.userCode,
+          verificationUri: event.verificationUri,
+        };
+        break;
+      case "info":
+      case "progress":
+        log.info(`[llm-auth:${providerId}] ${event.message}`);
+        break;
+    }
+  };
+
+  oauth
+    .login({ signal: abort.signal, prompt: handlePrompt, notify: handleEvent })
+    .then(async (credential) => {
+      await credentialStore.modify(providerId, async () => credential);
       f.status.done = true;
-      log.info(`[llm-auth:${providerId}] signed in via ${oauthProvider.name}`);
+      log.info(`[llm-auth:${providerId}] signed in via ${oauth.name}`);
     })
     .catch((error) => {
       f.status.done = true;

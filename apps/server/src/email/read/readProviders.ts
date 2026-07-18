@@ -3,7 +3,7 @@ import { createProviderRegistry } from "../registry.js";
 
 /**
  * Live mail-read drivers, one per app slug. The learning subsystem
- * (email/learn/, agent/voiceLearnService.ts) reads the user's sent mail
+ * (email/learn/, agent/voiceLearn.ts) reads the user's sent mail
  * straight from the provider through these, and the thread-history viewer
  * (routes/mail.ts) reads whole threads the same way — mail is never stored
  * locally. Apps without a driver simply skip the features built on it, the
@@ -41,7 +41,12 @@ export interface MailReadProvider {
     account: ConnectedAccount,
     opts?: { knownId?: string; signal?: AbortSignal },
   ): Promise<{ id: string; date: string | null } | null>;
-  /** The account's own sent mail after `sinceIso`, oldest first, capped at `limit`. */
+  /**
+   * The account's own sent mail after `sinceIso`, returned oldest first.
+   * When more than `limit` messages exist in the range, the cap keeps the
+   * NEWEST `limit` of them — recent sends are never crowded out by an old
+   * anchor, at the cost of the oldest part of the range.
+   */
   listSentSince(
     account: ConnectedAccount,
     sinceIso: string,

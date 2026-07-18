@@ -10,22 +10,31 @@ export function SearchField({
   onChange,
   placeholder,
   className,
+  size = "default",
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
   className?: string;
+  /** `sm` is the compact in-card variant (e.g. the system-prompt inspector). */
+  size?: "default" | "sm";
 }) {
   const { t } = useTranslation();
+  const sm = size === "sm";
   return (
     <div className={cn("relative", className)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Search
+        className={cn(
+          "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
+          sm ? "left-2.5 h-3.5 w-3.5" : "left-3 h-4 w-4",
+        )}
+      />
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="pl-9 pr-8"
+        className={sm ? "h-8 pl-8 pr-8 text-xs" : "pl-9 pr-8"}
       />
       {value && (
         <IconButton

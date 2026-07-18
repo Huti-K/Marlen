@@ -1,16 +1,13 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
-import { type ConnectedAccount, formatFileSize } from "@trailin/shared";
-import { toCardAccount } from "../agent/card/common.js";
-import { buildEmailDraftCard, CARD_KINDS } from "../agent/card/kinds.js";
+import { type AccountPermissions, type ConnectedAccount, formatFileSize } from "@trailin/shared";
+import { buildListAttachmentsTool, buildSaveAttachmentTool } from "../agent/attachmentTool.js";
+import { buildEmailDraftCard, cardNote, toCardAccount } from "../agent/cards.js";
 import { composeDraftBody } from "../agent/composition.js";
 import { defineTool, textResult } from "../agent/toolkit.js";
 import { appendDraftVersion, createDraftSnapshot, getDraftCardDetails } from "../db/draftStore.js";
-import { getWriteAccessAccounts } from "../db/settings.js";
-import "../email/registerProviders.js";
-import "../email/registerAttachmentProviders.js";
+import { getAccountPermissions } from "../db/settings.js";
 import { getAttachmentProvider } from "../email/attachmentProviders.js";
-import { buildListAttachmentsTool, buildSaveAttachmentTool } from "../email/attachmentTool.js";
 import {
   type CreateDraftInput,
   type DraftAttachment,
@@ -19,7 +16,7 @@ import {
 } from "../email/providers.js";
 import { resolveLibraryAttachments } from "../library/draftAttachments.js";
 import { moduleLogger } from "../logger.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 import {
   type ConnectConfig,
   getConnectConfig,
@@ -35,27 +32,53 @@ import {
 
 const log = moduleLogger("mcp");
 
+/** Appended to the create/update draft tools' result text alongside their card. */
+const DRAFT_CARD_NOTE = cardNote("the draft", "Don't repeat its subject or body in your reply.");
+
 /** Tool names must satisfy the LLM providers' [a-zA-Z0-9_-]{1,128} constraint. */
 function sanitizeToolName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
 }
 
 /**
- * Which MCP tools get registered at all. Reads (find/get/list/search/…) are
- * ALWAYS registered, regardless of write access — the agent's only mail read
- * path is live MCP; nothing is mirrored locally. Writes (send, reply, label,
- * move, delete) are gated per account by the write-access setting
- * (`account.writeAccess`), or off for every account regardless of that
- * setting when the caller passes `providerWrites: false` (unattended
- * automation runs, see loadEmailTools). Pipedream's own create-draft is kept
- * even on a read-only account (drafts never dispatch mail) for apps without
- * a DraftProvider. Download verbs are never registered: raw attachment bytes
- * would land base64 in model context — attachments go through the local
+ * Which MCP tools get registered at all, decided per tool by the verb its
+ * action name starts with (Pipedream names every tool `app-verb-object`).
+ * Reads (find/get/list/search/…) are ALWAYS registered, regardless of any
+ * grant — the agent's only mail read path is live MCP; nothing is mirrored
+ * locally. Every other tool needs the matching per-account grant
+ * (`account.permissions`, armed on the account's row in Settings): send
+ * verbs need `send`, delete verbs need `delete`, and every remaining verb —
+ * create, update, move, label, and any verb this policy has never seen —
+ * needs `write`, so an unclassified verb always requires an explicit grant
+ * instead of slipping through. `providerWrites: false` forces every grant
+ * off regardless of settings (unattended automation runs, see
+ * loadEmailTools). Pipedream's own create-draft is kept even on a read-only
+ * account (drafts never dispatch mail) for apps without a DraftProvider.
+ * Download verbs are never registered: raw attachment bytes would land
+ * base64 in model context — attachments go through the local
  * list/save-attachment tools instead.
  */
 const READ_VERBS = /^(find|get|list|search|fetch|retrieve)(-|$)/;
+const SEND_VERBS = /^(send|reply|forward|publish)(-|$)/;
+const DELETE_VERBS = /^(delete|remove|trash|destroy|purge)(-|$)/;
 const EXCLUDED_VERBS = /^download(-|$)/;
 const DRAFT_ONLY = /^create-draft(-|$)/;
+
+/** The grantable tool categories of one account — its permission record minus the id. */
+type ActionGrants = Omit<AccountPermissions, "accountId">;
+
+const NO_GRANTS: ActionGrants = { write: false, send: false, delete: false };
+
+type ActionCategory = "excluded" | "read" | "draft" | "send" | "delete" | "write";
+
+function classifyAction(action: string): ActionCategory {
+  if (EXCLUDED_VERBS.test(action)) return "excluded";
+  if (DRAFT_ONLY.test(action)) return "draft";
+  if (READ_VERBS.test(action)) return "read";
+  if (SEND_VERBS.test(action)) return "send";
+  if (DELETE_VERBS.test(action)) return "delete";
+  return "write";
+}
 
 /** The MCP tool's action with the app-slug prefix stripped: "gmail-find-email" → "find-email". */
 function actionOf(mcpToolName: string): string {
@@ -145,7 +168,7 @@ function buildAccountTools(
   account: ConnectedAccount,
   needsSuffix: boolean,
   seenNames: Set<string>,
-  allowWrite: boolean,
+  granted: ActionGrants,
 ): AccountTools {
   const tools: AgentTool[] = [];
   const readTools: AgentTool[] = [];
@@ -160,10 +183,11 @@ function buildAccountTools(
     // proxy-based tool under the same slug for every app with a
     // DraftProvider, so skip Pipedream's version wherever ours takes over.
     if (getDraftProvider(account.app) && mcpTool.name === `${account.app}-create-draft`) continue;
-    const action = actionOf(mcpTool.name);
-    const isDraft = DRAFT_ONLY.test(action);
-    const isRead = READ_VERBS.test(action);
-    if (EXCLUDED_VERBS.test(action) || (!isRead && !isDraft && !allowWrite)) {
+    const category = classifyAction(actionOf(mcpTool.name));
+    const isRead = category === "read";
+    const allowed =
+      isRead || category === "draft" || (category !== "excluded" && granted[category]);
+    if (!allowed) {
       skipped.push(mcpTool.name);
       continue;
     }
@@ -234,8 +258,7 @@ function buildDraftTool(
       `conversation (use the thread's id from find/list tools), where the connected provider ` +
       `supports it. The body goes through a humanizer pass before saving, which removes ` +
       `AI-sounding phrasing; the tool result reports the final saved text when it was adjusted. ` +
-      `If this account has a signature configured in Settings, it is appended automatically — ` +
-      `do not write a signature block yourself. Documents from the user's library can be ` +
+      `Documents from the user's library can be ` +
       `attached as files via attachLibraryDocumentIds.\n\n` +
       `Acts as the connected account: ${account.name}.`,
     parameters: {
@@ -278,8 +301,8 @@ function buildDraftTool(
       }
       // The compose pipeline (agent/composition.ts) runs before the body ever
       // reaches the provider, so every surface that saves a draft (chat,
-      // automations) gets the same humanizer + signature treatment.
-      const composed = await composeDraftBody(account.id, {
+      // automations) gets the same humanizer treatment.
+      const composed = await composeDraftBody({
         body: input.body,
         subject: input.subject,
       });
@@ -287,14 +310,11 @@ function buildDraftTool(
 
       const result = await provider.createDraft(account, {
         ...input,
-        body: composed.htmlBody ?? finalBody,
-        ...(composed.htmlBody ? { bodyFormat: "html" as const } : {}),
+        body: finalBody,
         ...(attachments.length > 0 ? { attachments } : {}),
       });
 
-      // Snapshot the plain-text semantic body for the learning loop. The
-      // provider may save an HTML MIME body solely to preserve rich signature
-      // formatting, but that markup should not become writing-style evidence.
+      // Snapshot the saved body for the learning loop.
       try {
         await createDraftSnapshot({
           accountId: account.id,
@@ -305,7 +325,6 @@ function buildDraftTool(
           to: input.to,
           cc: input.cc,
           bcc: input.bcc,
-          signature: composed.signature,
           body: finalBody,
         });
       } catch (error) {
@@ -320,16 +339,13 @@ function buildDraftTool(
         text += `\nAttached: ${listed}.`;
       }
 
-      // Show the saved body once, whenever it differs from what the model
-      // submitted — whether that's the humanizer, the signature, or both.
+      // Show the saved body once, whenever the humanizer changed what the
+      // model submitted.
       if (finalBody !== input.body) {
-        const reasons: string[] = [];
-        if (composed.humanized) reasons.push("lightly edited by the humanizer pass");
-        if (composed.signatureAppended) reasons.push("had the account's signature appended");
-        const reasonText = reasons.length > 0 ? ` (${reasons.join(" and ")})` : "";
+        const reasonText = composed.humanized ? ` (lightly edited by the humanizer pass)` : "";
         text += `\n\nThe saved draft reads${reasonText}:\n\n${finalBody}`;
       }
-      text += CARD_KINDS.email_draft.note;
+      text += DRAFT_CARD_NOTE;
 
       const card = buildEmailDraftCard({
         account: toCardAccount(account),
@@ -342,7 +358,6 @@ function buildDraftTool(
           ...(input.bcc?.length ? { bcc: input.bcc } : {}),
           body: finalBody,
           webUrl: result.webUrl,
-          signatureAppended: composed.signatureAppended,
           ...(attachments.length > 0
             ? {
                 attachments: attachments.map((a) => ({
@@ -362,15 +377,16 @@ function buildDraftTool(
 /**
  * Rewrite an existing draft in place — the tool a chat refinement uses so
  * "make it firmer" edits the SAME draft instead of creating a second one.
- * Runs the same compose pipeline as create (humanizer; signature appended
- * when missing, so it survives a full-body rewrite) and appends an
- * agent-authored version to the draft's snapshot history. Only built for
- * accounts whose provider implements updateDraft.
+ * Runs the same compose pipeline as create (the humanizer) and appends an
+ * agent-authored version to the draft's snapshot history. Takes the
+ * provider's updateDraft function directly — the tool is only built for
+ * accounts whose provider implements it, and the parameter type keeps that
+ * true by construction.
  */
 function buildUpdateDraftTool(
   account: ConnectedAccount,
   name: string,
-  provider: DraftProvider,
+  updateDraft: NonNullable<DraftProvider["updateDraft"]>,
 ): AgentTool {
   return defineTool({
     name,
@@ -380,8 +396,7 @@ function buildUpdateDraftTool(
       `whenever the user asks to refine, shorten, or otherwise change a draft that already ` +
       `exists (you know its draft id from creating or listing it) — never create a second ` +
       `draft for a refinement. Nothing is sent. The new body goes through the same humanizer ` +
-      `pass as draft creation, and the account's configured signature is preserved ` +
-      `automatically — do not write one yourself. Recipients cannot be changed; if the user ` +
+      `pass as draft creation. Recipients cannot be changed; if the user ` +
       `wants different recipients, discard and create a new draft instead.\n\n` +
       `Acts as the connected account: ${account.name}.`,
     parameters: {
@@ -404,17 +419,12 @@ function buildUpdateDraftTool(
       }
 
       let finalBody = body;
-      let signatureAppended = false;
       if (body !== undefined) {
-        const composed = await composeDraftBody(account.id, { body, subject });
+        const composed = await composeDraftBody({ body, subject });
         finalBody = composed.body;
-        signatureAppended = composed.signatureAppended;
       }
 
-      if (!provider.updateDraft) {
-        return textResult("Updating drafts is not supported for this account.");
-      }
-      await provider.updateDraft(account, draftId, {
+      await updateDraft(account, draftId, {
         ...(finalBody !== undefined ? { body: finalBody } : {}),
         ...(subject !== undefined ? { subject } : {}),
       });
@@ -443,11 +453,10 @@ function buildUpdateDraftTool(
             ...(details.cc.length > 0 ? { cc: details.cc } : {}),
             ...(details.bcc.length > 0 ? { bcc: details.bcc } : {}),
             body: finalBody ?? details.body,
-            signatureAppended,
           },
         });
         return textResult(
-          `Draft ${draftId} updated in ${account.name}. It remains unsent.${CARD_KINDS.email_draft.note}`,
+          `Draft ${draftId} updated in ${account.name}. It remains unsent.${DRAFT_CARD_NOTE}`,
           card,
         );
       }
@@ -472,13 +481,13 @@ export interface EmailToolset {
 
 export interface LoadEmailToolsOptions {
   /**
-   * Whether any account's write-access setting can grant MCP write tools
-   * (send, reply, label, move, delete). Defaults to true. Pass false to run
+   * Whether any account's permission grants (write / send / delete) can arm
+   * MCP tools beyond reads and drafts. Defaults to true. Pass false to run
    * every account through the same gating machinery as a read-only account —
-   * no account contributes a write tool, no matter what's stored in
-   * Settings → Permissions. Read and draft tools are unaffected either way:
-   * unattended runs still need to read mail, and creating a draft never
-   * dispatches any. Used for unattended automation runs, where a
+   * no account contributes a write, send or delete tool, no matter which
+   * grants are stored in settings. Read and draft tools are unaffected
+   * either way: unattended runs still need to read mail, and creating a
+   * draft never dispatches any. Used for unattended automation runs, where a
    * prompt-injected email must not be able to trigger a send.
    */
   providerWrites?: boolean;
@@ -499,9 +508,9 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
   if (!config) return EMPTY_TOOLSET;
 
   let accounts: ConnectedAccount[];
-  let writeAccessIds: string[];
+  let permissions: AccountPermissions[];
   try {
-    [accounts, , writeAccessIds] = await Promise.all([
+    [accounts, , permissions] = await Promise.all([
       listAccounts(),
       // Warm/validate the token cache before opening N MCP sessions below —
       // bad credentials fail here once instead of as N identical connect
@@ -509,7 +518,7 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
       // getPipedreamAccessToken() per request (see fetchWithFreshToken)
       // rather than reusing this snapshot.
       getPipedreamAccessToken(),
-      getWriteAccessAccounts(),
+      getAccountPermissions(),
     ]);
   } catch (error) {
     log.warn({ err: error }, "listing Pipedream accounts failed");
@@ -517,10 +526,13 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
   }
   if (accounts.length === 0) return EMPTY_TOOLSET;
 
-  // Empty when providerWrites is false: every account then falls through the
-  // same `writeAccess.has(account.id)` checks below as a read-only account,
-  // regardless of what's stored under Settings → Permissions.
-  const writeAccess = providerWrites ? new Set(writeAccessIds) : new Set<string>();
+  // Empty when providerWrites is false: every account then resolves to
+  // NO_GRANTS below like a read-only account, regardless of the grants
+  // stored in settings.
+  const grantsById = new Map(
+    providerWrites ? permissions.map((p) => [p.accountId, p] as const) : [],
+  );
+  const grantsFor = (accountId: string): ActionGrants => grantsById.get(accountId) ?? NO_GRANTS;
 
   const perApp = new Map<string, number>();
   for (const account of accounts) perApp.set(account.app, (perApp.get(account.app) ?? 0) + 1);
@@ -583,7 +595,7 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
           account,
           needsSuffix,
           seenNames,
-          writeAccess.has(account.id),
+          grantsFor(account.id),
         );
         tools.push(...accountTools.tools);
         readTools.push(...accountTools.readTools);
@@ -610,7 +622,8 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
           account,
           seenNames,
         );
-        if (updateName) tools.push(buildUpdateDraftTool(account, updateName, draftProvider));
+        if (updateName)
+          tools.push(buildUpdateDraftTool(account, updateName, draftProvider.updateDraft));
       }
     }
     const attachmentProvider = getAttachmentProvider(account.app);

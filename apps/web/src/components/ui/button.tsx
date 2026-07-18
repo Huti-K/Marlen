@@ -1,5 +1,6 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 // Borderless buttons: brand-accent primary (the CTA), tonal fills for everything
@@ -10,6 +11,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-accent text-accent-foreground hover:bg-accent/90",
+        /* The confirm CTA in destructive dialogs (ConfirmDialog's default). */
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         // Formerly "outline" — now a quiet tonal fill (no border).
         outline: "bg-surface-2 text-foreground hover:bg-secondary",
@@ -36,8 +38,33 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+    VariantProps<typeof buttonVariants> {
+  /** Disables the button and swaps its icon for a spinner; text children stay visible. */
+  loading?: boolean;
+}
 
-export function Button({ className, variant, size, ...props }: ButtonProps) {
-  return <button className={cn(buttonVariants({ variant, size, className }))} {...props} />;
+export function Button({
+  className,
+  variant,
+  size,
+  loading,
+  disabled,
+  children,
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      className={cn(
+        buttonVariants({ variant, size, className }),
+        // The spinner below is the button's first child, so this hides only
+        // the caller's own icon(s) for the duration.
+        loading && "[&_svg:not(:first-child)]:hidden",
+      )}
+      disabled={disabled || loading}
+      {...props}
+    >
+      {loading && <Spinner />}
+      {children}
+    </button>
+  );
 }

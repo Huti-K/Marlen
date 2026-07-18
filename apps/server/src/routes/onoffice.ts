@@ -10,7 +10,7 @@ import { rescheduleAll } from "../automations/scheduler.js";
 import { setOnOfficeAutomationCreates, setOnOfficeWriteAccess } from "../db/settings.js";
 import { badRequest } from "../errors.js";
 import { clearOnOfficeConfig, getOnOfficeStatus, saveOnOfficeConfig } from "../onoffice/config.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 
 // Either field may be omitted to keep the saved one (the secret is never
 // returned to the browser, so an edit re-sends only what changed).

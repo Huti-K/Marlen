@@ -1,49 +1,43 @@
-import { promises as fs } from "node:fs";
-import { dirname, resolve } from "node:path";
-import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
-import { writeFileAtomic } from "../atomicFile.js";
-import { env } from "../env.js";
-import { KeyedJobs } from "../jobs.js";
-import { moduleLogger } from "../logger.js";
-
-const log = moduleLogger("credential-store");
+import type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
+import { KeyedJobs } from "../utils/jobs.js";
+import { type JsonSecretFile, jsonSecretFile } from "../utils/jsonSecretFile.js";
+import { isRecord } from "../utils/util.js";
 
 /**
  * File-backed pi-ai CredentialStore (pi-ai only ships an in-memory one).
  * Holds one credential per provider id; pi-ai reads it on every model call
  * and writes refreshed OAuth tokens back through `modify`.
+ *
+ * Storage discipline is jsonSecretFile.ts's: atomic writes, absent file as
+ * "no credentials", and loud failure on a corrupt file — which must never be
+ * treated as empty, or modify()/delete() would save over it and permanently
+ * wipe every other provider's saved credential. All access is serialized
+ * through one queue so concurrent read-modify-write cycles can't interleave.
  */
 class FileCredentialStore implements CredentialStore {
   private readonly jobs = new KeyedJobs();
 
-  constructor(private readonly filePath: string) {}
+  constructor(private readonly file: JsonSecretFile<Record<string, Credential>>) {}
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
-    return this.jobs.enqueue(this.filePath, fn);
+    return this.jobs.enqueue(this.file.path, fn);
   }
 
   private async load(): Promise<Record<string, Credential>> {
-    try {
-      return JSON.parse(await fs.readFile(this.filePath, "utf8")) as Record<string, Credential>;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
-      // A corrupt or unreadable store must never be treated as "no
-      // credentials" — modify()/delete() would then save over the file and
-      // permanently wipe every other provider's saved credential. Fail loudly.
-      log.error({ err: error, filePath: this.filePath }, "failed to read credential store");
-      throw error;
-    }
-  }
-
-  private async save(all: Record<string, Credential>): Promise<void> {
-    // A crash or power loss mid-write must never leave a truncated/corrupt
-    // auth.json — load() would then wipe every credential on the very next
-    // save. writeFileAtomic (atomicFile.ts) makes the write atomic.
-    await writeFileAtomic(this.filePath, JSON.stringify(all, null, 2));
+    return (await this.file.read()) ?? {};
   }
 
   read(providerId: string): Promise<Credential | undefined> {
     return this.enqueue(async () => (await this.load())[providerId]);
+  }
+
+  list(): Promise<readonly CredentialInfo[]> {
+    return this.enqueue(async () =>
+      Object.entries(await this.load()).map(([providerId, credential]) => ({
+        providerId,
+        type: credential.type,
+      })),
+    );
   }
 
   modify(
@@ -58,7 +52,7 @@ class FileCredentialStore implements CredentialStore {
       } else {
         all[providerId] = next;
       }
-      await this.save(all);
+      await this.file.write(all);
       return next;
     });
   }
@@ -67,11 +61,16 @@ class FileCredentialStore implements CredentialStore {
     return this.enqueue(async () => {
       const all = await this.load();
       delete all[providerId];
-      await this.save(all);
+      await this.file.write(all);
     });
   }
 }
 
 // Stored next to the SQLite database (data/auth.json by default).
-const authPath = resolve(dirname(resolve(process.cwd(), env.databasePath)), "auth.json");
-export const credentialStore = new FileCredentialStore(authPath);
+export const credentialStore = new FileCredentialStore(
+  jsonSecretFile({
+    filename: "auth.json",
+    label: "LLM credential store",
+    narrow: (value): value is Record<string, Credential> => isRecord(value),
+  }),
+);

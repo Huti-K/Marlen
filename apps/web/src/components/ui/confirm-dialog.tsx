@@ -1,5 +1,4 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Loader2 } from "lucide-react";
 import type * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -40,8 +39,7 @@ export function ConfirmDialog({
             <DialogPrimitive.Close asChild>
               <Button variant="ghost">{t("common.cancel")}</Button>
             </DialogPrimitive.Close>
-            <Button variant={variant} onClick={onConfirm} disabled={busy}>
-              {busy && <Loader2 className="animate-spin" />}
+            <Button variant={variant} onClick={onConfirm} loading={busy}>
               {confirmLabel}
             </Button>
           </div>

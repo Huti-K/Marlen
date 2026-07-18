@@ -1,4 +1,8 @@
-import "dotenv/config";
+// Loads ./.env into process.env; already-set variables win. Missing file is
+// fine — the packaged app and CI set their environment directly.
+try {
+  process.loadEnvFile();
+} catch {}
 
 function optional(name: string): string | undefined {
   const value = process.env[name];
@@ -40,6 +44,8 @@ export const env = {
   databasePath: optional("DATABASE_PATH") ?? "./data/trailin.db",
   /** Default drop folder for the document library; a folder saved in the app wins. */
   libraryPath: optional("LIBRARY_PATH") ?? "./data/library",
+  /** Folder holding the user's skills — one markdown playbook per file. */
+  skillsPath: optional("SKILLS_PATH") ?? "./data/skills",
   // Where the built web app lives, when it isn't at the repo-relative default —
   // the desktop shell (apps/desktop) sets this to its packaged copy.
   webDistPath: optional("WEB_DIST_PATH"),
@@ -64,9 +70,15 @@ export const env = {
     secret: optional("ONOFFICE_SECRET"),
     apiUrl: optional("ONOFFICE_API_URL"),
   },
+  /**
+   * Folder holding the WhatsApp pairing credentials (signal keys + creds) —
+   * the native personal-account link; see whatsapp/session.ts. The desktop
+   * shell points this into Electron's userData like the database.
+   */
+  whatsappAuthPath: optional("WHATSAPP_AUTH_PATH") ?? "./data/whatsapp-auth",
   // Optional upgrade for the agent's web_search tool: with a key it uses the
   // Brave Search API; without one it falls back to Exa's keyless public MCP
-  // endpoint, so search works out of the box. See websearch/search.ts.
+  // endpoint, so search works out of the box. See agent/websearch/search.ts.
   webSearch: {
     braveApiKey: optional("BRAVE_SEARCH_API_KEY"),
   },

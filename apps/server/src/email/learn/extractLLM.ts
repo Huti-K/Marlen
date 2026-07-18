@@ -1,71 +1,51 @@
-import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { MEMORY_MAX_LENGTH } from "@trailin/shared";
-import { streamViaModelRegistry } from "../../agent/oneShot.js";
-import { runPrompt } from "../../agent/run.js";
-import { defineTool } from "../../agent/toolkit.js";
+import { type ReportToolSpec, runReportPrompt } from "../../agent/oneShot.js";
+import { prompts } from "../../prompts.js";
 
 /**
  * The nightly extraction LLM call (extractor.ts): one account's pending
  * draft-vs-sent pairs go in, an array of GENERAL style directives comes out
- * via the report-tool pattern (email/enrich/enrichLLM.ts) — a one-shot
- * ephemeral Agent whose only tool is report_lessons with terminate: true.
+ * via the report-tool one-shot (agent/oneShot.ts, runReportPrompt).
  * Directives must never repeat content from any one pair (names, dates,
  * deals) — only transferable writing-style adjustments a future draft for
  * this account should follow, the same shape voiceLearn.ts's report_style
  * produces from sent mail alone.
  */
 
-const SYSTEM_PROMPT = `You are a writing-style analyst for Trailin, a personal email assistant. You are shown
-several pairs of (what the assistant drafted, what the user actually sent) for ONE account. Compare each
-pair and report GENERAL style lessons the assistant should apply next time it drafts for this account —
-tone, greeting/sign-off habits, typical length, phrasing preferences. Call report_lessons EXACTLY ONCE.
-
-Never report anything specific to one email's content — no names, dates, numbers, or topics from any pair.
-A lesson must read as an instruction that applies to ANY future email for this account, not a fact about
-one exchange. If the pairs show no consistent, transferable pattern, report an empty list — do not invent one.`;
-
 export interface ExtractionPair {
   draftBody: string;
   sentBody: string;
 }
 
-function buildLessonsReportTool(onReport: (directives: string[]) => void): AgentTool {
-  return defineTool({
-    name: "report_lessons",
-    label: "Report style lessons",
-    description: "Record the general style directives learned from these pairs. Call exactly once.",
-    parameters: {
-      type: "object",
-      properties: {
-        directives: {
-          type: "array",
-          items: { type: "string" },
-          description:
-            `0-6 general, content-free style directives (tone, greeting/sign-off habits, length, ` +
-            `phrasing), each a single self-contained instruction another assistant could follow, ` +
-            `under ${MEMORY_MAX_LENGTH} characters. Empty when no consistent pattern shows up.`,
-        },
+const reportLessonsTool: ReportToolSpec<string[]> = {
+  name: "report_lessons",
+  label: "Report style lessons",
+  description: "Record the general style directives learned from these pairs. Call exactly once.",
+  parameters: {
+    type: "object",
+    properties: {
+      directives: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          `0-6 general, content-free style directives (tone, greeting/sign-off habits, length, ` +
+          `phrasing), each a single self-contained instruction another assistant could follow, ` +
+          `under ${MEMORY_MAX_LENGTH} characters. Empty when no consistent pattern shows up.`,
       },
-      required: ["directives"],
     },
-    execute: async (_id, params) => {
-      const raw = (params as Record<string, unknown>).directives;
-      const directives = Array.isArray(raw)
-        ? raw
-            .filter((entry): entry is string => typeof entry === "string")
-            .map((entry) => entry.trim().slice(0, MEMORY_MAX_LENGTH))
-            .filter(Boolean)
-        : [];
-      onReport(directives);
-      return {
-        content: [{ type: "text", text: "Lessons recorded." }],
-        details: undefined,
-        terminate: true,
-      };
-    },
-  });
-}
+    required: ["directives"],
+  },
+  narrow: (params) => {
+    const raw = (params as Record<string, unknown>).directives;
+    return Array.isArray(raw)
+      ? raw
+          .filter((entry): entry is string => typeof entry === "string")
+          .map((entry) => entry.trim().slice(0, MEMORY_MAX_LENGTH))
+          .filter(Boolean)
+      : [];
+  },
+};
 
 function renderPairs(pairs: ExtractionPair[], accountName: string): string {
   const blocks = pairs.map(
@@ -90,16 +70,11 @@ export async function extractLessons(
   model: Model<Api>,
   timeoutMs = EXTRACT_TIMEOUT_MS,
 ): Promise<string[]> {
-  let captured: string[] | undefined;
-  const agent = new Agent({
-    initialState: {
-      systemPrompt: SYSTEM_PROMPT,
-      model,
-      tools: [buildLessonsReportTool((directives) => (captured = directives))],
-    },
-    streamFn: streamViaModelRegistry,
+  return runReportPrompt({
+    systemPrompt: prompts.voiceExtract,
+    tool: reportLessonsTool,
+    prompt: renderPairs(pairs, accountName),
+    model,
+    timeoutMs,
   });
-  await runPrompt({ agent }, renderPairs(pairs, accountName), {}, AbortSignal.timeout(timeoutMs));
-  if (!captured) throw new Error("model finished without calling report_lessons");
-  return captured;
 }

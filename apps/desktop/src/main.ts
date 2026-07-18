@@ -2,10 +2,25 @@ import { mkdirSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, type UtilityProcess, utilityProcess } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  type UtilityProcess,
+  utilityProcess,
+  type WebContents,
+} from "electron";
 import log from "electron-log/main";
 import { startNotifications, stopNotifications } from "./notifications";
-import { installUpdate, pendingUpdateVersion, startUpdater } from "./updater";
+import {
+  checkForUpdatesNow,
+  installUpdate,
+  pendingUpdateVersion,
+  startUpdater,
+  type UpdateCheckStatus,
+} from "./updater";
 
 /**
  * The desktop shell: boots the bundled @trailin/server as a utility child
@@ -76,6 +91,8 @@ function serverEnv(port: number): Record<string, string> {
     PORT: String(port),
     DATABASE_PATH: path.join(dataRoot, "data", "trailin.db"),
     LIBRARY_PATH: path.join(dataRoot, "library"),
+    SKILLS_PATH: path.join(dataRoot, "skills"),
+    WHATSAPP_AUTH_PATH: path.join(dataRoot, "data", "whatsapp-auth"),
     LOG_FILE: path.join(dataRoot, "logs", "trailin.log"),
     WEB_DIST_PATH: path.join(__dirname, "web"),
   };
@@ -122,7 +139,29 @@ async function waitForServer(port: number): Promise<void> {
   throw new Error(`server not reachable on port ${port} within ${SERVER_READY_TIMEOUT_MS}ms`);
 }
 
+/**
+ * Route new-window requests out of the shell: anything the app opens
+ * (login pages, Gmail/Outlook web links, docs, API downloads) lands in the
+ * user's default browser instead of an Electron child window. The one
+ * exception is a popup opened by the embedded Pipedream Connect iframe —
+ * the provider's OAuth window — which must stay an in-app window because
+ * the iframe holds its handle to detect completion and report the linked
+ * account back. Applied recursively so links clicked inside that OAuth
+ * window also leave for the browser.
+ */
+function installLinkPolicy(contents: WebContents): void {
+  contents.setWindowOpenHandler(({ url, referrer }) => {
+    if (referrer.url.startsWith("https://pipedream.com/")) return { action: "allow" };
+    if (/^https?:/i.test(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  contents.on("did-create-window", (child) => {
+    installLinkPolicy(child.webContents);
+  });
+}
+
 function createWindow(port: number): void {
+  const origin = `http://127.0.0.1:${port}`;
   const window = new BrowserWindow({
     width: 1360,
     height: 860,
@@ -132,7 +171,21 @@ function createWindow(port: number): void {
     backgroundColor: "#f4f4f5",
     webPreferences: { preload: path.join(__dirname, "preload.cjs") },
   });
-  void window.loadURL(`http://127.0.0.1:${port}/`);
+  installLinkPolicy(window.webContents);
+  // The main window never leaves the local app: a stray in-window navigation
+  // (a dragged-in link, a location assignment) opens in the browser instead.
+  window.webContents.on("will-navigate", (event, url) => {
+    let external: boolean;
+    try {
+      external = new URL(url).origin !== origin;
+    } catch {
+      external = true;
+    }
+    if (!external) return;
+    event.preventDefault();
+    if (/^https?:/i.test(url)) void shell.openExternal(url);
+  });
+  void window.loadURL(`${origin}/`);
   // CI/dev smoke mode: prove the packaged shell boots end-to-end, then leave.
   if (smokeMode) {
     window.webContents.once("did-finish-load", () => {
@@ -182,6 +235,14 @@ if (!hasLock) {
   });
 
   ipcMain.handle("trailin:get-pending-update", () => pendingUpdateVersion());
+  ipcMain.handle("trailin:get-app-info", () => ({
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+  }));
+  ipcMain.handle("trailin:check-for-updates", (): Promise<UpdateCheckStatus> | UpdateCheckStatus =>
+    app.isPackaged ? checkForUpdatesNow() : { status: "unsupported" },
+  );
   ipcMain.on("trailin:install-update", () => installUpdate());
 
   void app.whenReady().then(async () => {

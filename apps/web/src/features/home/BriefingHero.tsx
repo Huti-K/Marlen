@@ -2,17 +2,17 @@ import type { AccountColor, AgentCard, RunFeedItem } from "@trailin/shared";
 import { ChevronDown, ChevronUp, MessageSquareShare, RefreshCw, Sunrise } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { BriefingCard } from "@/components/cards/BriefingCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/feedback";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Markdown } from "@/components/ui/markdown";
-import { BriefingCard } from "@/features/chat/cards/BriefingCard";
 import { api } from "@/lib/api";
-import { dayTimeLabel } from "@/lib/dates";
+import { dayTimeLabel, isToday } from "@/lib/dates";
 import type { View } from "@/lib/nav";
-import { openRunInChat } from "@/lib/runNavigation";
+import { openRunInChat } from "@/lib/quickActions";
 import { cn, errorMessage, toggleRowProps } from "@/lib/utils";
 
 type BriefingCardData = Extract<AgentCard, { kind: "briefing" }>;
@@ -30,6 +30,33 @@ export function findBriefingCard(run: RunFeedItem): BriefingCardData | undefined
 export function countUrgentItems(run: RunFeedItem): number {
   const briefing = findBriefingCard(run);
   return briefing ? briefing.items.filter((item) => item.priority === "urgent").length : 0;
+}
+
+/**
+ * The expanded body of a run card, behind the shared hairline divider: the
+ * structured briefing when the run's turn produced one, else the plain
+ * markdown result. One shape for the hero and the activity feed, so a run
+ * always unfolds the same way.
+ */
+export function RunBody({
+  run,
+  colors,
+  markdownClassName,
+}: {
+  run: RunFeedItem;
+  colors: AccountColor[];
+  markdownClassName?: string;
+}) {
+  const briefing = findBriefingCard(run);
+  return (
+    <div className="mt-1 border-t border-border pt-3">
+      {briefing ? (
+        <BriefingCard card={briefing} colors={colors} bare />
+      ) : (
+        <Markdown content={run.result} className={markdownClassName} />
+      )}
+    </div>
+  );
 }
 
 /**
@@ -71,14 +98,14 @@ export function BriefingHero({
   );
   const isRefreshing = refreshing || !!feedRunning;
 
-  const isToday = new Date(run.startedAt).toDateString() === new Date().toDateString();
-  let metaLabel = isToday
+  const startedToday = isToday(run.startedAt);
+  let metaLabel = startedToday
     ? t("home.briefingToday", { time: dayTimeLabel(run.startedAt, i18n.language) })
     : dayTimeLabel(run.startedAt, i18n.language, "long");
 
   // Only surface the next scheduled run when this one isn't from today — a
   // fresh today's briefing doesn't need a "next" hint next to it.
-  if (!isToday && nextRunAt) {
+  if (!startedToday && nextRunAt) {
     metaLabel += ` · ${t("home.briefingNext", { when: dayTimeLabel(nextRunAt, i18n.language) })}`;
   }
 
@@ -171,15 +198,7 @@ export function BriefingHero({
 
       {error && <ErrorBanner>{error}</ErrorBanner>}
 
-      {expanded && (
-        <div className="mt-1 border-t border-border pt-3">
-          {briefingCard ? (
-            <BriefingCard card={briefingCard} colors={colors} bare />
-          ) : (
-            <Markdown content={run.result} />
-          )}
-        </div>
-      )}
+      {expanded && <RunBody run={run} colors={colors} />}
     </Card>
   );
 }

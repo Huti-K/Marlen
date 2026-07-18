@@ -2,8 +2,6 @@ import type { AgentCard, EmailRef } from "@trailin/shared";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { emitServerEvent } from "../events.js";
-import type { CardKindDef } from "./card/common.js";
-import { CARD_KINDS } from "./card/kinds.js";
 
 /**
  * Conversation focus: the account — and, while one email is the topic, the
@@ -62,18 +60,30 @@ export function focusFromRefs(refs: EmailRef[] | undefined): FocusPatch | null {
   return { accountId: last.accountId, threadId: last.threadId, subject: last.subject ?? null };
 }
 
-/**
- * What a card says about where the conversation is. Thread-level cards set
- * both parts; account-wide cards (search hits) set the account and CLEAR the
- * thread — the topic has widened beyond one email. Briefing and choices
- * cards carry no top-level account (a briefing's items span accounts; a
- * choices card is a question, not activity in one) and never move focus.
- * Each kind's own extraction lives in its CARD_KINDS entry (agent/card/
- * kinds.ts) — this is just the registry dispatch over `card.kind`.
- */
+/** What a card says about where the conversation is. */
 export function focusFromCard(card: AgentCard): FocusPatch | null {
-  const def: CardKindDef = CARD_KINDS[card.kind];
-  return def.focus(card);
+  switch (card.kind) {
+    // Draft cards follow the draft's own thread — a reply draft pins focus to
+    // the thread it replies to.
+    case "email_draft":
+      return card.account
+        ? {
+            accountId: card.account.accountId,
+            threadId: card.draft.threadId ?? null,
+            subject: card.draft.subject ?? null,
+          }
+        : null;
+    // An attachments listing is an aside within a thread, not a focus move.
+    // Choices and briefing cards carry no top-level account (a briefing's
+    // items span accounts; a choices card is a question, not activity in
+    // one) and never move focus.
+    case "attachments":
+    case "choices":
+    case "briefing":
+      return null;
+    default:
+      return card satisfies never;
+  }
 }
 
 /**

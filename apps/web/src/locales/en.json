@@ -137,7 +137,6 @@
         "cc": "Cc:",
         "bcc": "Bcc:",
         "open": "Open in mailbox",
-        "signatureNote": "Your signature was added automatically.",
         "send": "Send",
         "sendConfirm": "Send this draft now? It goes out exactly as written.",
         "discard": "Discard",
@@ -233,6 +232,21 @@
       "memory": "Memories"
     }
   },
+  "whatsapp": {
+    "pairTitle": "Link WhatsApp",
+    "pairIntro": "Scan the QR code with your phone: WhatsApp → Settings → Linked devices → Link a device. Your chats are mirrored locally on this computer and never leave it.",
+    "pairQrAlt": "WhatsApp pairing QR code",
+    "pairQrHint": "The code refreshes automatically while pairing is open.",
+    "pairGenerating": "Generating QR code…",
+    "pairExpired": "The QR code expired before it was scanned.",
+    "pairRetry": "Generate a new QR code",
+    "pairedToast": "WhatsApp linked.",
+    "statusConnected": "Connected",
+    "statusConnecting": "Connecting…",
+    "statusOffline": "Disconnected",
+    "unlink": "Unlink WhatsApp",
+    "unlinkConfirm": "Unlink this device and delete the locally mirrored chats? Your WhatsApp account and the chats on your phone are not affected."
+  },
   "onoffice": {
     "crmLabel": "CRM",
     "setupTitle": "Connect onOffice",
@@ -244,9 +258,6 @@
     "save": "Save",
     "removeSaved": "Remove credentials",
     "removeSavedConfirm": "Remove the saved onOffice credentials from this computer? The assistant will lose access to your CRM until you add them again.",
-    "configuredFooter": "Connected · credentials from <code>{{source}}</code>",
-    "sourceSettings": "this app",
-    "sourceEnv": "environment",
     "edit": "Edit credentials"
   },
   "connections": {
@@ -260,6 +271,7 @@
     "suggestedHeading": "Popular email apps",
     "moreAppsHeading": "Popular integrations",
     "crmHeading": "CRM",
+    "messagingHeading": "Messaging",
     "anyAppHint": "These are just a few, search above to connect any of 2,000+ apps, from other mail services to your calendar, notes and chat.",
     "setupTitle": "One-time setup: connect Trailin to Pipedream",
     "setupIntro": "Trailin uses <pd>Pipedream</pd>, a free service, to link your email accounts safely, as many as you like, also several from the same provider. It needs three values from your own Pipedream workspace, copied once:",
@@ -277,9 +289,63 @@
     "removeSaved": "Clear",
     "removeSavedConfirm": "Remove the Pipedream credentials saved in the app?",
     "emailAccounts": "Connected accounts",
+    "permissions": {
+      "edit": "Permissions",
+      "hint": "Reading is always allowed — the assistant can read and search this account. Everything else needs its own grant:",
+      "hintEmail": "Reading is always allowed — the assistant can read and search this account and prepare drafts. Everything else needs its own grant:",
+      "write": {
+        "title": "Create & change",
+        "on": "May create and change things in this account when you ask it to.",
+        "off": "Cannot create or change anything in this account.",
+        "offEmail": "Cannot change this mailbox — creating drafts is always allowed.",
+        "confirmTitle": "Allow the AI to create & change as {{account}}?",
+        "confirmBody": "Once on, the assistant can create and change things in this account when you ask it to. Sending and deleting stay separate switches. You can turn this off anytime.",
+        "confirmCta": "Allow create & change"
+      },
+      "send": {
+        "title": "Send",
+        "on": "May send messages from this account when you ask it to.",
+        "off": "Cannot send anything from this account.",
+        "offEmail": "Cannot send — outgoing email stays as drafts for your review.",
+        "confirmTitle": "Allow the AI to send as {{account}}?",
+        "confirmBody": "Once on, the assistant can send messages as {{account}} when you ask it to. You can turn this off anytime.",
+        "confirmCta": "Allow sending"
+      },
+      "delete": {
+        "title": "Delete",
+        "on": "May delete things in this account when you ask it to.",
+        "off": "Cannot delete anything in this account.",
+        "confirmTitle": "Allow the AI to delete as {{account}}?",
+        "confirmBody": "Once on, the assistant can delete things in this account when you ask it to. You can turn this off anytime.",
+        "confirmCta": "Allow deleting"
+      },
+      "onoffice": {
+        "title": "Automations may create records",
+        "rowOn": "Automations may create CRM records (contacts, appointments, tasks, links) — never edit, delete or send.",
+        "rowOff": "Automations only read the CRM; records are created in chat, with your confirmation.",
+        "confirmTitle": "Let automations create onOffice records?",
+        "confirmBody": "Scheduled runs (e.g. lead intake) can then create contacts, appointments, tasks and links in your live CRM on their own — your colleagues will see those records. Editing, deleting and sending stay chat-only. You can turn this off anytime.",
+        "confirmCta": "Allow creating records"
+      },
+      "onofficeWrites": {
+        "title": "Edit, delete & send",
+        "rowOn": "May modify or delete CRM records and send through the CRM when you ask it to in chat.",
+        "rowOff": "Chat can read the CRM and create records; editing, deleting and sending stay off until you arm this.",
+        "confirmTitle": "Allow the AI to edit, delete and send in onOffice?",
+        "confirmBody": "Once on, the assistant can modify and delete live CRM records and send through onOffice when you ask it to in chat. Scheduled runs never get these tools. You can turn this off anytime.",
+        "confirmCta": "Allow CRM changes"
+      },
+      "whatsappSend": {
+        "title": "Send messages",
+        "rowOn": "May send WhatsApp messages from your personal account when you ask it to in chat.",
+        "rowOff": "Can read WhatsApp chats but not send; messages go out only after you arm this.",
+        "confirmTitle": "Allow the AI to send WhatsApp messages?",
+        "confirmBody": "Once on, the assistant can send WhatsApp messages from your personal account when you ask it to in chat — they dispatch immediately, with no draft to review. Scheduled runs never get this tool. You can turn this off anytime.",
+        "confirmCta": "Allow sending"
+      }
+    },
     "noAccounts": "No email accounts connected yet. Use the buttons above, you can connect several accounts per provider.",
     "finishConnecting": "Complete the connection in the window that just opened, it closes by itself when you're done.",
-    "healthy": "Healthy",
     "unhealthy": "Unhealthy",
     "disconnect": "Disconnect",
     "disconnectConfirm": "Disconnect this account?",
@@ -291,8 +357,6 @@
     "advanced": "Advanced",
     "advancedBuiltin": "Built-in Pipedream",
     "advancedCustom": "Own Pipedream project",
-    "editNote": "Edit note",
-    "notePlaceholder": "What this account is for — the agent reads this note",
     "learnVoiceStarted": "Learning your writing style from {{name}} — it'll appear in Settings shortly.",
     "voiceLearning": "Learning style…",
     "voiceLearnFailed": "Style learning failed",
@@ -376,13 +440,15 @@
       "daily": "Every day",
       "weekdays": "On weekdays",
       "custom": "Choose days",
-      "date": "Specific date"
+      "date": "Specific date",
+      "manual": "On demand only"
     },
     "time": "Time",
     "month": "Month",
     "day": "Day",
     "customDaysRequired": "Pick at least one day.",
     "dateOnceHint": "Runs once on this date, then turns off automatically.",
+    "manualHint": "Never runs on its own — only when you press “Run now”.",
     "advancedToggle": "Advanced: edit as cron",
     "simpleToggle": "Back to the simple schedule",
     "advancedLossNote": "The custom cron expression was replaced by the schedule above.",
@@ -390,7 +456,8 @@
       "daily": "Every day · {{time}}",
       "weekdays": "Weekdays · {{time}}",
       "custom": "{{days}} · {{time}}",
-      "date": "{{date}} · {{time}}"
+      "date": "{{date}} · {{time}}",
+      "manual": "On demand"
     },
     "cronInvalid": "Doesn’t look like a standard 5-field cron, checked on create.",
     "cronHint": "<c>0 8 * * 1-5</c> runs at 08:00 on weekdays.",
@@ -479,7 +546,6 @@
     "expand": "Expand memory",
     "usedTimes": "{{count}}×",
     "lastUsed": "Last used {{time}}",
-    "neverUsed": "Never used yet",
     "nearCap": "Memory is almost full ({{count}}/{{max}}).",
     "pruneHint": "Consider removing entries the agent rarely uses — least used: “{{example}}”."
   },
@@ -511,9 +577,6 @@
         "description": "What your agent knows: short facts, always available. It saves them when you say \"remember …\", and you can edit them here.",
         "general": "General",
         "scopeLabel": "Scope",
-        "filterAll": "All",
-        "filterAccountHint": "Show only {{name}}'s memories",
-        "filterContactsHint": "Show only contact memories",
         "contacts": "Contacts",
         "contact": "Contact",
         "contactPlaceholder": "Contact's email address",
@@ -531,6 +594,21 @@
           "runLessons_one": "Learned {{count}} style lesson",
           "runLessons_other": "Learned {{count}} style lessons"
         }
+      },
+      "skills": {
+        "title": "Skills",
+        "description": "Saved playbooks for how you want recurring tasks done. The agent saves one when you say “always do it like this” — or write your own.",
+        "empty": "No skills yet. Tell the agent how you want a recurring task done (“from now on, when I ask for…”) or add one here.",
+        "add": "Add skill",
+        "edit": "Edit skill",
+        "delete": "Delete skill",
+        "deleteConfirm": "Delete this skill?",
+        "collapse": "Collapse skills",
+        "expand": "Expand skills",
+        "namePlaceholder": "name (e.g. market-report)",
+        "descriptionPlaceholder": "One line: what it does and when it applies",
+        "instructionsPlaceholder": "The playbook: when it applies, which accounts and tools, the steps, what the result should look like…",
+        "save": "Save"
       },
       "library": {
         "title": "Documents",
@@ -550,7 +628,7 @@
     "advancedLink": "Advanced: use my own Pipedream project",
     "allSetTitle": "You're all set",
     "allSetBody": "The agent can now read your mail, draft replies, and answer your questions.",
-    "allSetReadOnly": "Trailin starts read-only: the agent drafts and answers, but never sends or changes anything until you allow it in Settings → Permissions.",
+    "allSetReadOnly": "Trailin starts read-only: the agent drafts and answers, but never sends, changes or deletes anything until you allow it per account — the shield on each account's row in Settings.",
     "openApp": "Open Trailin",
     "skip": "Skip for now, I'll look around first",
     "offlineTitle": "Can't reach the server",
@@ -572,14 +650,6 @@
         "chipConnected_other": "{{count}} connected",
         "chipNoAccounts": "No accounts yet"
       },
-      "onoffice": {
-        "title": "onOffice",
-        "description": "Connect your onOffice CRM so the assistant can read and manage estates, leads, appointments, and tasks."
-      },
-      "permissions": {
-        "title": "Permissions",
-        "description": "What the assistant is allowed to do in your mailbox and CRM — sending and changes stay off until you arm each access."
-      },
       "preferences": {
         "title": "Preferences",
         "description": "How Trailin looks, speaks, and tells time."
@@ -587,6 +657,10 @@
       "data": {
         "title": "Local data",
         "description": "Everything Trailin has stored on this computer, and how to back it up."
+      },
+      "about": {
+        "title": "About",
+        "description": "The version you're running, and updates when a newer one ships."
       },
       "language": {
         "title": "Language",
@@ -597,33 +671,6 @@
         "description": "What buttons like \"Draft reply\" do: send the request right away, or put it in the chat box so you can edit it first.",
         "send": "Send immediately",
         "prefill": "Edit before sending"
-      }
-    },
-    "permissions": {
-      "rowOn": "May send emails and make changes (labels, archiving, deleting) when you ask it to.",
-      "rowOff": "Read-only: the AI can read, search and create drafts here, it can never send, delete or change anything.",
-      "confirmTitle": "Allow the AI to send and change email as {{account}}?",
-      "confirmBody": "Once on, the assistant can send and reply to emails and change this mailbox — archive, label, delete — as {{account}} when you ask it to. You can turn this off anytime.",
-      "confirmCta": "Allow sending & changes",
-      "chipOn_one": "Send & change on for {{count}} account",
-      "chipOn_other": "Send & change on for {{count}} accounts",
-      "chipOff": "Read-only",
-      "noAccounts": "No accounts connected yet — connect one under Connect email above.",
-      "onoffice": {
-        "title": "onOffice — automations may create records",
-        "rowOn": "Automations may create CRM records (contacts, appointments, tasks, links) — never edit, delete or send.",
-        "rowOff": "Automations only read the CRM; records are created in chat, with your confirmation.",
-        "confirmTitle": "Let automations create onOffice records?",
-        "confirmBody": "Scheduled runs (e.g. lead intake) can then create contacts, appointments, tasks and links in your live CRM on their own — your colleagues will see those records. Editing, deleting and sending stay chat-only. You can turn this off anytime.",
-        "confirmCta": "Allow creating records"
-      },
-      "onofficeWrites": {
-        "title": "onOffice — edit, delete & send",
-        "rowOn": "May modify or delete CRM records and send through the CRM when you ask it to in chat.",
-        "rowOff": "Chat can read the CRM and create records; editing, deleting and sending stay off until you arm this.",
-        "confirmTitle": "Allow the AI to edit, delete and send in onOffice?",
-        "confirmBody": "Once on, the assistant can modify and delete live CRM records and send through onOffice when you ask it to in chat. Scheduled runs never get these tools. You can turn this off anytime.",
-        "confirmCta": "Allow CRM changes"
       }
     },
     "appearance": {
@@ -642,6 +689,22 @@
       "label": "Backup",
       "description": "A snapshot of the local database — chats, drafts, memories, and automations, but not your connected accounts' credentials.",
       "cta": "Download"
+    },
+    "about": {
+      "tagline": "Local-first AI assistant for your email and leads",
+      "build": "Build",
+      "bundleId": "Bundle ID",
+      "license": "License",
+      "licenseValue": "Source-available — all rights reserved",
+      "source": "Source code",
+      "viewOnGithub": "View on GitHub",
+      "reportIssue": "Report an issue",
+      "check": "Check for updates",
+      "upToDate": "You're on the latest version",
+      "downloading": "Downloading version {{version}}…",
+      "downloaded": "Version {{version}} ready to install",
+      "unavailable": "Update checks aren't available in this build",
+      "checkFailed": "Couldn't check for updates"
     },
     "provider": "Provider",
     "model": "Model",
@@ -665,7 +728,39 @@
     "signingInWith": "Signing in with {{provider}}…",
     "openSignInPage": "Open sign-in page",
     "enterCodeAt": "Enter this code at <uri>{{uri}}</uri>",
-    "loginInputPlaceholder": "Paste the code / redirect URL if it doesn't finish…"
+    "loginInputPlaceholder": "Paste the code / redirect URL if it doesn't finish…",
+    "fileAccess": {
+      "title": "File access",
+      "description": "What the assistant may do with files on this computer.",
+      "chipOff": "No access",
+      "read": {
+        "title": "Read files",
+        "badge": "Read",
+        "on": "May list folders, find files, search their contents (grep), and read files when you ask it to.",
+        "off": "Cannot read any files.",
+        "confirmTitle": "Allow the AI to read files?",
+        "confirmBody": "Once on, the assistant can list folders, find files, search their contents (grep), and read files anywhere on this computer when you ask it to — your Downloads, Documents, and everything else your account can see. Instructions hidden in an email could try to make it read private files, so it is told never to pass file contents on without your say-so. You can turn this off anytime.",
+        "confirmCta": "Allow reading files"
+      },
+      "write": {
+        "title": "Write files",
+        "badge": "Write",
+        "on": "May create new files (write) and edit existing ones (edit) when you ask it to.",
+        "off": "Cannot create or change any files.",
+        "confirmTitle": "Allow the AI to write files?",
+        "confirmBody": "Once on, the assistant can create new files (write) and edit existing ones (edit) anywhere on this computer when you ask it to. Instructions hidden in an email could try to trigger unwanted changes. You can turn this off anytime.",
+        "confirmCta": "Allow writing files"
+      },
+      "bash": {
+        "title": "Run commands",
+        "badge": "Commands",
+        "on": "May run shell commands as you (bash) when you ask it to.",
+        "off": "Cannot run any commands.",
+        "confirmTitle": "Allow the AI to run commands?",
+        "confirmBody": "Once on, the assistant can run real shell commands as you — with everything your user account can do. Instructions hidden in an email you receive could try to trigger harmful ones. Only arm this if you understand that risk. You can turn it off anytime.",
+        "confirmCta": "Allow running commands"
+      }
+    }
   },
   "ui": {
     "select": {

@@ -28,6 +28,12 @@ mac:
   target:
     - dmg
     - zip
+  # Purpose strings for macOS's one-time folder-permission dialogs, shown
+  # when the assistant's file tools first touch a protected folder.
+  extendInfo:
+    NSDesktopFolderUsageDescription: The assistant reads and writes files here only when you ask it to.
+    NSDocumentsFolderUsageDescription: The assistant reads and writes files here only when you ask it to.
+    NSDownloadsFolderUsageDescription: The assistant reads and writes files here only when you ask it to.
 
 win:
   target: nsis

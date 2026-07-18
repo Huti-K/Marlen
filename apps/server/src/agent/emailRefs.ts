@@ -1,5 +1,5 @@
 import type { EmailRef } from "@trailin/shared";
-import { isNonEmptyString, isRecord } from "../util.js";
+import { isNonEmptyString, isRecord } from "../utils/util.js";
 
 /**
  * The one place that owns EmailRef serialization (messages.refs) and the

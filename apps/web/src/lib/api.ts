@@ -1,7 +1,7 @@
 import type {
   AccountColor,
   AccountDrafts,
-  AccountVoice,
+  AccountPermissions,
   ApiErrorCode,
   AppStatus,
   Automation,
@@ -14,6 +14,7 @@ import type {
   Conversation,
   EmailRef,
   EmailThreadMessage,
+  FileAccessSettings,
   Language,
   Lead,
   LeadStatus,
@@ -32,13 +33,15 @@ import type {
   PipedreamStatus,
   RunFeedItem,
   SearchResult,
+  Skill,
   VoiceLearnRun,
+  WhatsAppStatus,
 } from "@trailin/shared";
 import i18n from "@/lib/i18n";
 import { openExternal } from "@/lib/utils";
 
 /** A draft's recorded fate, from GET /api/drafts/:accountId/:draftId/status. */
-export interface DraftStatusResult {
+interface DraftStatusResult {
   status: "open" | "sent" | "discarded";
   sentMessageId?: string;
 }
@@ -139,16 +142,19 @@ export const api = {
   setTimezone: (timezone: string) =>
     http<{ timezone: string }>("PUT", "/api/settings/timezone", { timezone }),
 
-  writeAccess: () => get<{ accountIds: string[] }>("/api/settings/write-access"),
-  setWriteAccess: (accountIds: string[]) =>
-    http<{ accountIds: string[] }>("PUT", "/api/settings/write-access", { accountIds }),
+  accountPermissions: () => get<{ permissions: AccountPermissions[] }>("/api/settings/permissions"),
+  setAccountPermissions: (permissions: AccountPermissions[]) =>
+    http<{ permissions: AccountPermissions[] }>("PUT", "/api/settings/permissions", {
+      permissions,
+    }),
+
+  fileAccess: () => get<{ fileAccess: FileAccessSettings }>("/api/settings/file-access"),
+  setFileAccess: (fileAccess: FileAccessSettings) =>
+    http<{ fileAccess: FileAccessSettings }>("PUT", "/api/settings/file-access", fileAccess),
 
   accountColors: () => get<{ colors: AccountColor[] }>("/api/settings/account-colors"),
   setAccountColors: (colors: AccountColor[]) =>
     http<{ colors: AccountColor[] }>("PUT", "/api/settings/account-colors", { colors }),
-  accountVoices: () => get<{ voices: AccountVoice[] }>("/api/settings/account-voices"),
-  saveAccountVoices: (voices: AccountVoice[]) =>
-    http<{ voices: AccountVoice[] }>("PUT", "/api/settings/account-voices", { voices }),
 
   llmProviders: () => get<LlmProviderInfo[]>("/api/llm/providers"),
   modelSettings: () => get<ModelSettings>("/api/llm/model"),
@@ -194,6 +200,16 @@ export const api = {
   setOnOfficeWriteAccess: (enabled: boolean) =>
     http<OnOfficeStatus>("PUT", "/api/onoffice/write-access", { enabled }),
 
+  whatsAppStatus: () => get<WhatsAppStatus>("/api/whatsapp"),
+  // Opens the pairing socket; the QR and the final open state arrive via the
+  // "whatsapp" server-event topic (refetch this status on it).
+  whatsAppConnect: () => http<WhatsAppStatus>("POST", "/api/whatsapp/connect"),
+  // Signs the device out and wipes the local chat mirror.
+  whatsAppUnlink: () => http<WhatsAppStatus>("DELETE", "/api/whatsapp"),
+  // Arm/disarm whatsapp_send_message for chat sessions.
+  setWhatsAppSendAccess: (enabled: boolean) =>
+    http<WhatsAppStatus>("PUT", "/api/whatsapp/send-access", { enabled }),
+
   /** Global search across chats, digests, drafts, documents and memories (command palette). */
   search: (q: string) => get<{ results: SearchResult[] }>(`/api/search?q=${encodeURIComponent(q)}`),
 
@@ -225,7 +241,7 @@ export const api = {
       "DELETE",
       `/api/drafts/${encodeURIComponent(accountId)}/${encodeURIComponent(draftId)}`,
     ),
-  // No humanizer/signature — saves exactly what the caller passed.
+  // No humanizer — saves exactly what the caller passed.
   updateDraft: (accountId: string, draftId: string, patch: { body?: string; subject?: string }) =>
     http<{ ok: boolean }>(
       "PATCH",
@@ -337,6 +353,13 @@ export const api = {
     }),
   deleteMemory: (id: string) =>
     http<{ ok: boolean }>("DELETE", `/api/memories/${encodeURIComponent(id)}`),
+
+  skills: () => get<Skill[]>("/api/skills"),
+  // Create-or-overwrite by name — the server has no separate create endpoint.
+  saveSkill: (name: string, description: string, instructions: string) =>
+    http<Skill>("PUT", `/api/skills/${encodeURIComponent(name)}`, { description, instructions }),
+  deleteSkill: (name: string) =>
+    http<{ ok: boolean }>("DELETE", `/api/skills/${encodeURIComponent(name)}`),
   // Recent draft-vs-sent learning sweeps and when the next nightly one fires.
   learnStatus: () => get<LearnStatus>("/api/learn/status"),
 

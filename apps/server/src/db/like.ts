@@ -1,7 +1,7 @@
 import { type SQLWrapper, sql } from "drizzle-orm";
 
 /** Escape SQL LIKE wildcards in user input so a literal `%` or `_` can't widen the match. */
-export function escapeLikeInput(value: string): string {
+function escapeLikeInput(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 

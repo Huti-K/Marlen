@@ -109,6 +109,14 @@ await build({
   logLevel: "warning",
 });
 
+// The server reads its prompt texts at runtime from prompts/ beside the
+// bundle (see apps/server/src/prompts.ts).
+cpSync(
+  path.join(repoRoot, "apps", "server", "src", "prompts"),
+  path.join(outDir, "server", "prompts"),
+  { recursive: true },
+);
+
 // Entry the shell forks. pdfjs (via pdf-parse) treats any Electron-flavored
 // process as a browser and touches DOM globals at import time, so the
 // Electron markers are hidden before the bundle loads — the dynamic import

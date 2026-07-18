@@ -16,7 +16,7 @@ import {
   saveApiKey,
   setActiveModelIds,
 } from "../llm/registry.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 
 const modelBody = Type.Object({ provider: Type.String(), model: Type.String() });
 

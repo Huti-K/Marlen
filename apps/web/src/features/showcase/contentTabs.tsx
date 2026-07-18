@@ -1,0 +1,242 @@
+/*
+ * Composed-feature tabs of the DEV showcase gallery: list/interaction systems,
+ * the agent chat transcript, markdown, and the home widgets — plus the static
+ * fixtures that feed them. Safe to delete with the folder.
+ */
+
+import type { AccountColor, AccountDrafts, Automation, RunFeedItem } from "@trailin/shared";
+import { Wrench } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { AgentCardView } from "@/components/cards";
+import { SHOWCASE_TURNS, type ShowcaseTurn } from "@/components/cards/samples";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Markdown } from "@/components/ui/markdown";
+import { Section } from "@/components/ui/section-header";
+import { Spinner } from "@/components/ui/spinner";
+import { GlanceStrip } from "@/features/home/GlanceStrip";
+import { cn } from "@/lib/utils";
+import {
+  DisclosureDemo,
+  FocusRingDemo,
+  MotionDemo,
+  OpenRunInChatDemo,
+  PagedListDemo,
+  ResizableDemo,
+  ThreadHistoryDemo,
+  ToggleRowDemo,
+} from "./demos";
+
+/* ── Fixtures for the feature components ─────────────────────────────────── */
+
+const hoursAgo = (n: number) => new Date(Date.now() - n * 3_600_000).toISOString();
+
+/** Account ids match `samples.ts`, so the chat cards pick these dots up. */
+const DEMO_COLORS: AccountColor[] = [
+  { accountId: "demo-work", hex: "#4f46e5" },
+  { accountId: "demo-personal", hex: "#0d9488" },
+];
+
+const DEMO_DRAFTS: AccountDrafts[] = [
+  {
+    account: "selin@nordwind-studio.de",
+    accountId: "demo-work",
+    drafts: [
+      {
+        id: "draft-acme-2291-reply",
+        messageId: "msg-acme-2291-2",
+        threadId: "thread-acme-2291",
+        subject: "Re: Rechnung #A-2291 – Zahlungserinnerung",
+        to: "t.brandt@acme-gmbh.de",
+        date: hoursAgo(3),
+        webUrl: "#",
+        snippet: "Anbei nochmal Rechnung #A-2291 als PDF. Unser Zahlungsziel war der 30. Juni.",
+      },
+    ],
+  },
+];
+
+const DEMO_AUTOMATIONS: Automation[] = [
+  {
+    id: "auto-briefing",
+    name: "Morgenbriefing",
+    instruction: "Fasse zusammen, was in beiden Postfächern meine Aufmerksamkeit braucht.",
+    schedule: "0 8 * * 1-5",
+    enabled: true,
+    showInActivity: true,
+    pinned: true,
+    leadId: null,
+    runOnNewMail: false,
+    notifyOnCompletion: false,
+    createdAt: hoursAgo(720),
+    nextRunAt: new Date(Date.now() + 5 * 3_600_000).toISOString(),
+  },
+];
+
+/** The briefing fixture from the chat samples, wrapped as a finished run so
+ *  GlanceStrip's urgent figure has a hero run to count from. */
+const DEMO_BRIEFING = SHOWCASE_TURNS.flatMap((turn) => turn.cards ?? []).find(
+  (card) => card.kind === "briefing",
+);
+
+const DEMO_HERO_RUN: RunFeedItem | null = DEMO_BRIEFING
+  ? {
+      id: "run-demo-briefing",
+      automationId: "auto-briefing",
+      automationName: "Morgenbriefing",
+      status: "success",
+      result: "",
+      startedAt: hoursAgo(2),
+      finishedAt: hoursAgo(2),
+      cards: [{ toolCallId: "tool-demo-briefing", card: DEMO_BRIEFING }],
+    }
+  : null;
+
+const MARKDOWN_DEMO = `### What the assistant's replies render as
+
+**Acme GmbH** replied to the payment reminder — Thomas Brandt
+([t.brandt@acme-gmbh.de](mailto:t.brandt@acme-gmbh.de)) wants the invoice as a PDF.
+
+- A reply draft is waiting in your mailbox
+- Accounting is in Cc
+- Payment was due 30 June
+
+| Account | Unread | Drafts |
+| --- | ---: | ---: |
+| Work | 4 | 1 |
+| Personal | 2 | 1 |
+
+More context lives at [nordwind-studio.de](https://nordwind-studio.de).`;
+
+/** Paged lists, disclosure, run/thread plumbing, and the interaction systems. */
+export function SystemsTab() {
+  return (
+    <>
+      <Section
+        title="Lists & disclosure"
+        description="Paged reveal (SearchField + usePagedVisible + ShowMoreButton — type to see the cap reset), the quiet DisclosureToggle, and the keyboard-operable toggle row."
+      >
+        <PagedListDemo />
+        <DisclosureDemo />
+        <ToggleRowDemo />
+      </Section>
+
+      <Section
+        title="Runs & threads"
+        description="The shared pieces the activity feeds compose: the continue-in-chat action and the live conversation history."
+      >
+        <OpenRunInChatDemo />
+        <ThreadHistoryDemo />
+      </Section>
+
+      <Section
+        title="Interaction systems"
+        description="Focus ring, text selection, entrance motion, and the drag-to-resize rail."
+      >
+        <FocusRingDemo />
+        <MotionDemo />
+        <ResizableDemo />
+      </Section>
+    </>
+  );
+}
+
+/** The chat transcript, the markdown vocabulary, and the home widgets. */
+export function ContentTab() {
+  return (
+    <>
+      <Section
+        title="Agent chat"
+        description="Bubbles, tool activity, the thinking state, and every structured card the agent can return. Same fixtures as the /showcase chat command."
+      >
+        <ChatTranscript />
+      </Section>
+
+      <Section
+        title="Markdown"
+        description="The vocabulary an assistant reply may use. mailto: links copy the address."
+      >
+        <Card padding="lg">
+          <Markdown content={MARKDOWN_DEMO} />
+        </Card>
+      </Section>
+
+      <Section
+        title="Home widgets"
+        description="The at-a-glance strip with all three figures lit: drafts, the hero run's urgent count, and the next scheduled run. Fed static fixtures here — the real one reads the server."
+      >
+        <GlanceStrip drafts={DEMO_DRAFTS} heroRun={DEMO_HERO_RUN} automations={DEMO_AUTOMATIONS} />
+      </Section>
+    </>
+  );
+}
+
+/**
+ * A static replay of a chat turn — same markup ChatPanel uses, so bubbles,
+ * tool chips and cards all re-theme with the Theme Lab sliders. The briefing
+ * card's row actions still post into the real chat panel; the panel forces
+ * prefill mode while this page is mounted so nothing fires a live agent turn.
+ */
+function ChatTranscript() {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col items-end gap-2">
+        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-sm leading-relaxed text-accent-foreground">
+          Show me everything you can render.
+        </div>
+      </div>
+      {SHOWCASE_TURNS.map((turn, index) => (
+        // SHOWCASE_TURNS is a fixed module-level fixture — same length and
+        // order on every render, so the index is a stable identity here.
+        // biome-ignore lint/suspicious/noArrayIndexKey: static fixture array, never reordered/filtered
+        <AssistantTurn key={index} turn={turn} />
+      ))}
+    </div>
+  );
+}
+
+function AssistantTurn({ turn }: { turn: ShowcaseTurn }) {
+  const { t } = useTranslation();
+  const text = turn.contentKey ? t(turn.contentKey as never) : turn.content;
+  const hasBubble = Boolean(text || turn.toolCalls?.length || turn.thinking);
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      {turn.cards?.length ? (
+        <div className="flex w-full max-w-[95%] flex-col gap-2">
+          {turn.cards.map((card, index) => (
+            // turn.cards comes from the same static fixture — fixed set of
+            // cards, never reordered/filtered.
+            // biome-ignore lint/suspicious/noArrayIndexKey: static fixture array, never reordered/filtered
+            <AgentCardView key={index} card={card} colors={DEMO_COLORS} />
+          ))}
+        </div>
+      ) : null}
+
+      {hasBubble && (
+        <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5 text-sm text-foreground">
+          {turn.toolCalls?.length ? (
+            <div className={cn("flex flex-wrap gap-1.5", text && "mb-2")}>
+              {turn.toolCalls.map((call) => (
+                <Badge
+                  key={call.name}
+                  variant={call.isError ? "destructive" : call.done ? "success" : "muted"}
+                >
+                  <Wrench className="h-3 w-3" />
+                  {call.name}
+                  {!call.done && <Spinner className="h-3 w-3" />}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+
+          {text ? (
+            <Markdown content={text} />
+          ) : turn.thinking ? (
+            <span className="animate-pulse text-muted-foreground">{t("chat.thinking")}</span>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -143,7 +143,6 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --color-accent-soft: var(--accent-soft);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-destructive: var(--destructive);
@@ -170,7 +169,6 @@
 @layer base {
   html {
     scroll-behavior: smooth;
-    scrollbar-gutter: stable;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
@@ -471,8 +469,9 @@
 .palette-scan {
   animation: palette-scan 1.05s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
-/* The matched substring inside a palette title or snippet. */
-.palette-mark {
+/* The matched substring inside searched text (palette hits, history titles,
+   the system-prompt inspector) — the same pale accent tint as ::selection. */
+.match-mark {
   background: color-mix(in oklch, var(--accent) 22%, transparent);
   color: var(--foreground);
   border-radius: 3px;

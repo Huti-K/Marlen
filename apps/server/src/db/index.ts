@@ -11,8 +11,8 @@ import { SCHEMA_STEPS } from "./schemaSteps.js";
  * database file is created, opened, and DDL-initialized on first use. That
  * keeps `buildApp()` importable by tests, which point DATABASE_PATH at a
  * scratch file (test/setup.ts) before any query runs. Statement modules that
- * want module-scope prepared statements use `lazyStatement` below for the
- * same reason.
+ * want module-scope prepared statements or transactions use `lazyStatement` /
+ * `lazyTransaction` below for the same reason.
  */
 
 type DrizzleDb = BetterSQLite3Database<typeof schema>;
@@ -56,8 +56,8 @@ function openHandle(): DbHandle {
   const sqlite = new Database(dbPath);
   sqlite.pragma("journal_mode = WAL");
   // Wait up to 5s for a competing writer instead of throwing SQLITE_BUSY: under
-  // WAL the server, the sync engine, and a `pnpm start` alongside `pnpm dev` can
-  // all hold the DB at once, and a locked moment shouldn't fail a request.
+  // WAL two server processes (a `pnpm start` alongside `pnpm dev`) can hold the
+  // DB at once, and a locked moment shouldn't fail a request.
   sqlite.pragma("busy_timeout = 5000");
 
   applySchema(sqlite);
@@ -105,6 +105,24 @@ export function lazyStatement(sql: string): () => Database.Statement {
     const h = openHandle();
     if (!prepared || prepared.owner !== h) prepared = { stmt: h.sqlite.prepare(sql), owner: h };
     return prepared.stmt;
+  };
+}
+
+/**
+ * Memoized `sqlite.transaction(fn)`, safe to declare at module scope: the
+ * transaction wrapper is built on first call, against whichever handle is
+ * open at that moment, and rebuilt if the database was closed and reopened
+ * since — the same owner check lazyStatement uses.
+ */
+export function lazyTransaction<Args extends unknown[], Result>(
+  fn: (...args: Args) => Result,
+): (...args: Args) => Result {
+  let built: { run: Database.Transaction<(...args: Args) => Result>; owner: DbHandle } | null =
+    null;
+  return (...args) => {
+    const h = openHandle();
+    if (!built || built.owner !== h) built = { run: h.sqlite.transaction(fn), owner: h };
+    return built.run(...args);
   };
 }
 

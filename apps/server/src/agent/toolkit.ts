@@ -6,8 +6,8 @@ import type {
 import { type Static, type TObject, type TProperties, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { AgentCard, ConnectedAccount } from "@trailin/shared";
-import { errorMessage } from "../util.js";
-import { accountNameMap, resolveAccountParam, resolveRequiredAccountParam } from "./accounts.js";
+import { errorMessage } from "../utils/util.js";
+import { accountNameMap, resolveAccountParam } from "./accounts.js";
 
 /**
  * Typed factory for the app's own agent tools (MCP-wrapped tools keep raw
@@ -206,10 +206,7 @@ export function tool(
       let ctx: ToolCtx | AccountToolCtx = { toolCallId, signal, onUpdate };
       if (spec.account) {
         const raw = (params as { account?: string }).account;
-        const resolved =
-          spec.account === "required"
-            ? await resolveRequiredAccountParam(raw)
-            : await resolveAccountParam(raw);
+        const resolved = await resolveAccountParam(raw, spec.account);
         if (resolved.error) return textResult(resolved.error);
         const names = accountNameMap(resolved.accounts);
         ctx = {

@@ -4,12 +4,10 @@ import { Type } from "@sinclair/typebox";
 import { findAccount } from "../agent/accounts.js";
 import { fetchAttachment } from "../email/attachmentFetch.js";
 import { getMailReadProvider, type ThreadDetail } from "../email/read/readProviders.js";
-// Side-effect import: populates the MailReadProvider registry.
-import "../email/read/registerReadProviders.js";
-import { badRequest, notFound } from "../errors.js";
+import { badRequest, notFound, toProviderError } from "../errors.js";
 import { saveUpload } from "../library/ingest.js";
 import { listAccounts } from "../pipedream/connect.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 import { contentDisposition, inlineForMime, mimeForExt } from "./fileResponse.js";
 
 /**
@@ -46,7 +44,14 @@ export const mailRoutes: FastifyPluginAsyncTypebox = async (app) => {
     { schema: { querystring: attachmentQuery } },
     async (req, reply) => {
       const { accountId, messageId, filename } = req.query;
-      const { filename: name, bytes } = await fetchAttachment(accountId, messageId, filename);
+      const { filename: name, bytes } = await fetchAttachment(accountId, messageId, filename).catch(
+        (error: unknown) => {
+          // A provider 404 means the message is gone upstream; anything else
+          // upstream is a 502 — never the raw SDK error, whose statusCode
+          // (e.g. a Pipedream 401) would masquerade as this API's own.
+          throw toProviderError(error, "attachment not found");
+        },
+      );
 
       const mime = mimeForExt(extname(name));
       const disposition = contentDisposition(inlineForMime(mime) ? "inline" : "attachment", name);
@@ -61,7 +66,11 @@ export const mailRoutes: FastifyPluginAsyncTypebox = async (app) => {
   // becomes searchable/readable — the viewer's "Save to library" action.
   app.post("/api/mail/attachments/save", { schema: { body: attachmentBody } }, async (req) => {
     const { accountId, messageId, filename } = req.body;
-    const { filename: name, bytes } = await fetchAttachment(accountId, messageId, filename);
+    const { filename: name, bytes } = await fetchAttachment(accountId, messageId, filename).catch(
+      (error: unknown) => {
+        throw toProviderError(error, "attachment not found");
+      },
+    );
     try {
       return { saved: await saveUpload(name, bytes) };
     } catch (error) {
@@ -82,7 +91,9 @@ export const mailRoutes: FastifyPluginAsyncTypebox = async (app) => {
       const provider = getMailReadProvider(account.app);
       if (!provider?.getThread) throw badRequest(`${account.app} has no thread read support`);
 
-      const thread = await provider.getThread(account, threadId);
+      const thread = await provider.getThread(account, threadId).catch((error: unknown) => {
+        throw toProviderError(error, "thread not found");
+      });
       if (!thread) throw notFound("thread not found");
       return thread;
     },

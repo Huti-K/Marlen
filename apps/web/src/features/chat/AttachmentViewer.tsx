@@ -1,9 +1,8 @@
-import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ExternalLink, FolderDown, X } from "lucide-react";
+import { ExternalLink, FolderDown } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { IconButton } from "@/components/ui/icon-button";
+import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { subscribeTrailin, type TrailinEventMap } from "@/lib/trailinEvents";
@@ -61,46 +60,33 @@ export function AttachmentViewer() {
   };
 
   return (
-    <DialogPrimitive.Root
+    <Dialog
       open={item !== null}
       onOpenChange={(open) => {
         if (!open) setItem(null);
       }}
+      title={item?.filename ?? ""}
+      className="h-[85vh] max-w-5xl gap-3 p-4"
+      bodyClassName="min-h-0 flex-1 overflow-hidden"
+      actions={
+        <>
+          <Button variant="ghost" size="sm" onClick={() => url && openExternal(url)}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            {t("chat.attachmentViewer.openInBrowser")}
+          </Button>
+          {item?.saveable && (
+            <Button variant="secondary" size="sm" onClick={save} loading={saving}>
+              <FolderDown className="h-3.5 w-3.5" />
+              {t("chat.attachmentViewer.save")}
+            </Button>
+          )}
+        </>
+      }
     >
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="scrim fixed inset-0 z-[110]" />
-        <DialogPrimitive.Content
-          aria-describedby={undefined}
-          className="surface fixed left-1/2 top-1/2 z-[120] flex h-[85vh] w-[calc(100%-2.5rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col gap-3 p-4"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <DialogPrimitive.Title className="min-w-0 truncate text-sm font-semibold tracking-tight">
-              {item?.filename}
-            </DialogPrimitive.Title>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Button variant="ghost" size="sm" onClick={() => url && openExternal(url)}>
-                <ExternalLink className="h-3.5 w-3.5" />
-                {t("chat.attachmentViewer.openInBrowser")}
-              </Button>
-              {item?.saveable && (
-                <Button variant="secondary" size="sm" onClick={save} disabled={saving}>
-                  <FolderDown className="h-3.5 w-3.5" />
-                  {t("chat.attachmentViewer.save")}
-                </Button>
-              )}
-              <DialogPrimitive.Close asChild>
-                <IconButton aria-label={t("common.close")}>
-                  <X className="h-4 w-4" />
-                </IconButton>
-              </DialogPrimitive.Close>
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden rounded-[--radius] bg-surface-2">
-            {item && <AttachmentBody url={url} filename={item.filename} />}
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[--radius] bg-surface-2">
+        {item && <AttachmentBody url={url} filename={item.filename} />}
+      </div>
+    </Dialog>
   );
 }
 

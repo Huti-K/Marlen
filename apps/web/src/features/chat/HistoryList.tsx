@@ -1,12 +1,15 @@
 import type { Conversation } from "@trailin/shared";
-import { Loader2, MessagesSquare, Pencil, Plus, Trash2 } from "lucide-react";
+import { MessagesSquare, Pencil, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingRow } from "@/components/ui/feedback";
+import { GroupLabel } from "@/components/ui/group-label";
+import { HoverActions } from "@/components/ui/hover-actions";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { useServerEvents } from "@/lib/serverEvents";
@@ -203,8 +206,8 @@ export function HistoryList({
         >
           <span className="flex w-full min-w-0 items-center gap-1.5">
             {c.running && (
-              <Loader2
-                className="h-3.5 w-3.5 shrink-0 animate-spin text-accent"
+              <Spinner
+                className="h-3.5 w-3.5 shrink-0 text-accent"
                 aria-label={t("chat.working")}
               />
             )}
@@ -223,7 +226,7 @@ export function HistoryList({
         </button>
       )}
       {renamingId !== c.id && (
-        <div className="flex shrink-0 items-center gap-0.5 pr-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <HoverActions className="pr-2">
           {c.type !== "automation" && (
             <Button
               variant="ghost"
@@ -250,7 +253,7 @@ export function HistoryList({
           >
             <Trash2 />
           </Button>
-        </div>
+        </HoverActions>
       )}
     </div>
   );
@@ -281,10 +284,9 @@ export function HistoryList({
       variant="ghost"
       size="sm"
       onClick={() => void loadMore()}
-      disabled={loadingMore}
+      loading={loadingMore}
       className="w-full text-muted-foreground"
     >
-      {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
       {t("chat.loadMore")}
     </Button>
   );
@@ -342,9 +344,7 @@ export function HistoryList({
       <div className="flex flex-col gap-4 py-2 px-1">
         {chats.length > 0 && (
           <div className="flex flex-col gap-3">
-            <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t("chat.chats")}
-            </h3>
+            <GroupLabel className="px-2">{t("chat.chats")}</GroupLabel>
             {grouped.map(({ group, items: groupItems }) => (
               <div key={group} className="flex flex-col gap-1">
                 <h4 className="px-2 text-xs font-medium text-muted-foreground">
@@ -357,9 +357,7 @@ export function HistoryList({
         )}
         {automations.length > 0 && (
           <div className="flex flex-col gap-1">
-            <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {t("chat.automations")}
-            </h3>
+            <GroupLabel className="px-2">{t("chat.automations")}</GroupLabel>
             {automations.map(renderRow)}
           </div>
         )}

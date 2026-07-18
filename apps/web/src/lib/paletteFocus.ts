@@ -16,12 +16,12 @@ import type { SearchResult } from "@trailin/shared";
  * where the panel is already mounted.
  */
 
-export interface DraftFocus {
+interface DraftFocus {
   accountId: string;
   draftId: string;
 }
 
-export interface KnowledgeFocus {
+interface KnowledgeFocus {
   type: Extract<SearchResult["type"], "document" | "memory">;
   id: string;
 }

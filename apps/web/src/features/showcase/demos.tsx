@@ -4,19 +4,39 @@
  * screenshot. Part of the DEV showcase; safe to delete with the folder.
  */
 
-import { Brain, ChevronDown, ChevronUp, FileText, FolderOpen, Sunrise } from "lucide-react";
+import {
+  Bell,
+  Bomb,
+  Brain,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  FolderOpen,
+  RotateCcw,
+  Sunrise,
+} from "lucide-react";
 import * as React from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OpenRunInChatButton } from "@/components/OpenRunInChatButton";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
+import { ThreadHistory } from "@/components/ThreadHistory";
 import { AccountDot } from "@/components/ui/account-dot";
-import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { ColorPicker } from "@/components/ui/color-picker";
+import { DisclosureToggle, ShowMoreButton } from "@/components/ui/disclosure-toggle";
 import { LoadingRow, Notice, RetryableError } from "@/components/ui/feedback";
 import { IconChip } from "@/components/ui/icon-chip";
+import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { LinkButton } from "@/components/ui/link-button";
 import { ListRow } from "@/components/ui/list-row";
 import { SearchField } from "@/components/ui/search-field";
-import { ShowMoreButton } from "@/components/ui/show-more-button";
+import { Section, SectionHeader } from "@/components/ui/section-header";
+import { toast } from "@/lib/toast";
 import { usePagedVisible } from "@/lib/usePagedVisible";
+import { useResizableWidth } from "@/lib/useResizableWidth";
 import { cn, MOD_LABEL, toggleRowProps } from "@/lib/utils";
 
 /** The tiny shared shapes: icon chips, account dots, and keyboard hints. */
@@ -207,6 +227,250 @@ export function ToggleRowDemo() {
           — keyboard-toggle it to test.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Every SectionHeader/Section shape: accent bar, icon chip, aside slot. */
+export function SectionHeaderDemo() {
+  return (
+    <div className="flex flex-col gap-6 rounded-xl bg-surface-2 p-4">
+      <SectionHeader
+        title="Accent bar header"
+        description="The default mark — a short accent bar in front of the title."
+      />
+      <SectionHeader
+        title="Icon header"
+        description="Passing an icon swaps the bar for a 24px IconChip."
+        icon={<Sunrise />}
+      />
+      <Section
+        title="Header with aside"
+        description="The aside slot puts a status chip beside the header."
+        aside={<Badge variant="success">Live</Badge>}
+      >
+        <p className="text-xs text-muted-foreground">Stacked content sits below the header.</p>
+      </Section>
+    </div>
+  );
+}
+
+/** The three attribute sources the global CursorTooltip reads while hovering. */
+export function CursorTooltipDemo() {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span
+        data-tooltip="Read from data-tooltip"
+        className="rounded-lg bg-surface-2 px-3 py-1.5 text-xs font-medium"
+      >
+        data-tooltip
+      </span>
+      <Button variant="secondary" size="icon-sm" aria-label="Read from aria-label">
+        <Bell />
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        title="Read from title — the native tooltip is suppressed"
+      >
+        title attribute
+      </Button>
+      <span className="text-xs text-muted-foreground">
+        CursorTooltip — hover each; one cursor-following tooltip serves data-tooltip, aria-label and
+        title
+      </span>
+    </div>
+  );
+}
+
+/** ColorPicker driving an AccountDot — the pairing the connections page uses. */
+export function ColorPickerDemo() {
+  const [hex, setHex] = React.useState("#4f46e5");
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <ColorPicker color={hex} onSelect={setHex} />
+      <AccountDot color={hex} className="h-2.5 w-2.5" />
+      <span className="font-mono text-2xs uppercase text-muted-foreground">{hex}</span>
+      <span className="text-xs text-muted-foreground">
+        ColorPicker — anchored surface-pop popover; the dot follows the picked colour
+      </span>
+    </div>
+  );
+}
+
+/** Throws during render while armed so the surrounding ErrorBoundary catches it. */
+function RenderBomb({ armed }: { armed: boolean }) {
+  if (armed) throw new Error("Deliberate render crash from the showcase bomb.");
+  return null;
+}
+
+/**
+ * A live ErrorBoundary catch-and-recover cycle. The bomb disarms right after
+ * the boundary has caught, so its own "Try again" restores the healthy
+ * subtree. The wrapper flattens the fallback's full-screen height so it fits
+ * inline in the gallery.
+ */
+export function ErrorBoundaryDemo() {
+  const [armed, setArmed] = React.useState(false);
+  React.useEffect(() => {
+    if (armed) setArmed(false);
+  }, [armed]);
+  return (
+    <div className="overflow-hidden rounded-xl bg-surface-2 [&_.h-dvh]:h-auto [&_.h-dvh]:py-8">
+      <ErrorBoundary>
+        <RenderBomb armed={armed} />
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <p className="text-sm">
+            Healthy subtree — crash it to see the fallback, then recover with its own controls.
+          </p>
+          <Button variant="destructive" size="sm" onClick={() => setArmed(true)}>
+            <Bomb /> Throw in render
+          </Button>
+        </div>
+      </ErrorBoundary>
+    </div>
+  );
+}
+
+/**
+ * ThreadHistory against demo ids: it reads the thread live on first expand,
+ * so this shows the loading pass and then whichever terminal branch the
+ * server answers with — the quiet standalone-draft line on a 404, the retry
+ * banner otherwise.
+ */
+export function ThreadHistoryDemo() {
+  return (
+    <div className="flex max-w-md flex-col gap-2">
+      <ThreadHistory accountId="demo-work" threadId="thread-acme-2291" />
+      <p className="text-xs text-muted-foreground">
+        Expand to watch it fetch — with demo ids the empty or error branch renders, on a connected
+        account the collapsible message list does.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The per-run "continue in chat" action. The demo run has no conversation, so
+ * a capture-phase guard swallows the real navigation and reports what would
+ * have happened instead.
+ */
+export function OpenRunInChatDemo() {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <div
+        onClickCapture={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toast.info("Would open this run's conversation in chat.");
+        }}
+      >
+        <OpenRunInChatButton runId="demo-run" onNavigateToChat={() => {}} />
+      </div>
+      <span className="text-xs text-muted-foreground">
+        OpenRunInChatButton — the icon action every activity feed row carries
+      </span>
+    </div>
+  );
+}
+
+/** Focus ring and ::selection — the two accent marks that only appear on interaction. */
+export function FocusRingDemo() {
+  const [picked, setPicked] = React.useState(false);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="secondary" size="sm">
+          Tab to me
+        </Button>
+        <Chip active={picked} onClick={() => setPicked((p) => !p)}>
+          then me
+        </Chip>
+        <Input className="max-w-48" placeholder="then this field" />
+      </div>
+      <p className="max-w-md text-sm text-muted-foreground">
+        The ring is keyboard-only (:focus-visible) — clicking never draws it. Select this sentence
+        to see the accent ::selection tint, the same mark the palette uses for matched text.
+      </p>
+    </div>
+  );
+}
+
+const MOTION_ROWS = [
+  "Content rises 6px and fades in over ~360ms",
+  "Siblings stagger by ~70ms",
+  "Only transform and opacity animate",
+];
+
+/** Replays the entrance motion by remounting a staggered list. */
+export function MotionDemo() {
+  const [run, setRun] = React.useState(0);
+  return (
+    <div className="flex flex-col items-start gap-3">
+      <Button variant="secondary" size="sm" onClick={() => setRun((n) => n + 1)}>
+        <RotateCcw /> Replay entrance
+      </Button>
+      <div key={run} className="flex w-full max-w-md flex-col gap-2">
+        {MOTION_ROWS.map((label, index) => (
+          <ListRow
+            key={label}
+            className="animate-in-up"
+            style={{ animationDelay: `${index * 70}ms` }}
+          >
+            <span className="text-sm">{label}</span>
+          </ListRow>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const RESIZE_MIN = 180;
+const RESIZE_MAX = 380;
+
+/**
+ * useResizableWidth on a demo rail — same grip markup as the app's chat
+ * splitter. Overdragging past the minimum collapses it, like the real rails.
+ */
+export function ResizableDemo() {
+  const [collapsed, setCollapsed] = React.useState(false);
+  const { width, onPointerDown } = useResizableWidth({
+    storageKey: "trailin-showcase-resize",
+    defaultWidth: 260,
+    min: RESIZE_MIN,
+    max: RESIZE_MAX,
+    edge: "right",
+    onOverdrag: () => setCollapsed(true),
+  });
+  if (collapsed) {
+    return <LinkButton onClick={() => setCollapsed(false)}>Reopen the resizable rail</LinkButton>;
+  }
+  return (
+    <div className="flex h-28 overflow-hidden rounded-xl bg-surface-2">
+      <p className="flex-1 p-4 text-xs text-muted-foreground">
+        Drag the grip — the width persists across reloads. Pull well past the minimum to collapse
+        the rail, the same overdrag gesture the chat column uses.
+      </p>
+      {/* biome-ignore lint/a11y/useSemanticElements: interactive draggable splitter, not a static divider — <hr> can't be focusable or hold the grip child */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize demo rail"
+        aria-valuenow={width}
+        aria-valuemin={RESIZE_MIN}
+        aria-valuemax={RESIZE_MAX}
+        tabIndex={0}
+        onPointerDown={onPointerDown}
+        className="group flex w-2 shrink-0 cursor-col-resize touch-none items-center justify-center"
+      >
+        <div className="h-8 w-1 rounded-full bg-foreground/10 transition-colors group-hover:bg-foreground/30 group-active:bg-accent/60" />
+      </div>
+      <div
+        style={{ width }}
+        className="flex shrink-0 items-center justify-center font-mono text-xs tabular-nums text-muted-foreground"
+      >
+        {width}px
+      </div>
     </div>
   );
 }

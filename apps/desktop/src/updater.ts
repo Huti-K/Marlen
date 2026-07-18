@@ -10,6 +10,19 @@ import log from "electron-log/main";
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1_000;
 
+/**
+ * Outcome of a user-initiated check (Settings → About). "downloading" means a
+ * newer release exists and autoDownload is fetching it; the renderer hears
+ * about completion through the regular update-ready event. "unsupported" is
+ * a dev run — no update feed is baked into an unpackaged app.
+ */
+export type UpdateCheckStatus =
+  | { status: "downloaded"; version: string }
+  | { status: "downloading"; version: string }
+  | { status: "current" }
+  | { status: "unsupported" }
+  | { status: "error"; message: string };
+
 let pending: string | null = null;
 
 /**
@@ -47,6 +60,23 @@ export function startUpdater(onDownloaded: (version: string) => void): void {
     });
   void check();
   setInterval(check, CHECK_INTERVAL_MS);
+}
+
+/** User-initiated check, on the same auto-download pipeline as the periodic one. */
+export async function checkForUpdatesNow(): Promise<UpdateCheckStatus> {
+  if (pending) return { status: "downloaded", version: pending };
+  const { autoUpdater } = loadUpdater();
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    if (result?.isUpdateAvailable) {
+      return { status: "downloading", version: result.updateInfo.version };
+    }
+    return { status: "current" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(`updater manual check failed: ${message}`);
+    return { status: "error", message };
+  }
 }
 
 /** Quit, install the downloaded update, and relaunch into the new version. */

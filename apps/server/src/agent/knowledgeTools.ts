@@ -1,9 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import { formatFileSize, type MemoryEntry } from "@trailin/shared";
-import { and, desc, eq, gte } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
-import { likeContains, likePattern } from "../db/like.js";
 import {
   createMemory,
   deleteMemory,
@@ -13,8 +10,7 @@ import {
 } from "../db/memories.js";
 import { getLibraryDir, SUPPORTED_FORMATS, saveNote } from "../library/ingest.js";
 import { getDocument, listDocuments, readDocumentChunks, searchChunks } from "../library/store.js";
-import { collapseWhitespace } from "../search/snippets.js";
-import { groupBy } from "../util.js";
+import { groupBy } from "../utils/util.js";
 import { fetchAccountNameMap, resolveAccountParam } from "./accounts.js";
 import { clampLimit, textResult, tool } from "./toolkit.js";
 
@@ -27,10 +23,46 @@ import { clampLimit, textResult, tool } from "./toolkit.js";
 /** Chunks per library_read part; ≈ 15k characters. Search hits cite these parts. */
 const PART_CHUNKS = 8;
 
-/** Lowercased, trimmed — matches how memories.contactId is normalized. */
-function normalizeContactAddress(raw: string): string {
-  return raw.trim().toLowerCase();
+/** A resolved memory scope: which axis (if any) the entry is pinned to, plus its display label. */
+interface MemoryScope {
+  accountId: string | null;
+  contactId: string | null;
+  label: string;
 }
+
+/**
+ * Parses a tool's `scope` parameter: "general" clears both scope axes,
+ * "account:<address-or-id>" resolves against the connected accounts, and
+ * "contact:<address>" pins the entry to one correspondent (lowercased,
+ * matching how memories.contactId is normalized). Anything else — including
+ * an account that doesn't resolve — comes back as error text for the tool to
+ * return verbatim.
+ */
+async function resolveMemoryScope(raw: string): Promise<MemoryScope | { error: string }> {
+  const trimmed = raw.trim();
+  if (trimmed.toLowerCase() === "general") {
+    return { accountId: null, contactId: null, label: "general" };
+  }
+  const separator = trimmed.indexOf(":");
+  const prefix = separator === -1 ? "" : trimmed.slice(0, separator).trim().toLowerCase();
+  const value = separator === -1 ? "" : trimmed.slice(separator + 1).trim();
+  if (prefix === "account" && value) {
+    const { account, error } = await resolveAccountParam(value, "required");
+    if (!account) return { error: error ?? `No connected account matches "${value}".` };
+    return { accountId: account.id, contactId: null, label: account.name };
+  }
+  if (prefix === "contact" && value) {
+    const contactId = value.toLowerCase();
+    return { accountId: null, contactId, label: contactId };
+  }
+  return {
+    error: `Unrecognized scope "${trimmed}" — use "general", "account:<address>" or "contact:<address>".`,
+  };
+}
+
+const SCOPE_FORMS =
+  `"general" (applies everywhere), "account:<address>" (one connected account) or ` +
+  `"contact:<address>" (one correspondent)`;
 
 const memorySave: AgentTool = tool({
   name: "memory_save",
@@ -42,58 +74,40 @@ const memorySave: AgentTool = tool({
     `emails, or things already in memory. Anything longer-form or document-shaped — ` +
     `correspondent background, a thread summary, research findings — belongs in the library ` +
     `instead: use library_write. The user can review and edit memory on the Knowledge page. ` +
-    `Facts that only apply to one connected account — a client of one company, a per-inbox rule ` +
-    `or preference — should be scoped to it with the account parameter, so they only surface ` +
-    `when acting as that account. Facts about one correspondent — their tone, preferences, how ` +
-    `they like to be addressed — should be scoped with the contact parameter instead. Leave both ` +
-    `unset for facts that apply everywhere; set at most one, never both.`,
+    `When you file longer content as a library note that should be remembered proactively, ` +
+    `also save a one-sentence memory naming that note.`,
   params: {
     content: Type.String({
       description: "The fact to remember, as one short self-contained sentence.",
     }),
-    account: Type.Optional(
+    scope: Type.Optional(
       Type.String({
         description:
-          `The email address of the connected account this fact is specific to (as shown in ` +
-          `tool descriptions: "Acts as the connected account: …"); omit for facts that apply everywhere.`,
-      }),
-    ),
-    contact: Type.Optional(
-      Type.String({
-        description:
-          `Scope this fact to a specific correspondent — their email address — instead of an ` +
-          `account. Use for facts about one person (tone, preferences, how they like to be ` +
-          `addressed); do not combine with account.`,
+          `Where the fact applies; omit for facts that apply everywhere. "account:<address>" ` +
+          `scopes it to that connected account (a client of one company, a per-inbox rule or ` +
+          `preference) so it only surfaces when acting as that account; "contact:<address>" ` +
+          `scopes it to one correspondent (their tone, preferences, how they like to be ` +
+          `addressed) so it only surfaces when corresponding with them.`,
       }),
     ),
   },
-  execute: async ({ content, account, contact }) => {
-    const accountRaw = account?.trim();
-    const contactRaw = contact?.trim();
-    if (accountRaw && contactRaw) {
-      return textResult(
-        "Scope a memory to an account or a contact, not both — pass only one, or leave both unset.",
-      );
+  execute: async ({ content, scope }) => {
+    let target: MemoryScope = { accountId: null, contactId: null, label: "general" };
+    if (scope?.trim()) {
+      const resolved = await resolveMemoryScope(scope);
+      if ("error" in resolved) return textResult(resolved.error);
+      target = resolved;
     }
-
-    let accountId: string | null = null;
-    let contactId: string | null = null;
-    let scopeLabel = "general";
-    if (accountRaw) {
-      const resolved = await resolveAccountParam(accountRaw);
-      if (resolved.error) return textResult(resolved.error);
-      accountId = resolved.account?.id ?? null;
-      scopeLabel = resolved.account?.name ?? "general";
-    } else if (contactRaw) {
-      contactId = normalizeContactAddress(contactRaw);
-      scopeLabel = contactId;
-    }
-
-    const { entry, created } = await createMemory(content, "agent", accountId, contactId);
+    const { entry, created } = await createMemory(
+      content,
+      "agent",
+      target.accountId,
+      target.contactId,
+    );
     return textResult(
       created
-        ? `Saved to long-term memory (${scopeLabel}): ${entry.content}`
-        : `Already in memory (${scopeLabel}): ${entry.content}`,
+        ? `Saved to long-term memory (${target.label}): ${entry.content}`
+        : `Already in memory (${target.label}): ${entry.content}`,
     );
   },
 });
@@ -104,11 +118,8 @@ const memoryUpdate: AgentTool = tool({
   description:
     `Update one long-term memory entry when a fact has changed or the user corrects it — ` +
     `instead of saving a second, contradicting entry. Use the id shown in brackets in the ` +
-    `Long-term memory list in your system prompt. Pass account to move the entry into a ` +
-    `connected account's scope (facts specific to one inbox or client), or contact to scope ` +
-    `this fact to a specific correspondent — their email address — instead of an account; pass ` +
-    `either as "general" to make the entry apply everywhere. Omit both to keep the entry's ` +
-    `current scope; never pass both account and contact with a real value.`,
+    `Long-term memory list in your system prompt. Pass scope to move the entry — ` +
+    `${SCOPE_FORMS} — or omit it to keep the entry's current scope.`,
   params: {
     id: Type.String({
       description: "The memory id (the bracketed id from the Long-term memory list).",
@@ -116,46 +127,21 @@ const memoryUpdate: AgentTool = tool({
     content: Type.String({
       description: "The corrected fact, as one short self-contained sentence.",
     }),
-    account: Type.Optional(
+    scope: Type.Optional(
       Type.String({
-        description:
-          `The email address of the connected account to scope this entry to, or "general" to ` +
-          `make it apply everywhere; omit to keep its current scope.`,
-      }),
-    ),
-    contact: Type.Optional(
-      Type.String({
-        description:
-          `The email address of the correspondent to scope this entry to, or "general" to make ` +
-          `it apply everywhere; omit to keep its current scope. Do not combine with account.`,
+        description: `Move the entry: ${SCOPE_FORMS}. Omit to keep the current scope.`,
       }),
     ),
   },
-  execute: async ({ id, content, account, contact }) => {
-    const accountRaw = account?.trim();
-    const contactRaw = contact?.trim();
-    const accountIsGeneral = accountRaw?.toLowerCase() === "general";
-    const contactIsGeneral = contactRaw?.toLowerCase() === "general";
-    if (accountRaw && contactRaw && !accountIsGeneral && !contactIsGeneral) {
-      return textResult(
-        "Scope a memory to an account or a contact, not both — pass only one, or leave both unset.",
-      );
-    }
-
+  execute: async ({ id, content, scope }) => {
+    // undefined = keep the entry's current scope (updateMemory's contract).
     let accountId: string | null | undefined;
     let contactId: string | null | undefined;
-    if (accountIsGeneral || contactIsGeneral) {
-      // "general" on either parameter means the same thing: clear both scope axes.
-      accountId = null;
-      contactId = null;
-    } else if (accountRaw) {
-      const resolved = await resolveAccountParam(accountRaw);
-      if (resolved.error) return textResult(resolved.error);
-      accountId = resolved.account?.id;
-      contactId = null;
-    } else if (contactRaw) {
-      contactId = normalizeContactAddress(contactRaw);
-      accountId = null;
+    if (scope?.trim()) {
+      const resolved = await resolveMemoryScope(scope);
+      if ("error" in resolved) return textResult(resolved.error);
+      accountId = resolved.accountId;
+      contactId = resolved.contactId;
     }
 
     const entry = await updateMemory(id, content, accountId, contactId);
@@ -321,114 +307,6 @@ const libraryWrite: AgentTool = tool({
   },
 });
 
-const HISTORY_DEFAULT_DAYS = 14;
-const HISTORY_DEFAULT_LIMIT = 20;
-const HISTORY_MAX_LIMIT = 50;
-const HISTORY_PREVIEW_CHARS = 200;
-
-const automationHistory: AgentTool = tool({
-  name: "automation_history",
-  label: "Automation run history",
-  description:
-    `Past scheduled-automation runs (morning briefings, etc.) — use ` +
-    `when the user references "your briefing", "you flagged X", or asks what an automation ` +
-    `found or did on some day. Lists recent runs newest first with a short preview of each ` +
-    `result; call automation_run_read with a run's id for the full text.`,
-  params: {
-    automationName: Type.Optional(
-      Type.String({
-        description:
-          'Only runs of the automation whose name contains this (partial match), e.g. "Morgenbriefing".',
-      }),
-    ),
-    days: Type.Optional(
-      Type.Number({ description: `How many days back to look (default ${HISTORY_DEFAULT_DAYS}).` }),
-    ),
-    limit: Type.Optional(
-      Type.Number({
-        description: `Max runs to return, 1–${HISTORY_MAX_LIMIT} (default ${HISTORY_DEFAULT_LIMIT}).`,
-      }),
-    ),
-  },
-  execute: async ({ automationName, days, limit: limitRaw }) => {
-    const windowDays = Math.max(1, Math.round(days ?? HISTORY_DEFAULT_DAYS));
-    const limit = clampLimit(limitRaw, HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT);
-    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
-
-    const conditions = [gte(schema.automationRuns.startedAt, since)];
-    const name = automationName?.trim();
-    if (name) conditions.push(likePattern(schema.automations.name, likeContains(name)));
-
-    const rows = await db
-      .select({
-        id: schema.automationRuns.id,
-        name: schema.automations.name,
-        status: schema.automationRuns.status,
-        result: schema.automationRuns.result,
-        startedAt: schema.automationRuns.startedAt,
-      })
-      .from(schema.automationRuns)
-      .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId))
-      .where(and(...conditions))
-      .orderBy(desc(schema.automationRuns.startedAt))
-      .limit(limit);
-
-    if (rows.length === 0) {
-      return textResult(
-        name
-          ? `No automation runs matching "${name}" in the last ${windowDays} day(s).`
-          : `No automation runs in the last ${windowDays} day(s).`,
-      );
-    }
-
-    const lines = rows.map((r) => {
-      const collapsed = collapseWhitespace(r.result);
-      const preview = collapsed.slice(0, HISTORY_PREVIEW_CHARS);
-      const suffix = collapsed.length > HISTORY_PREVIEW_CHARS ? "…" : "";
-      return (
-        `- [${r.id}] ${r.name ?? "(deleted automation)"} — ${r.status} — ${r.startedAt}` +
-        (preview ? ` — ${preview}${suffix}` : "")
-      );
-    });
-    return textResult(lines.join("\n"));
-  },
-});
-
-const automationRunRead: AgentTool = tool({
-  name: "automation_run_read",
-  label: "Read automation run",
-  description:
-    `Read one past automation run in full — its complete result text plus the automation ` +
-    `name, status, and timestamps. Use the run id shown in brackets by automation_history.`,
-  params: {
-    runId: Type.String({ description: "The run id (from automation_history)." }),
-  },
-  execute: async ({ runId }) => {
-    const [row] = await db
-      .select({
-        name: schema.automations.name,
-        status: schema.automationRuns.status,
-        result: schema.automationRuns.result,
-        startedAt: schema.automationRuns.startedAt,
-        finishedAt: schema.automationRuns.finishedAt,
-      })
-      .from(schema.automationRuns)
-      .leftJoin(schema.automations, eq(schema.automations.id, schema.automationRuns.automationId))
-      .where(eq(schema.automationRuns.id, runId));
-
-    if (!row) {
-      return textResult(
-        `No automation run found for id ${runId} — use automation_history to look up run ids.`,
-      );
-    }
-
-    const header =
-      `${row.name ?? "(deleted automation)"} — ${row.status} — started ${row.startedAt}` +
-      (row.finishedAt ? `, finished ${row.finishedAt}` : "");
-    return textResult(`${header}\n\n${row.result || "(empty result)"}`);
-  },
-});
-
 export function buildKnowledgeTools(): AgentTool[] {
   return [
     memorySave,
@@ -439,8 +317,6 @@ export function buildKnowledgeTools(): AgentTool[] {
     librarySearch,
     libraryRead,
     libraryWrite,
-    automationHistory,
-    automationRunRead,
   ];
 }
 
@@ -453,14 +329,7 @@ export function buildKnowledgeTools(): AgentTool[] {
  * drafting is a real consumer of memories whose use should still be counted.
  */
 export function buildKnowledgeReadTools(): AgentTool[] {
-  return [
-    memoryUsed,
-    libraryList,
-    librarySearch,
-    libraryRead,
-    automationHistory,
-    automationRunRead,
-  ];
+  return [memoryUsed, libraryList, librarySearch, libraryRead];
 }
 
 /** Library titles listed in the system prompt are capped so it can't grow unbounded. */

@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { LearnStatus, VoiceLearnRun } from "@trailin/shared";
 import { listLearnRuns } from "../db/learnRuns.js";
 import { listVoiceLearnRuns } from "../db/voiceRuns.js";
-import { nextLearnRunAt } from "../email/learn/extractService.js";
+import { nextLearnRunAt } from "../email/learn/service.js";
 
 /**
  * The learning loops' visibility surface: the draft-vs-sent sweep history

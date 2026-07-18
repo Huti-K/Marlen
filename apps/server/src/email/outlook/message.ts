@@ -1,11 +1,64 @@
+import type { ConnectedAccount } from "@trailin/shared";
+import { proxyRequest } from "../../pipedream/connect.js";
+
 /**
- * Microsoft Graph message helpers shared by the Outlook drivers
- * (drafts.ts, sync.ts). Before this module each file carried
- * its own GraphRecipient type and "Name <addr>" formatter, character for
- * character.
+ * Microsoft Graph message helpers shared by the Outlook drivers (drafts.ts,
+ * read.ts): the GraphRecipient type, "Name <addr>" formatting, and
+ * conversation paging — one provider's wire format in one place.
  */
 
 export const GRAPH_API = "https://graph.microsoft.com/v1.0/me";
+
+/** Page size for fetchConversationMessages — Graph's own default (10) is too small for an active thread. */
+const CONVERSATION_PAGE_SIZE = 50;
+
+interface GraphMessagePage<T> {
+  value?: T[];
+  "@odata.nextLink"?: string;
+}
+
+/**
+ * Messages of one conversation, paging through `@odata.nextLink` up to `cap`
+ * (enforced exactly — the last page is trimmed). `T` names the shape the
+ * caller's `select` produces.
+ *
+ * `$orderby` is deliberately not combined with `$filter` here — Graph often
+ * rejects that pairing as an inefficient query — so the caller orders the
+ * result itself; Graph's per-page order isn't otherwise guaranteed. An
+ * unknown conversation simply matches nothing and comes back empty.
+ */
+export async function fetchConversationMessages<T>(
+  account: ConnectedAccount,
+  threadId: string,
+  select: string,
+  cap: number,
+  signal?: AbortSignal,
+): Promise<T[]> {
+  // OData string literals escape a single quote by doubling it.
+  const escapedThreadId = threadId.replace(/'/g, "''");
+  const messages: T[] = [];
+  let url = `${GRAPH_API}/messages`;
+  let params: Record<string, string> | undefined = {
+    $filter: `conversationId eq '${escapedThreadId}'`,
+    $select: select,
+    $top: String(Math.min(cap, CONVERSATION_PAGE_SIZE)),
+  };
+
+  while (messages.length < cap) {
+    const res = (await proxyRequest(account.id, "get", url, {
+      params,
+      signal,
+    })) as GraphMessagePage<T>;
+    messages.push(...(res.value ?? []));
+    const nextLink = res["@odata.nextLink"];
+    if (!nextLink) break;
+    // nextLink is already a full URL carrying the escaped $filter/$select/$top
+    // as its query string — passing params again would duplicate them.
+    url = nextLink;
+    params = undefined;
+  }
+  return messages.slice(0, cap);
+}
 
 export interface GraphRecipient {
   emailAddress?: { name?: string; address?: string };
@@ -47,9 +100,9 @@ export function formatRecipients(recipients: GraphRecipient[] | undefined): stri
 
 /**
  * The item with the lexicographically latest `receivedDateTime` (ISO-8601
- * sorts correctly as plain strings, same assumption the thread/sync date
- * sorts elsewhere in this codebase already make). Undefined for an empty
- * list; an item missing the field sorts as if it were the oldest.
+ * sorts correctly as plain strings, the same assumption read.ts's thread
+ * date sorts make). Undefined for an empty list; an item missing the field
+ * sorts as if it were the oldest.
  *
  * Used to find "the newest message in a conversation" — e.g. the target for
  * a Graph createReply call — without requiring the whole page to already be

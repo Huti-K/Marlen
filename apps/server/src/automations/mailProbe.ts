@@ -3,11 +3,9 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { getSetting, setSetting } from "../db/settings.js";
 import { getMailReadProvider, type MailReadProvider } from "../email/read/readProviders.js";
-// Side-effect import: populates the MailReadProvider registry.
-import "../email/read/registerReadProviders.js";
-import { JobLoop } from "../jobs.js";
 import { moduleLogger } from "../logger.js";
 import { listAccounts } from "../pipedream/connect.js";
+import { JobLoop } from "../utils/jobs.js";
 import { requestRun } from "./scheduler.js";
 
 const log = moduleLogger("mailProbe");

@@ -3,8 +3,8 @@ import { desc, eq } from "drizzle-orm";
 import cron, { type ScheduledTask } from "node-cron";
 import { db, schema } from "../db/index.js";
 import { getTimezoneSetting } from "../db/settings.js";
-import { KeyedJobs } from "../jobs.js";
 import { moduleLogger } from "../logger.js";
+import { KeyedJobs } from "../utils/jobs.js";
 import {
   type AutomationRunResult,
   executeAutomationRun,
@@ -84,6 +84,17 @@ function isOneOffSchedule(expression: string): boolean {
   return dom !== "*" && month !== "*" && dow === "*";
 }
 
+// Automation ids asked to run again while a run of theirs was in flight. A Set,
+// so however many requests land mid-run, each automation gets exactly one
+// follow-up (the follow-up sees everything that arrived during the run).
+const pendingRuns = new Set<string>();
+
+/** One overlap-guarded run: execute, then retire a one-off schedule that succeeded. */
+async function runGuarded(automationId: string, opts: { manual?: boolean }): Promise<void> {
+  const result = await runJobs.join(automationId, () => executeAutomationRun(automationId, opts));
+  await retireIfOneOff(automationId, result);
+}
+
 /** Execute one automation now (used by the scheduler and the "Run now" button).
  *  `manual` marks an explicit user-triggered run, which may run a paused
  *  automation; scheduled ticks never may. Run-row/Conversation bookkeeping,
@@ -103,23 +114,33 @@ export async function runAutomation(
     );
     return;
   }
-  const result = await runJobs.join(automationId, () => executeAutomationRun(automationId, opts));
-  await retireIfOneOff(automationId, result);
+  await runGuarded(automationId, opts);
+  // Follow-ups queued by requestRun while the run above (or a follow-up below)
+  // was in flight. Draining here — not in requestRun — keeps the coalescing
+  // invariant whoever started the run: a mail burst landing mid-run yields one
+  // catch-up pass even when the running instance came from a cron tick or the
+  // "Run now" button. The loop is iterative on purpose: a request landing
+  // during a follow-up queues the next pass instead of recursing. Follow-ups
+  // always run non-manual — they stand in for requestRun calls, not for
+  // whatever triggered the run they queued behind.
+  while (pendingRuns.delete(automationId)) {
+    await runGuarded(automationId, {});
+  }
 }
 
-// Automation ids asked to run again while a run of theirs was in flight. A Set,
-// so however many requests land mid-run, each automation gets exactly one
-// follow-up (the follow-up sees everything that arrived during the run).
-const pendingRuns = new Set<string>();
+/** Whether a run of this automation is executing right now. */
+export function isRunInFlight(automationId: string): boolean {
+  return runJobs.isRunning(automationId);
+}
 
 /**
  * Run an automation now, coalescing instead of dropping: a request landing
  * while a run is in flight queues exactly one follow-up run, however many
- * such requests arrive. The mail probe's entry point — a mail burst mid-run
- * yields one catch-up pass over everything the running instance missed.
- * Cron ticks keep runAutomation's drop semantics. The isRunning check and the
- * runAutomation call below share one event-loop turn (no await between them),
- * the same atomicity KeyedJobs documents for its drop-when-busy callers.
+ * such requests arrive — runAutomation drains the queue when the in-flight
+ * run finishes. The mail probe's entry point. Cron ticks keep runAutomation's
+ * drop semantics. The isRunning check and the runAutomation call below share
+ * one event-loop turn (no await between them), the same atomicity KeyedJobs
+ * documents for its drop-when-busy callers.
  */
 export async function requestRun(automationId: string): Promise<void> {
   if (runJobs.isRunning(automationId)) {
@@ -127,9 +148,6 @@ export async function requestRun(automationId: string): Promise<void> {
     return;
   }
   await runAutomation(automationId);
-  while (pendingRuns.delete(automationId)) {
-    await runAutomation(automationId);
-  }
 }
 
 /**

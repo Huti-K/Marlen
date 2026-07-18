@@ -4,13 +4,13 @@ import { stripHtml } from "../textUtils.js";
 
 /**
  * Gmail message-payload helpers shared by every file that reads the Gmail
- * REST API (drafts.ts, sync.ts, attachments.ts) — one
- * provider's wire format in one place.
+ * REST API (drafts.ts, read.ts, attachments.ts) — one provider's wire format
+ * in one place.
  */
 
 export const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
-/** One Gmail MIME part — the superset of what drafts, sync and attachments each read. */
+/** One Gmail MIME part — the superset of what drafts, read and attachments each read. */
 export interface MessagePart {
   filename?: string;
   mimeType?: string;
@@ -49,6 +49,21 @@ function findPart(part: MessagePart | undefined, mimeType: string): MessagePart 
     if (hit) return hit;
   }
   return undefined;
+}
+
+/**
+ * Depth-first visit of every part with a non-empty filename — Gmail's own
+ * definition of "this part is an attachment". Same recursion as findPart,
+ * visiting every hit instead of stopping at the first; the one attachment
+ * walker for drafts.ts and attachments.ts alike.
+ */
+export function forEachAttachmentPart(
+  part: MessagePart | undefined,
+  visit: (part: MessagePart, filename: string) => void,
+): void {
+  if (!part) return;
+  if (part.filename) visit(part, part.filename);
+  for (const child of part.parts ?? []) forEachAttachmentPart(child, visit);
 }
 
 function decodeBody(data: string): string {

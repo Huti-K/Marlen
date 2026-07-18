@@ -5,7 +5,7 @@ import { db, schema } from "../db/index.js";
 import { env } from "../env.js";
 import { emitRunNotification, emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 
 const log = moduleLogger("runRecorder");
 

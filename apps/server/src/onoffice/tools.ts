@@ -15,10 +15,10 @@ import { getOnOfficeClient } from "./config.js";
  * Read tools (find/get/search) stay available to unattended automation runs.
  * The mutating surface splits in two: the create tools (address, appointment,
  * task, relation — additive records, never an edit or a send) are always in
- * chat and can be opted into for unattended runs via Settings → Permissions,
- * while everything that modifies, deletes or sends is interactive-only AND
- * armed by its own Settings → Permissions toggle — the CRM counterpart of
- * per-account email write access. Unattended runs never get it: they read
+ * chat and can be opted into for unattended runs on the onOffice account row
+ * in Settings, while everything that modifies, deletes or sends is
+ * interactive-only AND armed by its own toggle there — the CRM counterpart
+ * of the per-account permission grants. Unattended runs never get it: they read
  * attacker-controllable mail with no human to review a CRM write, exactly as
  * the email write tools are gated in pipedream/mcp.ts.
  */
@@ -84,10 +84,25 @@ function buildReadParameters(p: ReadRest): Record<string, unknown> {
   return params;
 }
 
-/** Render an onOffice response as compact JSON: the action results, or the whole envelope when empty. */
+/** Cap on the characters one onOffice response may put into model context. */
+const OK_TEXT_MAX_CHARS = 40_000;
+
+/**
+ * Render an onOffice response as compact JSON: the action results, or the
+ * whole envelope when empty. Capped at OK_TEXT_MAX_CHARS — a broad read
+ * (listlimit up to 500 records) can serialize far past what belongs in model
+ * context, so oversized output is truncated with an instruction to narrow
+ * the query instead.
+ */
 function okText(resp: OnOfficeResponse): string {
   const results = resultsOf(resp);
-  return JSON.stringify(results.length > 0 ? results : resp, null, 2);
+  const json = JSON.stringify(results.length > 0 ? results : resp);
+  if (json.length <= OK_TEXT_MAX_CHARS) return json;
+  return (
+    `${json.slice(0, OK_TEXT_MAX_CHARS)}\n\n` +
+    `[Output truncated at ${OK_TEXT_MAX_CHARS} characters. Narrow the query and retry — ` +
+    `lower listlimit, request fewer fields via the data parameter, or use a tighter filter.]`
+  );
 }
 
 /** Read tools for the common modules, generated from one table (identical bodies). */
@@ -270,7 +285,7 @@ function buildReadTools(client: OnOfficeClient): AgentTool[] {
 
 /**
  * The additive surface: tools that only create new records. Unattended runs
- * get these when the user has armed it in Settings → Permissions.
+ * get these when the user has armed it on the onOffice row in Settings.
  */
 function buildCreateTools(client: OnOfficeClient): AgentTool[] {
   return [
@@ -531,14 +546,14 @@ export interface LoadOnOfficeToolsOptions {
    * email, raw batches) is exposed. Defaults to true; pass false for
    * unattended automation runs — a prompt-injected email must not be able to
    * change or send from the CRM — and for chat sessions while the user hasn't
-   * armed CRM write access in Settings → Permissions. Implies the create
+   * armed CRM write access on the onOffice row in Settings. Implies the create
    * tools.
    */
   allowWrites?: boolean;
   /**
    * Whether the additive create tools (address, appointment, task, relation)
    * are exposed on their own. Defaults to false when writes are off; set for
-   * unattended runs once the user armed it in Settings → Permissions.
+   * unattended runs once the user armed it on the onOffice row in Settings.
    */
   allowCreates?: boolean;
 }

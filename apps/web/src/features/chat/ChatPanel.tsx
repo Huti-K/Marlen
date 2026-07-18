@@ -1,23 +1,27 @@
-import type { AccountColor, ChatToolCall, EmailRef } from "@trailin/shared";
+import type { ChatToolCall, EmailRef } from "@trailin/shared";
 import type { ParseKeys } from "i18next";
-import { Check, Copy, Loader2, MessagesSquare, Search, Send, X } from "lucide-react";
+import { Check, Copy, MessagesSquare, Send } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { AgentCardView } from "@/components/cards";
+import { SHOWCASE_TURNS } from "@/components/cards/samples";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingRow } from "@/components/ui/feedback";
-import { IconButton } from "@/components/ui/icon-button";
+import { Highlight } from "@/components/ui/highlight";
 import { Markdown } from "@/components/ui/markdown";
-import { AgentCardView } from "@/features/chat/cards";
-import { SHOWCASE_TURNS } from "@/features/chat/cards/samples";
+import { SearchField } from "@/components/ui/search-field";
+import { Spinner } from "@/components/ui/spinner";
 import { RefChips, RefChipsReadOnly } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
 import { HistoryList } from "@/features/chat/HistoryList";
 import type { DisplayMessage } from "@/features/chat/runState";
 import { useChatRuns } from "@/features/chat/useChatRuns";
+import { useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { subscribeTrailin } from "@/lib/trailinEvents";
+import { useAutoGrow } from "@/lib/useAutoGrow";
 import { cn, errorMessage } from "@/lib/utils";
 
 /** Renders one of every agent card locally. Never reaches the agent or the DB. */
@@ -55,7 +59,7 @@ export function ChatPanel({
   // panel is idle, so it never races a conversation reset or a streaming turn.
   const [pendingSend, setPendingSend] = React.useState<PendingSend | null>(null);
   // Tints each card's account chip. Cosmetic, so a failed load is not surfaced.
-  const [accountColors, setAccountColors] = React.useState<AccountColor[]>([]);
+  const { colors: accountColors } = useAccountColors({ withAccounts: false });
   // Emails pinned to the message about to be sent (a
   // card's "add to chat" action) — cleared once the turn is sent.
   const composerRefs = useComposerRefs();
@@ -70,19 +74,6 @@ export function ChatPanel({
     pendingFocusAccountId,
   });
 
-  React.useEffect(() => {
-    let cancelled = false;
-    api
-      .accountColors()
-      .then(({ colors }) => {
-        if (!cancelled) setAccountColors(colors);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs.messages is the intentional re-run trigger (a new turn or streaming delta), not read in the body
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -93,20 +84,7 @@ export function ChatPanel({
     onConversationChange?.(runs.conversationId);
   }, [runs.conversationId, onConversationChange]);
 
-  // Grow the textarea with its content, up to the CSS max-height cap (then it
-  // scrolls internally). Empty is left to the CSS min-height instead of measured
-  // via scrollHeight — Chrome/Firefox size that against the wrapped placeholder
-  // text, not the (empty) value, which puffed the box up at rest.
-  React.useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    if (!input) {
-      el.style.height = "";
-      return;
-    }
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [input]);
+  useAutoGrow(textareaRef, input);
 
   /** Answers `/showcase` client-side: one sample turn per thing the assistant can render. */
   const showcase = (message: string) => {
@@ -288,7 +266,12 @@ export function ChatPanel({
             />
           </div>
         ) : (
-          <div className={cn("flex flex-col gap-4 py-1", isPage && "mx-auto w-full max-w-4xl")}>
+          <div
+            className={cn(
+              "flex flex-col gap-4 py-1",
+              isPage && "mx-auto w-full max-w-4xl @7xl:max-w-5xl",
+            )}
+          >
             {runs.messages.map((m) => (
               <div
                 key={m.id}
@@ -357,7 +340,7 @@ export function ChatPanel({
       <div
         className={cn(
           "relative flex flex-col gap-1.5 rounded-2xl bg-surface-2 p-1.5 pl-4",
-          isPage && "mx-auto w-full max-w-4xl",
+          isPage && "mx-auto w-full max-w-4xl @7xl:max-w-5xl",
         )}
       >
         {composerRefs.refs.length > 0 && (
@@ -385,16 +368,13 @@ export function ChatPanel({
           />
           <Button
             onClick={() => void send()}
-            disabled={runs.busy || !input.trim()}
+            disabled={!input.trim()}
+            loading={runs.busy}
             size="icon-sm"
             className="mb-1 shrink-0 rounded-xl"
             aria-label={t("chat.send")}
           >
-            {runs.busy ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <Send className="-translate-x-px translate-y-px" />
-            )}
+            <Send className="-translate-x-px translate-y-px" />
           </Button>
         </div>
       </div>
@@ -416,7 +396,7 @@ function ToolActivity({ call }: { call: ChatToolCall }) {
   return (
     <details className="my-1 text-xs text-muted-foreground">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 py-0.5 hover:text-foreground">
-        {!call.done && <Loader2 className="h-3 w-3 animate-spin" />}
+        {!call.done && <Spinner className="h-3 w-3" />}
         <span title={call.name}>{call.label ?? call.name}</span>
         {call.detail && !call.done && <span className="truncate opacity-70">· {call.detail}</span>}
         {call.isError && <span className="text-destructive">· failed</span>}
@@ -480,27 +460,6 @@ function AssistantSequence({
   return <>{parts}</>;
 }
 
-function HighlightedPrompt({ text, query }: { text: string; query: string }) {
-  if (!query) return <>{text}</>;
-  const lowerText = text.toLocaleLowerCase();
-  const lowerQuery = query.toLocaleLowerCase();
-  const parts: React.ReactNode[] = [];
-  let cursor = 0;
-  let match = lowerText.indexOf(lowerQuery);
-  while (match !== -1) {
-    parts.push(text.slice(cursor, match));
-    parts.push(
-      <mark key={`${match}-${cursor}`} className="rounded-sm bg-accent/25 text-foreground">
-        {text.slice(match, match + query.length)}
-      </mark>,
-    );
-    cursor = match + query.length;
-    match = lowerText.indexOf(lowerQuery, cursor);
-  }
-  parts.push(text.slice(cursor));
-  return <>{parts}</>;
-}
-
 /** Compact inspector returned by /sys, with literal prompt text and in-place matches. */
 function SystemPromptView({ prompt }: { prompt: string }) {
   const { t } = useTranslation();
@@ -526,25 +485,13 @@ function SystemPromptView({ prompt }: { prompt: string }) {
     >
       <div className="flex flex-wrap items-center gap-2 p-2.5">
         <span className="px-1 text-xs font-semibold">{t("chat.systemPrompt.title")}</span>
-        <div className="relative ml-auto min-w-40 flex-1 sm:max-w-64">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("chat.systemPrompt.search")}
-            aria-label={t("chat.systemPrompt.search")}
-            className="field h-8 w-full pl-8 pr-8 text-xs"
-          />
-          {query && (
-            <IconButton
-              onClick={() => setQuery("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-              aria-label={t("common.close")}
-            >
-              <X className="h-3.5 w-3.5" />
-            </IconButton>
-          )}
-        </div>
+        <SearchField
+          size="sm"
+          value={query}
+          onChange={setQuery}
+          placeholder={t("chat.systemPrompt.search")}
+          className="ml-auto min-w-40 flex-1 sm:max-w-64"
+        />
         {normalized && (
           <span className="text-xs tabular-nums text-muted-foreground">
             {t("chat.systemPrompt.matches", { count: matchCount })}
@@ -556,7 +503,7 @@ function SystemPromptView({ prompt }: { prompt: string }) {
         </Button>
       </div>
       <pre className="max-h-112 overflow-auto whitespace-pre-wrap break-words bg-background/55 p-4 font-mono text-xs leading-relaxed">
-        <HighlightedPrompt text={prompt} query={query.trim()} />
+        <Highlight text={prompt} query={query} minLength={1} />
       </pre>
     </section>
   );

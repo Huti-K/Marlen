@@ -1,52 +1,52 @@
 import {
   type AccountColor,
-  type AccountVoice,
+  type AccountPermissions,
   type ConnectedAccount,
   EMAIL_APP_LABELS,
-  EMAIL_APPS,
   type EmailApp,
   type PipedreamApp,
   type VoiceLearnRun,
 } from "@trailin/shared";
-import { Inbox, Loader2, Mail, PenLine, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Inbox, LogOut, Plus, RotateCcw, Settings } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { AppIcon } from "@/components/ui/app-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { GroupLabel } from "@/components/ui/group-label";
 import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
+import { OptionRow } from "@/components/ui/option-row";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SignatureEditor } from "@/features/connections/SignatureEditor";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  AccountPermissionsEditor,
+  type PermissionGrants,
+  READ_ONLY_GRANTS,
+} from "@/features/connections/AccountPermissions";
 import {
   OnOfficeAccountRow,
   OnOfficeForm,
+  OnOfficePermissionsEditor,
   OnOfficePickerButton,
   useOnOfficeStatus,
-} from "@/features/settings/OnOffice";
+} from "@/features/connections/OnOffice";
+import {
+  useWhatsAppStatus,
+  WhatsAppAccountRow,
+  WhatsAppPairingCard,
+  WhatsAppPermissionsEditor,
+  WhatsAppPickerButton,
+} from "@/features/connections/WhatsApp";
+import { isEmailApp } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
-import { cn, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
-
-/** App logo from Pipedream, falling back to a generic mail glyph. */
-function AppIcon({ src, className }: { src?: string; className?: string }) {
-  const [failed, setFailed] = React.useState(false);
-  if (src && !failed) {
-    return (
-      <img
-        src={src}
-        alt=""
-        onError={() => setFailed(true)}
-        className={cn("h-4 w-4 shrink-0 object-contain", className)}
-      />
-    );
-  }
-  return <Mail className={cn("h-4 w-4 shrink-0 text-muted-foreground", className)} />;
-}
+import { stagger, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
 
 /** One selectable app in the picker — a grey listbox row. */
 function PickerRow({
@@ -59,20 +59,20 @@ function PickerRow({
   onConnect: (slug: string) => void;
 }) {
   return (
-    <button
-      type="button"
+    <OptionRow
+      fill="recessed"
       onClick={() => onConnect(app.slug)}
       disabled={busy !== null}
-      className="group flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2.5 text-left transition-colors hover:bg-secondary disabled:opacity-50"
-    >
-      <AppIcon src={app.imgSrc} className="h-5 w-5" />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{app.name}</span>
-      {busy === app.slug ? (
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-      ) : (
-        <Plus className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-      )}
-    </button>
+      icon={<AppIcon src={app.imgSrc} className="h-5 w-5" />}
+      label={app.name}
+      trailing={
+        busy === app.slug ? (
+          <Spinner className="shrink-0 text-muted-foreground" />
+        ) : (
+          <Plus className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+        )
+      }
+    />
   );
 }
 
@@ -91,17 +91,15 @@ function PickerSection({
   if (apps.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="px-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+      <GroupLabel as="p" size="sm" className="px-1">
         {heading}
-      </p>
+      </GroupLabel>
       {apps.map((app) => (
         <PickerRow key={app.slug} app={app} busy={busy} onConnect={onConnect} />
       ))}
     </div>
   );
 }
-
-const isEmailApp = (slug: string) => (EMAIL_APPS as readonly string[]).includes(slug);
 
 function appLabel(account: ConnectedAccount): string {
   if (account.appName) return account.appName;
@@ -149,13 +147,20 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   // progress badge on the row, "error" a failure badge plus the retry button.
   const [voiceRuns, setVoiceRuns] = React.useState<VoiceLearnRun[]>([]);
   const [colors, setColors] = React.useState<AccountColor[]>([]);
-  const [voices, setVoices] = React.useState<AccountVoice[]>([]);
-  const [signatureAccountId, setSignatureAccountId] = React.useState<string | null>(null);
+  // Per-account permission grants; an account without a record is read-only.
+  const [permissions, setPermissions] = React.useState<AccountPermissions[]>([]);
+  const [permissionsAccountId, setPermissionsAccountId] = React.useState<string | null>(null);
+  const [onOfficePermsOpen, setOnOfficePermsOpen] = React.useState(false);
   // onOffice is a native (non-Pipedream) CRM connection surfaced in the same
   // picker and accounts list; it authenticates with a token + secret, so its
   // picker entry opens the credential form instead of the Connect popup.
   const { status: onOffice, refresh: refreshOnOffice } = useOnOfficeStatus();
   const [onOfficeFormOpen, setOnOfficeFormOpen] = React.useState(false);
+  // WhatsApp is a native personal-account link paired by QR scan, so its
+  // picker entry opens the pairing card instead of the Connect popup.
+  const { status: whatsApp, refresh: refreshWhatsApp } = useWhatsAppStatus();
+  const [whatsAppPairingOpen, setWhatsAppPairingOpen] = React.useState(false);
+  const [whatsAppPermsOpen, setWhatsAppPermsOpen] = React.useState(false);
 
   // Debounced catalog search; empty query shows the e-mail suggestions.
   React.useEffect(() => {
@@ -223,15 +228,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     [],
   );
 
-  const loadVoices = React.useCallback(async () => {
-    try {
-      const { voices: saved } = await api.accountVoices();
-      setVoices(saved);
-    } catch {
-      /* signatures remain optional */
-    }
-  }, []);
-
   const loadVoiceRuns = React.useCallback(async () => {
     try {
       setVoiceRuns(await api.voiceLearnRuns());
@@ -240,23 +236,42 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     }
   }, []);
 
+  const loadPermissions = React.useCallback(async () => {
+    try {
+      const { permissions: saved } = await api.accountPermissions();
+      setPermissions(saved);
+    } catch {
+      /* rows just show as read-only until a reload */
+    }
+  }, []);
+
+  const grantsFor = (accountId: string): PermissionGrants =>
+    permissions.find((p) => p.accountId === accountId) ?? READ_ONLY_GRANTS;
+
+  const persistPermissions = async (accountId: string, next: PermissionGrants) => {
+    const merged = [
+      ...permissions.filter((p) => p.accountId !== accountId),
+      { accountId, ...next },
+    ];
+    const { permissions: saved } = await api.setAccountPermissions(merged);
+    setPermissions(saved);
+  };
+
   React.useEffect(() => {
     void loadVoiceRuns();
   }, [loadVoiceRuns]);
 
-  // A learn attempt starting/finishing emits "learn"; a finished one also
-  // saved the voice (signature), so both are refreshed together.
+  // A learn attempt starting/finishing emits "learn" — refresh the row badges.
   useServerEvents(["learn"], () => {
     void loadVoiceRuns();
-    void loadVoices();
   });
 
   React.useEffect(() => {
-    void loadVoices();
+    void loadPermissions();
     void Promise.all([load(), loadColors()]).then(([accts, saved]) => {
       if (accts && saved) void ensureColors(accts, saved);
     });
-  }, [load, loadColors, loadVoices, ensureColors]);
+  }, [load, loadColors, loadPermissions, ensureColors]);
 
   const connect = async (app: string) => {
     setBusy(app);
@@ -393,6 +408,20 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const emailResults = (results ?? []).filter((a) => isEmailApp(a.slug));
   const moreResults = (results ?? []).filter((a) => !isEmailApp(a.slug));
 
+  // Connected accounts grouped by app, one overline heading per provider;
+  // insertion order follows the accounts list, so groups appear in
+  // first-connected order.
+  const accountGroups = (() => {
+    const byApp = new Map<string, ConnectedAccount[]>();
+    for (const account of accounts ?? []) {
+      const label = appLabel(account);
+      const group = byApp.get(label);
+      if (group) group.push(account);
+      else byApp.set(label, [account]);
+    }
+    return [...byApp.entries()];
+  })();
+
   // Offer onOffice in the picker only until it's connected — after that it's
   // managed through its connected row below. Match its free-text search the way
   // Pipedream matches an app name.
@@ -408,13 +437,26 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     setOnOfficeFormOpen(true);
   };
 
+  // Same footing for WhatsApp: offered in the picker only until it's linked.
+  const whatsAppQueryMatch = (() => {
+    const q = query.trim().toLowerCase();
+    return q === "" || "whatsapp".includes(q) || "messaging".includes(q);
+  })();
+  const showWhatsAppPick = whatsApp !== null && !whatsApp.linked && whatsAppQueryMatch;
+
+  const openWhatsAppPairing = () => {
+    setPickerOpen(false);
+    setQuery("");
+    setWhatsAppPairingOpen(true);
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-4 pb-2">
           <h3 className="text-sm font-semibold tracking-tight">{t("connections.emailAccounts")}</h3>
-          <Button size="sm" onClick={() => setPickerOpen((open) => !open)} disabled={busy !== null}>
-            {busy ? <Loader2 className="animate-spin" /> : <Plus />}
+          <Button size="sm" onClick={() => setPickerOpen((open) => !open)} loading={busy !== null}>
+            <Plus />
             {t("connections.addAccount")}
           </Button>
         </div>
@@ -433,13 +475,14 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                   <Skeleton key={i} className="h-11 w-full rounded-lg" />
                 ))}
               </div>
-            ) : results.length === 0 && !showOnOfficePick ? (
+            ) : results.length === 0 && !showOnOfficePick && !showWhatsAppPick ? (
               <p className="px-1 py-2 text-xs text-muted-foreground">
                 {t("connections.noProvidersFound", { q: query.trim() })}
               </p>
             ) : query.trim() ? (
               <div className="flex max-h-80 flex-col gap-1.5 overflow-y-auto py-0.5">
                 {showOnOfficePick && <OnOfficePickerButton onClick={openOnOfficeForm} />}
+                {showWhatsAppPick && <WhatsAppPickerButton onClick={openWhatsAppPairing} />}
                 {results.map((app) => (
                   <PickerRow key={app.slug} app={app} busy={busy} onConnect={connect} />
                 ))}
@@ -454,10 +497,18 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                 />
                 {showOnOfficePick && (
                   <div className="flex flex-col gap-1.5">
-                    <p className="px-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <GroupLabel as="p" size="sm" className="px-1">
                       {t("connections.crmHeading")}
-                    </p>
+                    </GroupLabel>
                     <OnOfficePickerButton onClick={openOnOfficeForm} />
+                  </div>
+                )}
+                {showWhatsAppPick && (
+                  <div className="flex flex-col gap-1.5">
+                    <GroupLabel as="p" size="sm" className="px-1">
+                      {t("connections.messagingHeading")}
+                    </GroupLabel>
+                    <WhatsAppPickerButton onClick={openWhatsAppPairing} />
                   </div>
                 )}
                 {moreResults.length > 0 && (
@@ -492,6 +543,19 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
           />
         )}
 
+        {whatsAppPairingOpen && whatsApp && (
+          <WhatsAppPairingCard
+            status={whatsApp}
+            onPaired={async () => {
+              setWhatsAppPairingOpen(false);
+              toast.success(t("whatsapp.pairedToast"));
+              await refreshWhatsApp();
+              onChanged?.();
+            }}
+            onClose={() => setWhatsAppPairingOpen(false)}
+          />
+        )}
+
         {!accounts ? (
           <div className="flex flex-col gap-2">
             {[0, 1].map((i) => (
@@ -507,115 +571,148 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
               </ListRow>
             ))}
           </div>
-        ) : accounts.length === 0 && !onOffice?.configured ? (
+        ) : accounts.length === 0 && !onOffice?.configured && !whatsApp?.linked ? (
           <EmptyState icon={Inbox} description={t("connections.noAccounts")} />
         ) : (
-          <div className="flex flex-col gap-2">
-            {onOffice?.configured && (
-              <div className="animate-in-up flex flex-col gap-1.5">
-                <OnOfficeAccountRow
-                  status={onOffice}
-                  onEdit={() => setOnOfficeFormOpen(true)}
-                  onDisconnected={async () => {
-                    await refreshOnOffice();
-                    onChanged?.();
-                  }}
-                />
-              </div>
-            )}
-            {accounts.map((account, i) => (
-              <div
-                key={account.id}
-                className="animate-in-up flex flex-col gap-1.5"
-                style={{ animationDelay: `${i * 45}ms`, zIndex: accounts.length - i }}
-              >
-                <ListRow className="relative">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <ColorPicker
-                      color={colorFor(account.id)?.hex ?? UNASSIGNED_ACCOUNT_COLOR}
-                      onSelect={(hex) => updateColor(account.id, hex)}
-                    />
-                    <AppIcon src={account.imgSrc} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{account.name}</p>
-                      <p className="text-xs text-muted-foreground">{appLabel(account)}</p>
+          <div className="flex flex-col gap-4">
+            {accountGroups.map(([label, groupAccounts]) => (
+              <div key={label} className="flex flex-col gap-1.5">
+                <GroupLabel as="p" size="sm" className="px-1">
+                  {label}
+                </GroupLabel>
+                {groupAccounts.map((account) => {
+                  const flat = accounts.indexOf(account);
+                  return (
+                    <div
+                      key={account.id}
+                      className="animate-in-up flex flex-col gap-1.5"
+                      style={{ ...stagger(flat), zIndex: accounts.length - flat }}
+                    >
+                      <ListRow className="relative">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <ColorPicker
+                            color={colorFor(account.id)?.hex ?? UNASSIGNED_ACCOUNT_COLOR}
+                            onSelect={(hex) => updateColor(account.id, hex)}
+                          />
+                          <AppIcon src={account.imgSrc} />
+                          <p className="min-w-0 truncate text-sm font-medium">{account.name}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            // Voice-learn status: in-flight and failed attempts are
+                            // shown; a finished learn needs no chip of its own.
+                            const run = voiceRuns.find((r) => r.accountId === account.id);
+                            if (run?.status === "running") {
+                              return (
+                                <Badge variant="muted">
+                                  <Spinner className="h-3 w-3" />
+                                  {t("connections.voiceLearning")}
+                                </Badge>
+                              );
+                            }
+                            if (run?.status === "error") {
+                              return (
+                                <>
+                                  <Badge
+                                    variant="destructive"
+                                    data-tooltip={run.error ?? undefined}
+                                  >
+                                    {t("connections.voiceLearnFailed")}
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={() => void retryLearn(account)}
+                                    aria-label={t("connections.voiceLearnRetry")}
+                                    data-tooltip={t("connections.voiceLearnRetry")}
+                                  >
+                                    <RotateCcw />
+                                  </Button>
+                                </>
+                              );
+                            }
+                            return null;
+                          })()}
+                          {!account.healthy && (
+                            <Badge variant="destructive">{t("connections.unhealthy")}</Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() =>
+                              setPermissionsAccountId((id) =>
+                                id === account.id ? null : account.id,
+                              )
+                            }
+                            aria-label={t("connections.permissions.edit")}
+                            data-tooltip={t("connections.permissions.edit")}
+                          >
+                            <Settings />
+                          </Button>
+                          <Button
+                            variant="ghost-danger"
+                            size="icon-sm"
+                            onClick={() => setConfirmId(account.id)}
+                            aria-label={t("connections.disconnect")}
+                            data-tooltip={t("connections.disconnect")}
+                          >
+                            <LogOut />
+                          </Button>
+                        </div>
+                      </ListRow>
+                      {permissionsAccountId === account.id && (
+                        <AccountPermissionsEditor
+                          account={account}
+                          granted={grantsFor(account.id)}
+                          onPersist={(next) => persistPermissions(account.id, next)}
+                        />
+                      )}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {(() => {
-                      // Voice-learn status: in-flight and failed attempts are
-                      // shown; a finished learn needs no chip of its own.
-                      const run = voiceRuns.find((r) => r.accountId === account.id);
-                      if (run?.status === "running") {
-                        return (
-                          <Badge variant="muted">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            {t("connections.voiceLearning")}
-                          </Badge>
-                        );
-                      }
-                      if (run?.status === "error") {
-                        return (
-                          <>
-                            <Badge variant="destructive" data-tooltip={run.error ?? undefined}>
-                              {t("connections.voiceLearnFailed")}
-                            </Badge>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => void retryLearn(account)}
-                              aria-label={t("connections.voiceLearnRetry")}
-                              data-tooltip={t("connections.voiceLearnRetry")}
-                            >
-                              <RotateCcw />
-                            </Button>
-                          </>
-                        );
-                      }
-                      return null;
-                    })()}
-                    <Badge variant={account.healthy ? "success" : "destructive"}>
-                      {account.healthy ? t("connections.healthy") : t("connections.unhealthy")}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        setSignatureAccountId((id) => (id === account.id ? null : account.id))
-                      }
-                      title="Edit email signature"
-                    >
-                      <PenLine className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => setConfirmId(account.id)}
-                      title={t("connections.disconnect")}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                </ListRow>
-                {signatureAccountId === account.id && (
-                  <SignatureEditor
-                    voice={voices.find((voice) => voice.accountId === account.id)}
-                    onCancel={() => setSignatureAccountId(null)}
-                    onSave={async (signature, signatureHtml) => {
-                      const existing = voices.find((voice) => voice.accountId === account.id);
-                      const next = [
-                        ...voices.filter((voice) => voice.accountId !== account.id),
-                        { ...existing, accountId: account.id, signature, signatureHtml },
-                      ];
-                      const saved = await api.saveAccountVoices(next);
-                      setVoices(saved.voices);
-                      setSignatureAccountId(null);
-                      toast.success("Signature saved");
-                    }}
-                  />
-                )}
+                  );
+                })}
               </div>
             ))}
+            {onOffice?.configured && (
+              <div className="flex flex-col gap-1.5">
+                <GroupLabel as="p" size="sm" className="px-1">
+                  {t("connections.crmHeading")}
+                </GroupLabel>
+                <div className="animate-in-up flex flex-col gap-1.5">
+                  <OnOfficeAccountRow
+                    status={onOffice}
+                    onEdit={() => setOnOfficeFormOpen(true)}
+                    onTogglePermissions={() => setOnOfficePermsOpen((open) => !open)}
+                    onDisconnected={async () => {
+                      await refreshOnOffice();
+                      onChanged?.();
+                    }}
+                  />
+                  {onOfficePermsOpen && (
+                    <OnOfficePermissionsEditor status={onOffice} onChanged={refreshOnOffice} />
+                  )}
+                </div>
+              </div>
+            )}
+            {whatsApp?.linked && (
+              <div className="flex flex-col gap-1.5">
+                <GroupLabel as="p" size="sm" className="px-1">
+                  {t("connections.messagingHeading")}
+                </GroupLabel>
+                <div className="animate-in-up flex flex-col gap-1.5">
+                  <WhatsAppAccountRow
+                    status={whatsApp}
+                    onTogglePermissions={() => setWhatsAppPermsOpen((open) => !open)}
+                    onUnlinked={async () => {
+                      await refreshWhatsApp();
+                      onChanged?.();
+                    }}
+                  />
+                  {whatsAppPermsOpen && (
+                    <WhatsAppPermissionsEditor status={whatsApp} onChanged={refreshWhatsApp} />
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import type { Automation, Lead, LeadScore, LeadStatus } from "@trailin/shared";
-import { CalendarClock, Loader2, Phone, Plus, Trash2, Users } from "lucide-react";
+import { CalendarClock, Phone, Plus, Trash2, Users } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import { relativeTime } from "@/lib/dates";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
+import { stagger } from "@/lib/utils";
 
 /**
  * The leads directory: every prospect the agent (or the user) recorded, as a
@@ -168,8 +169,7 @@ export function LeadsPanel() {
             <Button variant="ghost" onClick={() => setShowForm(false)}>
               {t("common.cancel")}
             </Button>
-            <Button onClick={() => void create()} disabled={saving || !form.email.trim()}>
-              {saving && <Loader2 className="animate-spin" />}
+            <Button onClick={() => void create()} disabled={!form.email.trim()} loading={saving}>
               {t("leads.create")}
             </Button>
           </div>
@@ -239,7 +239,7 @@ export function LeadsPanel() {
       ) : (
         <div className="flex flex-col gap-3">
           {visible.map((lead, i) => (
-            <div key={lead.id} className="animate-in-up" style={{ animationDelay: `${i * 45}ms` }}>
+            <div key={lead.id} className="animate-in-up" style={stagger(i)}>
               <LeadCard
                 lead={lead}
                 automations={attachedTo(lead)}

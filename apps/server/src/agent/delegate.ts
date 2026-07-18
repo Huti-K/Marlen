@@ -1,10 +1,13 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
-import { mapWithConcurrency } from "../jobs.js";
-import { errorMessage } from "../util.js";
+import { prompts } from "../prompts.js";
+import { mapWithConcurrency } from "../utils/jobs.js";
+import { errorMessage } from "../utils/util.js";
+import { automationReadTools } from "./automationTools.js";
 import { buildKnowledgeContext, buildKnowledgeReadTools } from "./knowledgeTools.js";
 import { runOneShot } from "./oneShot.js";
 import { textResult, tool } from "./toolkit.js";
+import { webFetchTool } from "./webFetchTool.js";
 import { webSearchTool } from "./webSearchTool.js";
 
 /**
@@ -12,31 +15,15 @@ import { webSearchTool } from "./webSearchTool.js";
  * lookups to short-lived worker agents that run in parallel, then folds
  * their reports back into one result. Workers get a stripped-down toolset —
  * the session's live per-account mail READ tools (shared by reference, so
- * they multiplex over the same MCP sessions) plus the library and web
- * search — and no view of the main conversation. Never any draft or write
- * tool.
+ * they multiplex over the same MCP sessions) plus the library, past
+ * automation runs and web search/fetch — and no view of the main
+ * conversation.
+ * Never any draft or write tool.
  */
 
 /** Keeps parallel MCP and model calls modest. */
 const MAX_TASKS = 8;
 const CONCURRENCY = 4;
-
-const WORKER_PROMPT = `You are a background research worker for Trailin, a personal email assistant. The main assistant
-handed you ONE self-contained task. Complete it with your read-only tools (per-account live email
-tools whose names vary by account and app, the user's document library, and web_search for public
-information) and reply with a compact, factual report.
-
-Rules:
-- Your final message IS the report the main assistant reads. No greetings, no questions, no
-  meta-commentary about what you did.
-- You cannot ask anything; if the task is ambiguous, state the assumption you made and proceed.
-- You are read-only: you cannot draft, send, label or change anything.
-- Email reads hit the provider live: a call can take seconds and occasionally time out. On a
-  timeout, retry once with a narrower query, then report what you could and couldn't cover.
-- Report the concrete identifiers the main assistant will need to act (thread and message ids,
-  senders, dates, subjects, document titles and part numbers). Quote short key passages verbatim
-  when the wording matters; keep everything else terse.
-- If you find nothing, say so plainly instead of padding the report.`;
 
 /** Task label for the result header, capped so a long task doesn't blow up the summary. */
 function truncateLabel(task: string, max = 80): string {
@@ -74,8 +61,14 @@ lookup, call the email or web tools directly instead.`,
       const dropped = allTasks.length - MAX_TASKS;
       const tasks = allTasks.slice(0, MAX_TASKS);
 
-      const systemPrompt = WORKER_PROMPT + (await buildKnowledgeContext());
-      const tools = [...readTools, ...buildKnowledgeReadTools(), webSearchTool];
+      const systemPrompt = prompts.delegateWorker + (await buildKnowledgeContext());
+      const tools = [
+        ...readTools,
+        ...buildKnowledgeReadTools(),
+        ...automationReadTools,
+        webSearchTool,
+        webFetchTool,
+      ];
 
       let finished = 0;
       const reports = await mapWithConcurrency(tasks, CONCURRENCY, async (task) => {

@@ -53,8 +53,11 @@ list/feed item (a provider row, a draft, a connected account, an empty state) is
 raised `surface` on the grey canvas — that is the `ListRow` / `EmptyState` default. When
 rows are collected inside one grouped card, the card is the `surface` and its rows are bare.
 
-**Chrome frames the canvas.** Two bright rails frame the grey working canvas: the left nav
-rail and the right chat/agent column are both white chrome (`sidebar` / `surface`). Inside
+**Chrome frames the canvas.** The app shell is chrome (`sidebar`): the left nav rail, the
+right chat/agent column, and the frame behind the working canvas. On desktop the grey
+canvas is inset into that shell — rounded (`rounded-2xl`) with a small vertical gap — so
+the chrome reads as one continuous frame around it; on mobile the canvas runs edge to
+edge. Inside
 the chat rail the agent's cards are still `surface`; they read by their structure — the mono
 eyebrow and spacing — rather than by tone contrast, since rail and card share the white.
 
@@ -151,7 +154,9 @@ about floating panels still follows the rules above:
 
 - Lead with macro-whitespace. Sections are separated by generous vertical gaps
   (`gap-8`/`gap-10`), not rules.
-- Content column is constrained (`max-w-3xl` for settings-style pages).
+- Content column is constrained: `max-w-3xl` for settings-style pages, stepping up to
+  `max-w-4xl`/`max-w-5xl` via container queries when the canvas itself is wide (the
+  sidebar and chat panel eat variable width, so the canvas — not the viewport — decides).
 - Motion is quiet: content rises `6px` and fades in over ~360ms; lists stagger. Animate
   only `transform`/`opacity`. Respect `prefers-reduced-motion`.
 
@@ -166,8 +171,33 @@ about floating panels still follows the rules above:
   a className. Destructive row actions (delete/discard) use `ghost-danger` — never
   restate its pale red hover in a className.
 - **Badges:** pill, pastel tonal fill, no border.
-- **Account dots:** the shared `AccountDot` (`ui/account-dot.tsx`) — every account
-  color marker; it owns the unassigned-grey fallback (`UNASSIGNED_ACCOUNT_COLOR`).
+- **Account dots:** the shared `AccountDot` (`ui/account-dot.tsx`) — every round dot
+  marker; it owns the unassigned-grey fallback (`UNASSIGNED_ACCOUNT_COLOR`) and the
+  non-account `tone` variants (`ink`, `accent`) — never hand-mix a dot fill.
+- **Spinners:** the shared `Spinner` (`ui/spinner.tsx`) — the one busy glyph; a busy
+  button takes `loading` (which disables it and swaps its icon) — never a raw
+  `Loader2` or a hand-swapped icon ternary.
+- **App logos:** the shared `AppIcon` (`ui/app-icon.tsx`) — provider logo image with
+  the generic mail-glyph fallback; no per-feature img-with-fallback state.
+- **Section titles:** the shared `SectionTitle` (`ui/section-header.tsx`) — icon tile,
+  title, live count, optional collapse chevron, trailing controls slot — for every
+  top-level page section; `SectionHeader`/`Section` stay the title+description block
+  for settings/setup-style pages.
+- **Settings rows:** the shared `SettingRow` (`ui/setting-row.tsx`) — label +
+  description at left, control at right; `bare` inside an already-raised card or
+  dialog, `ListRow`-raised otherwise.
+- **Menu/picker rows:** the shared `OptionRow` (`ui/option-row.tsx`) — leading mark,
+  truncated label, optional detail line and trailing slot; `fill` follows the tone
+  ladder (`recessed`/`ghost`/`bare`), `selected` wears the pale accent tint.
+- **Row actions:** the shared `HoverActions` (`ui/hover-actions.tsx`) — the
+  hover/focus-revealed trailing toolbar (always visible below `sm`); opening a URL
+  outside the app is the shared `OpenExternalButton` (`ui/open-external-button.tsx`).
+- **Group labels:** the shared `GroupLabel` (`ui/group-label.tsx`) — the small
+  uppercase muted overline heading a group of rows; `sm` for dense meta lists.
+- **Step marks:** the shared `StepCircle` (`ui/step-circle.tsx`) — the tiny numbered
+  circle fronting setup/guide steps.
+- **Edit-in-place:** the shared `InlineEditButton` (`ui/inline-edit-button.tsx`) —
+  text-cursor button styled as the value it shows, swapping to the caller's editor.
 - **Notices:** the shared `Notice` (`ui/feedback.tsx`) — pastel tone box for inline
   status/setup messages, optionally dismissible. No hand-rolled tint containers.
   A failed panel fetch renders `RetryableError` (same file) — banner + quiet retry.
@@ -176,9 +206,9 @@ about floating panels still follows the rules above:
 - **Search filters:** the shared `SearchField` (`ui/search-field.tsx`) — leading
   magnifier, trailing clear — for every list filter box.
 - **Show more/less:** the shared `DisclosureToggle` (`ui/disclosure-toggle.tsx`) —
-  chevron + quiet text label for every open/close disclosure. Monotonic paged lists
-  ("show N more") use `usePagedVisible` (`lib/usePagedVisible.ts`) + `ShowMoreButton`
-  (`ui/show-more-button.tsx`) instead.
+  chevron + quiet text label for every open/close disclosure; omitting `open` makes
+  it a one-way reveal. Monotonic paged lists ("show N more") use `usePagedVisible`
+  (`lib/usePagedVisible.ts`) + `ShowMoreButton` (same file), its count-labelled form.
 - **Filter chips:** the shared `Chip` (`ui/chip.tsx`) — pill, ink fill when active,
   recessed `surface-2` fill otherwise. Every "pick one/many" row uses it; never restyle
   a one-off.

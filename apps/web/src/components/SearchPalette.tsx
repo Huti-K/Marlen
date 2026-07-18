@@ -1,5 +1,5 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import type { AccountColor, ConnectedAccount, SearchResult } from "@trailin/shared";
+import type { SearchResult } from "@trailin/shared";
 import {
   Clock,
   CornerDownLeft,
@@ -17,9 +17,12 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { AccountDot } from "@/components/ui/account-dot";
 import { Chip } from "@/components/ui/chip";
+import { GroupLabel } from "@/components/ui/group-label";
+import { Highlight } from "@/components/ui/highlight";
 import { IconButton } from "@/components/ui/icon-button";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Kbd } from "@/components/ui/kbd";
+import { accountColor, accountName, useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { SHOWCASE_NAV, visibleNavItems } from "@/lib/nav";
@@ -73,35 +76,6 @@ function matchScore(text: string, query: string): number {
   const at = haystack.indexOf(query);
   if (at === -1) return 0;
   return /[\s\-–—:·/(]/.test(haystack[at - 1] ?? "") ? 60 : 40;
-}
-
-/**
- * Wraps every occurrence of `query` in `text`. A single character matches so
- * often that marking it up turns every snippet into confetti, so highlighting
- * only starts at two.
- */
-function Highlight({ text, query }: { text: string; query: string }) {
-  const trimmed = query.trim();
-  if (trimmed.length < 2) return <>{text}</>;
-  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const parts = text.split(new RegExp(`(${escaped})`, "ig"));
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? (
-          // Fragments hold no state and their order is fixed by position in the
-          // split string — a fresh `text`/`query` always replaces the whole list.
-          // biome-ignore lint/suspicious/noArrayIndexKey: stateless text fragments, order is inherent to the split
-          <mark key={i} className="palette-mark">
-            {part}
-          </mark>
-        ) : (
-          // biome-ignore lint/suspicious/noArrayIndexKey: stateless text fragments, order is inherent to the split
-          <React.Fragment key={i}>{part}</React.Fragment>
-        ),
-      )}
-    </>
-  );
 }
 
 function loadRecents(): string[] {
@@ -170,8 +144,8 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
   const [scope, setScope] = React.useState<Scope>("all");
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [recents, setRecents] = React.useState<string[]>([]);
-  const [accounts, setAccounts] = React.useState<ConnectedAccount[]>([]);
-  const [colors, setColors] = React.useState<AccountColor[]>([]);
+  // Lazily loaded on first open — only draft hits need it, for the account colour dot.
+  const { accounts, colors } = useAccountColors({ enabled: open });
   const listRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   /** Bumped on every dispatched search so a slow early response can't overwrite a newer one. */
@@ -212,18 +186,6 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
     setActiveIndex(0);
     setRecents(loadRecents());
   }, [open]);
-
-  // Lazily loaded once per session — only drafts need it, for the account colour dot.
-  React.useEffect(() => {
-    if (!open || accounts.length > 0) return;
-    void Promise.all([
-      api.pipedreamAccounts().catch(() => [] as ConnectedAccount[]),
-      api.accountColors().catch(() => ({ colors: [] as AccountColor[] })),
-    ]).then(([accts, colorRes]) => {
-      setAccounts(accts);
-      setColors(colorRes.colors);
-    });
-  }, [open, accounts.length]);
 
   React.useEffect(() => {
     if (!trimmed) {
@@ -448,9 +410,8 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
     setRecents([]);
   };
 
-  const colorFor = (accountId?: string) => colors.find((c) => c.accountId === accountId)?.hex;
-  const accountName = (accountId?: string) =>
-    accounts.find((a) => a.id === accountId)?.name ?? accountId ?? "";
+  const colorFor = (accountId?: string) => accountColor(colors, accountId);
+  const nameFor = (accountId?: string) => accountName(accounts, accountId);
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
@@ -562,9 +523,9 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
                   // biome-ignore lint/a11y/useSemanticElements: ARIA listbox option group, not a form fieldset
                   <div key={section.key} role="group" aria-label={section.label}>
                     <div className="sticky top-0 z-10 flex items-center justify-between bg-surface px-2.5 pb-1 pt-2.5">
-                      <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                      <GroupLabel as="p" size="sm" className="text-muted-foreground/70">
                         {section.label}
-                      </p>
+                      </GroupLabel>
                       {section.key === "recent" && (
                         <button
                           type="button"
@@ -599,7 +560,7 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
               <PalettePreview
                 entry={activeRow?.entry}
                 query={hitQuery}
-                accountName={accountName}
+                accountName={nameFor}
                 colorFor={colorFor}
                 language={i18n.language}
               />
@@ -742,7 +703,9 @@ function PreviewShell({
     <div className="flex h-full flex-col p-4">
       <div className="flex items-center gap-2 text-muted-foreground/70">
         <Icon className="h-4 w-4 shrink-0" />
-        <span className="text-2xs font-medium uppercase tracking-wide">{label}</span>
+        <GroupLabel as="span" size="sm" className="text-inherit">
+          {label}
+        </GroupLabel>
       </div>
       <h3 className="mt-3 line-clamp-2 text-sm font-semibold leading-snug text-foreground">
         {title}

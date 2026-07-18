@@ -19,25 +19,11 @@ export interface CardAccount {
   imgSrc?: string;
 }
 
-/** One message in an email search result list. */
-export interface EmailHit {
-  messageId: string;
-  threadId: string;
-  /** Connected account the hit lives in — set on cross-account searches so row actions can build an EmailRef. */
-  accountId?: string;
-  subject: string;
-  /** "Name <address>" or a bare address. */
-  from: string;
-  to: string[];
-  date: string;
-  /** Short plain-text excerpt of the body. */
-  snippet: string;
-}
-
 /**
- * One message inside a thread card. Every field beyond the display basics is
- * optional — cards persisted in agent conversations carry only what the
- * producing tool knew, so every consumer must tolerate absence.
+ * One message in a thread read live from a provider (email/read; the web
+ * app's thread-history view renders it). Every field beyond the display
+ * basics is optional — providers carry only what they know, so every
+ * consumer must tolerate absence.
  */
 export interface EmailThreadMessage {
   /** Provider message id. */
@@ -64,8 +50,6 @@ export interface DraftPreview {
   body: string;
   /** Deep link to review/send in the provider's web UI. */
   webUrl?: string;
-  /** The account's signature was appended to `body`. */
-  signatureAppended?: boolean;
   /** Files attached to the draft, for the human's pre-send review. */
   attachments?: { filename: string; size?: number }[];
 }
@@ -161,22 +145,6 @@ export interface AttachmentItem {
  * return nothing recognizable degrade to the plain tool badge.
  */
 export type AgentCard =
-  | {
-      kind: "email_hits";
-      account?: CardAccount;
-      /** The search the agent ran, echoed back as a header. */
-      query?: string;
-      hits: EmailHit[];
-      /** More matches existed than were returned. */
-      truncated?: boolean;
-    }
-  | {
-      kind: "email_thread";
-      account?: CardAccount;
-      threadId: string;
-      subject: string;
-      messages: EmailThreadMessage[];
-    }
   | { kind: "email_draft"; account?: CardAccount; draft: DraftPreview }
   | {
       kind: "attachments";

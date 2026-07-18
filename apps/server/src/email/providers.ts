@@ -17,7 +17,7 @@ import { createProviderRegistry } from "./registry.js";
  * registerProviders.ts — nothing else changes.
  *
  * `listDrafts` implementations are pure live fetches — no caching, no
- * refresh flag. Caching lives one layer up, in ./draftsService.ts, shared
+ * refresh flag. Caching lives one layer up, in ./draftsCache.ts, shared
  * across every provider instead of duplicated per provider.
  */
 
@@ -38,9 +38,8 @@ export interface CreateDraftInput {
   cc?: string[];
   bcc?: string[];
   subject: string;
+  /** Plain-text body; providers save it as a text/plain MIME part. */
   body: string;
-  /** MIME format of body. Agent prose is converted to HTML when a rich signature is present. */
-  bodyFormat?: "text" | "html";
   /** Attach the draft to an existing conversation, where the provider supports it. */
   threadId?: string;
   /** Files to attach, already resolved to bytes by the caller. */
@@ -53,17 +52,21 @@ export interface UpdateDraftPatch {
   subject?: string;
 }
 
+/** How many drafts one listDrafts call returns at most, across every provider. */
+export const DRAFTS_LIST_LIMIT = 15;
+
 export interface SendDraftResult {
   /**
    * Provider id of the message that was sent, when the provider returns it
    * (Gmail does; Graph's send returns an empty 202, so Outlook omits it and
-   * the mirror's sync sees the sent message later instead).
+   * the learn loop's matcher pairs the send up from the provider's sent
+   * mail later instead).
    */
   sentMessageId?: string;
 }
 
 export interface DraftProvider {
-  listDrafts(account: ConnectedAccount, limit?: number): Promise<EmailDraft[]>;
+  listDrafts(account: ConnectedAccount): Promise<EmailDraft[]>;
   getDraftDetail(
     account: ConnectedAccount,
     draftId: string,

@@ -3,11 +3,23 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
+import Fastify, {
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
+// Populate the provider registries (drafts, attachments, mail read) once for
+// the whole process — routes, agent tools, and background loops all resolve
+// providers from them, and this is the single place the register modules are
+// pulled in.
+import "./email/registerProviders.js";
+import "./email/registerAttachmentProviders.js";
+import "./email/read/registerReadProviders.js";
 import { closeDb } from "./db/index.js";
 import { env } from "./env.js";
 import { type ErrorResponse, registerErrorHandler } from "./errors.js";
-import { isAllowedHost } from "./hostGuard.js";
+import { isAllowedHost, isLoopbackOrigin } from "./hostGuard.js";
 import { logger } from "./logger.js";
 import { accountRoutes } from "./routes/accounts.js";
 import { automationRoutes } from "./routes/automations.js";
@@ -25,6 +37,8 @@ import { onOfficeRoutes } from "./routes/onoffice.js";
 import { pipedreamRoutes } from "./routes/pipedream.js";
 import { searchRoutes } from "./routes/search.js";
 import { settingsRoutes } from "./routes/settings.js";
+import { skillRoutes } from "./routes/skills.js";
+import { whatsAppRoutes } from "./routes/whatsapp.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -57,10 +71,11 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // No auth on this API (local-first, single-user), so CORS is the only
   // thing stopping an arbitrary website from reading/mutating it via the
-  // browser — reflect only same-host origins (any port), never `true`.
+  // browser — reflect only loopback origins (any port; the same set the host
+  // guard treats as loopback), never `true`.
   await app.register(cors, {
     origin: (origin, cb) => {
-      cb(null, !origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+      cb(null, !origin || isLoopbackOrigin(origin));
     },
   });
 
@@ -81,9 +96,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(llmRoutes);
   await app.register(pipedreamRoutes);
   await app.register(onOfficeRoutes);
+  await app.register(whatsAppRoutes);
   await app.register(settingsRoutes);
   await app.register(draftRoutes);
   await app.register(memoryRoutes);
+  await app.register(skillRoutes);
   await app.register(leadsRoutes);
   await app.register(learnRoutes);
   await app.register(libraryRoutes);
@@ -92,26 +109,26 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(searchRoutes);
   await app.register(backupRoutes);
 
+  // 404s answer in the API's `{ error }` shape instead of Fastify's default
+  // `{ statusCode, error, message }`.
+  const apiNotFound = (req: FastifyRequest, reply: FastifyReply): void => {
+    const body: ErrorResponse = { error: "not found", requestId: String(req.id) };
+    reply.code(404).send(body);
+  };
+
   // When the web app has been built, serve it from the same process so a
-  // single `pnpm start` works on a desktop machine or a host.
+  // single `pnpm start` works on a desktop machine or a host; anything that
+  // isn't an API route falls through to the SPA. In dev the web app is
+  // served by Vite instead.
   const webDist = env.webDistPath ?? resolve(here, "../../web/dist");
   if (existsSync(webDist)) {
     await app.register(fastifyStatic, { root: webDist });
     app.setNotFoundHandler((req, reply) => {
-      if (req.raw.url?.startsWith("/api/")) {
-        const body: ErrorResponse = { error: "not found", requestId: String(req.id) };
-        reply.code(404).send(body);
-        return;
-      }
-      reply.sendFile("index.html");
+      if (req.raw.url?.startsWith("/api/")) apiNotFound(req, reply);
+      else reply.sendFile("index.html");
     });
   } else {
-    // Dev (web is served by Vite): still answer 404s in the API's `{ error }`
-    // shape instead of Fastify's default `{ statusCode, error, message }`.
-    app.setNotFoundHandler((req, reply) => {
-      const body: ErrorResponse = { error: "not found", requestId: String(req.id) };
-      reply.code(404).send(body);
-    });
+    app.setNotFoundHandler(apiNotFound);
   }
 
   return app;

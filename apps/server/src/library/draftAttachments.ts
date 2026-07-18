@@ -1,9 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
-import { basename, extname, resolve, sep } from "node:path";
+import { basename, extname } from "node:path";
 import { formatFileSize } from "@trailin/shared";
 import type { DraftAttachment } from "../email/providers.js";
 import { mimeForExt } from "../routes/fileResponse.js";
-import { getLibraryDir } from "./ingest.js";
+import { getLibraryDir, resolveLibraryPath } from "./ingest.js";
 import * as store from "./store.js";
 
 /**
@@ -48,8 +48,8 @@ async function resolveOne(id: string, libraryDir: string): Promise<ResolvedFile>
   // doc.path is written by the library's own scanner, but confine it anyway:
   // the resolved file must stay under the library folder, so a row can never
   // point an attachment at an arbitrary file on disk.
-  const absPath = resolve(libraryDir, doc.path);
-  if (!absPath.startsWith(libraryDir + sep)) {
+  const absPath = resolveLibraryPath(libraryDir, doc.path);
+  if (!absPath) {
     throw new Error(
       `Library document "${doc.title}" points outside the library folder and cannot be attached.`,
     );

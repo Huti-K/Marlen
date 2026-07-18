@@ -1,13 +1,5 @@
 import type { EmailDraft } from "@trailin/shared";
-import {
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  Loader2,
-  Send,
-  Sparkles,
-  Trash2,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Send, Sparkles, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { ThreadHistory } from "@/components/ThreadHistory";
@@ -17,11 +9,12 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LoadingRow } from "@/components/ui/feedback";
 import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
+import { OpenExternalButton } from "@/components/ui/open-external-button";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { dispatchTrailin } from "@/lib/trailinEvents";
-import { errorMessage, openExternal } from "@/lib/utils";
+import { errorMessage } from "@/lib/utils";
 
 /** One action pending confirmation in the shared armed-confirm dialog below. */
 type PendingAction = "discard" | "send" | null;
@@ -199,15 +192,7 @@ export function DraftRow({
           </div>
         </button>
         <div className="flex items-center shrink-0">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => openExternal(draft.webUrl)}
-            title={t("drafts.open")}
-            aria-label={t("drafts.open")}
-          >
-            <ExternalLink className="h-4 w-4" />
-          </Button>
+          <OpenExternalButton url={draft.webUrl} size="icon-sm" label={t("drafts.open")} />
           <Button
             variant="ghost"
             size="icon-sm"
@@ -237,28 +222,22 @@ export function DraftRow({
             size="icon-sm"
             onClick={() => setPendingAction("send")}
             disabled={busy}
+            loading={busy && pendingAction === "send"}
             title={t("drafts.send")}
             aria-label={t("drafts.send")}
           >
-            {busy && pendingAction === "send" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            <Send className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost-danger"
             size="icon-sm"
             onClick={() => setPendingAction("discard")}
             disabled={busy}
+            loading={busy && pendingAction === "discard"}
             title={t("drafts.discard")}
             aria-label={t("drafts.discard")}
           >
-            {busy && pendingAction === "discard" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -313,8 +292,7 @@ export function DraftRow({
                     >
                       {t("common.cancel")}
                     </Button>
-                    <Button size="sm" onClick={() => void save()} disabled={saving || busy}>
-                      {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    <Button size="sm" onClick={() => void save()} disabled={busy} loading={saving}>
                       {saving ? t("common.saving") : t("drafts.save")}
                     </Button>
                   </div>

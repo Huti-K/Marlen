@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import { createMemory, deleteMemory, listMemories, updateMemory } from "../db/memories.js";
 import { badRequest, notFound } from "../errors.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 
 const memoryBody = Type.Object({
   content: Type.String(),

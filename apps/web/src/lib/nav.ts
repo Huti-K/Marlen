@@ -11,7 +11,7 @@ import {
 
 export type View = "home" | "chat" | "leads" | "automations" | "knowledge" | "settings";
 
-export interface NavItem {
+interface NavItem {
   id: View;
   path: string;
   icon: LucideIcon;

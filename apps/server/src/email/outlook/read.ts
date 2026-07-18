@@ -1,9 +1,15 @@
-import { PipedreamError } from "@pipedream/sdk";
 import type { ConnectedAccount, EmailThreadMessage } from "@trailin/shared";
+import { upstreamStatusCode } from "../../errors.js";
 import { proxyRequest } from "../../pipedream/connect.js";
 import type { MailReadProvider, SentMessage, ThreadDetail } from "../read/readProviders.js";
 import { stripHtml } from "../textUtils.js";
-import { formatRecipient, formatRecipients, GRAPH_API, type GraphRecipient } from "./message.js";
+import {
+  fetchConversationMessages,
+  formatRecipient,
+  formatRecipients,
+  GRAPH_API,
+  type GraphRecipient,
+} from "./message.js";
 
 /**
  * Outlook MailReadProvider: live sent-mail and conversation reads via
@@ -74,6 +80,8 @@ async function listSentSince(
   const limit = opts?.limit ?? DEFAULT_LIMIT;
   const messages: SentMessage[] = [];
 
+  // Queried newest-first so the cap keeps the newest `limit` messages (the
+  // listSentSince contract), then reversed into the oldest-first return order.
   let page = (await proxyRequest(
     account.id,
     "get",
@@ -82,7 +90,7 @@ async function listSentSince(
       params: {
         $select: SENT_SELECT,
         $filter: `sentDateTime ge ${sinceIso}`,
-        $orderby: "sentDateTime asc",
+        $orderby: "sentDateTime desc",
         $top: String(Math.min(limit, DEFAULT_LIMIT)),
       },
       signal: opts?.signal,
@@ -92,10 +100,10 @@ async function listSentSince(
   for (;;) {
     for (const message of page.value ?? []) {
       messages.push(toSentMessage(message));
-      if (messages.length >= limit) return messages;
+      if (messages.length >= limit) return messages.reverse();
     }
     const next = page["@odata.nextLink"];
-    if (!next) return messages;
+    if (!next) return messages.reverse();
     page = (await proxyRequest(account.id, "get", next, {
       signal: opts?.signal,
     })) as GraphListResponse;
@@ -138,7 +146,7 @@ async function getMessageBody(
       signal,
     })) as GraphSentMessage;
   } catch (error) {
-    if (error instanceof PipedreamError && error.statusCode === 404) return null;
+    if (upstreamStatusCode(error) === 404) return null;
     throw error;
   }
   return bodyTextOf(message);
@@ -160,24 +168,13 @@ async function getThread(
   providerThreadId: string,
   signal?: AbortSignal,
 ): Promise<ThreadDetail | null> {
-  // OData string literals escape a quote by doubling it.
-  const conversationId = providerThreadId.replace(/'/g, "''");
-  const messages: GraphThreadMessage[] = [];
-
-  let page = (await proxyRequest(account.id, "get", `${GRAPH_API}/messages`, {
-    params: {
-      $select: THREAD_SELECT,
-      $filter: `conversationId eq '${conversationId}'`,
-      $top: String(THREAD_LIMIT),
-    },
+  const messages = await fetchConversationMessages<GraphThreadMessage>(
+    account,
+    providerThreadId,
+    THREAD_SELECT,
+    THREAD_LIMIT,
     signal,
-  })) as GraphThreadListResponse;
-  for (;;) {
-    messages.push(...(page.value ?? []));
-    const next = page["@odata.nextLink"];
-    if (!next || messages.length >= THREAD_LIMIT) break;
-    page = (await proxyRequest(account.id, "get", next, { signal })) as GraphThreadListResponse;
-  }
+  );
 
   // Unsent drafts sit inside the conversation they answer — the view shows
   // only what was actually exchanged. isDraft is culled here rather than in

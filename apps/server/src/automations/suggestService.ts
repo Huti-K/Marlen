@@ -1,5 +1,4 @@
 import { and, desc, eq, gte } from "drizzle-orm";
-import cron, { type ScheduledTask } from "node-cron";
 import {
   createSuggestion,
   listAllSuggestions,
@@ -9,6 +8,7 @@ import { db, schema } from "../db/index.js";
 import { getSetting, getTimezoneSetting, setSetting } from "../db/settings.js";
 import { resolveCheapModel } from "../llm/registry.js";
 import { moduleLogger } from "../logger.js";
+import { NightlyJob } from "../utils/jobs.js";
 import { isValidCron } from "./scheduler.js";
 import { proposeAutomations, type SuggestedAutomation } from "./suggestLLM.js";
 
@@ -190,32 +190,25 @@ export async function runSuggestSweep(deps: SuggestSweepDeps = {}): Promise<Sugg
   return { ran: true, proposed: proposals.length, stored };
 }
 
-let task: ScheduledTask | null = null;
-
-/** Same never-throws wrapper shape as the learning sweep's scheduled runs. */
-async function sweepSafely(reason: "boot" | "scheduled"): Promise<void> {
-  try {
+const nightly = new NightlyJob({
+  name: "suggest",
+  cron: NIGHTLY_CRON,
+  run: async () => {
     await runSuggestSweep();
-  } catch (error) {
-    log.warn({ err: error, reason }, "suggestion sweep failed — will retry on the next trigger");
-  }
-}
+  },
+});
 
 export async function startNightlySuggest(): Promise<void> {
-  if (task) return;
-  const timezone = (await getTimezoneSetting()) ?? undefined;
-  task = cron.schedule(
-    NIGHTLY_CRON,
-    () => void sweepSafely("scheduled"),
-    timezone ? { timezone } : undefined,
-  );
-  void sweepSafely("boot");
+  nightly.start((await getTimezoneSetting()) ?? undefined);
 }
 
-/** Destroy the nightly cron task; a sweep already running finishes on its own. */
+/** Rebuild the nightly cron against the current timezone setting (see
+ *  routes/settings.ts's timezone route); a no-op while the job is stopped. */
+export async function rescheduleNightlySuggest(): Promise<void> {
+  nightly.reschedule((await getTimezoneSetting()) ?? undefined);
+}
+
+/** Stop the nightly cron; a sweep already running finishes on its own. */
 export function stopNightlySuggest(): void {
-  if (task) {
-    void task.destroy();
-    task = null;
-  }
+  nightly.stop();
 }

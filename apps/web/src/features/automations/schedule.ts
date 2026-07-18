@@ -7,7 +7,7 @@ import type { useTranslation } from "react-i18next";
  * express stays raw cron behind the "Advanced" toggle.
  */
 
-type ScheduleFrequency = "daily" | "weekdays" | "custom" | "date";
+type ScheduleFrequency = "daily" | "weekdays" | "custom" | "date" | "manual";
 
 export interface SchedulePreset {
   frequency: ScheduleFrequency;
@@ -51,11 +51,16 @@ export function buildCron({ frequency, time, weekdays, month, day }: SchedulePre
     }
     case "date":
       return `${minute} ${hour} ${day} ${month} *`;
+    // Manual-only: the server treats an empty schedule as "never fires on its
+    // own" — the automation runs only via its "Run now" button.
+    case "manual":
+      return "";
   }
 }
 
 /** Reverse of buildCron, for exactly the shapes it emits; anything else → null. */
 export function parseCron(expr: string): SchedulePreset | null {
+  if (expr.trim() === "") return { ...DEFAULT_PRESET, frequency: "manual" };
   const parts = expr.trim().split(/\s+/);
   if (parts.length !== 5) return null;
   const [m = "", h = "", dom = "", month = "", dow = ""] = parts;
@@ -138,5 +143,7 @@ export function scheduleLabel(
         date: monthDayLabel(preset.month, preset.day, locale),
         time: preset.time,
       });
+    case "manual":
+      return t("automations.scheduleLabel.manual");
   }
 }

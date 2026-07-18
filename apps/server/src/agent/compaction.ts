@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { moduleLogger } from "../logger.js";
+import { prompts } from "../prompts.js";
 import { runOneShot } from "./oneShot.js";
 
 const defaultLog = moduleLogger("compaction");
@@ -40,14 +41,6 @@ const DROPPED_NOTE =
 /** Marks the replacement message so a rendered transcript reads as a summary, not a real turn. */
 const SUMMARY_PREFIX =
   "[Summary of the earlier conversation — older turns were compacted to fit the context window:]";
-
-const SYSTEM_PROMPT = `You are compacting the earlier part of an email-assistant conversation so a
-later turn can continue without the full transcript. Produce a dense factual brief that preserves
-everything a follow-up turn might need: who and what was discussed, decisions and preferences the
-user stated, open tasks, and every concrete identifier mentioned — email addresses, draft ids,
-thread ids, message ids, document titles, dates.
-
-Output ONLY the brief: no meta-commentary, no markdown decoration, no restating these instructions.`;
 
 export interface CompactionLogger {
   info(fields: Record<string, unknown>, message: string): void;
@@ -116,7 +109,7 @@ async function summarizePrefix(prefix: AgentMessage[], signal?: AbortSignal): Pr
     serialized = `${DROPPED_NOTE}\n\n${serialized.slice(serialized.length - MAX_SERIALIZED_CHARS)}`;
   }
 
-  const raw = await runOneShot({ systemPrompt: SYSTEM_PROMPT, prompt: serialized, signal });
+  const raw = await runOneShot({ systemPrompt: prompts.compaction, prompt: serialized, signal });
   return raw.trim();
 }
 

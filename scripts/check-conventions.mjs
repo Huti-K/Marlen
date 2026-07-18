@@ -15,15 +15,6 @@ import { readFileSync } from "node:fs";
 
 const MAX_LINES = 800;
 
-// Files that predate the line cap. Shrink this list by splitting them —
-// never add to it.
-const GRANDFATHERED_OVER_LIMIT = new Set([
-  "apps/web/src/components/SearchPalette.tsx",
-  "apps/web/src/features/chat/ChatPanel.tsx",
-  "apps/web/src/features/knowledge/KnowledgePanel.tsx",
-  "apps/web/src/features/showcase/ShowcasePanel.tsx",
-]);
-
 // Seed/fixture data is exempt from the line cap.
 const FIXTURE_FILE = /(^|\/)(fixtures?|samples?|seed)[^/]*\.(ts|tsx)$/;
 
@@ -40,7 +31,6 @@ const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclud
   .filter((f) => SOURCE_FILE.test(f));
 
 const errors = [];
-const warnings = [];
 
 for (const file of files) {
   let text;
@@ -56,13 +46,7 @@ for (const file of files) {
 
   const lineCount = text.split("\n").length;
   if (lineCount > MAX_LINES && !FIXTURE_FILE.test(file)) {
-    if (GRANDFATHERED_OVER_LIMIT.has(file)) {
-      warnings.push(`${file}: ${lineCount} lines (grandfathered — split by concern when touched)`);
-    } else {
-      errors.push(
-        `${file}: ${lineCount} lines exceeds the ${MAX_LINES}-line cap — split by concern`,
-      );
-    }
+    errors.push(`${file}: ${lineCount} lines exceeds the ${MAX_LINES}-line cap — split by concern`);
   }
 
   const basename = file.slice(file.lastIndexOf("/") + 1);
@@ -77,7 +61,6 @@ for (const file of files) {
   }
 }
 
-for (const w of warnings) console.warn(`warn  ${w}`);
 for (const e of errors) console.error(`error ${e}`);
 
 if (errors.length > 0) {

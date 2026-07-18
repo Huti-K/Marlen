@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { LibraryDocument } from "@trailin/shared";
 import { eq } from "drizzle-orm";
-import { db, lazyStatement, schema, sqlite } from "../db/index.js";
+import { db, lazyStatement, lazyTransaction, schema } from "../db/index.js";
 import { buildFtsMatch, upsertSql } from "../db/sql.js";
 
 /**
@@ -61,25 +61,23 @@ const selectChunksStmt = lazyStatement(
 );
 
 /** Write a document and its chunks atomically, keeping the id stable across re-indexes. */
-export const replaceDocument = sqlite.transaction(
-  (doc: DocumentInput, chunks: string[]): string => {
-    const existing = selectIdByPath().get(doc.path) as { id: string } | undefined;
-    const id = existing?.id ?? randomUUID();
-    upsertDocumentStmt().run({
-      id,
-      ...doc,
-      chunkCount: chunks.length,
-      indexedAt: new Date().toISOString(),
-    });
-    deleteChunksStmt().run(id);
-    chunks.forEach((content, seq) => {
-      insertChunkStmt().run(content, id, seq);
-    });
-    return id;
-  },
-);
+export const replaceDocument = lazyTransaction((doc: DocumentInput, chunks: string[]): string => {
+  const existing = selectIdByPath().get(doc.path) as { id: string } | undefined;
+  const id = existing?.id ?? randomUUID();
+  upsertDocumentStmt().run({
+    id,
+    ...doc,
+    chunkCount: chunks.length,
+    indexedAt: new Date().toISOString(),
+  });
+  deleteChunksStmt().run(id);
+  chunks.forEach((content, seq) => {
+    insertChunkStmt().run(content, id, seq);
+  });
+  return id;
+});
 
-export const removeDocument = sqlite.transaction((id: string): void => {
+export const removeDocument = lazyTransaction((id: string): void => {
   deleteChunksStmt().run(id);
   deleteDocumentStmt().run(id);
 });

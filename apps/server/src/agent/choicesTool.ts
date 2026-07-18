@@ -2,9 +2,9 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { ChoiceOption, ConnectedAccount, EmailRef } from "@trailin/shared";
 import { listAccounts } from "../pipedream/connect.js";
-import { isNonEmptyString } from "../util.js";
+import { isNonEmptyString } from "../utils/util.js";
 import { findAccount } from "./accounts.js";
-import { buildChoicesCard, CARD_KINDS, coerceChoiceOption } from "./card/kinds.js";
+import { buildChoicesCard, cardNote, coerceChoiceOption } from "./cards.js";
 import { textResult, tool } from "./toolkit.js";
 
 /**
@@ -19,6 +19,12 @@ import { textResult, tool } from "./toolkit.js";
 
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 6;
+
+const CHOICES_CARD_NOTE = cardNote(
+  "these choices",
+  "End your turn with a short question restating what you need — the user's pick arrives as " +
+    "their next message. Do not act until then.",
+);
 
 /**
  * Builds the option's EmailRef when it names a thread: a bare, actionable
@@ -113,7 +119,7 @@ export const presentChoicesTool: AgentTool = tool({
     const card = buildChoicesCard(question, options);
     const labels = options.map((o) => o.label).join(", ");
     return textResult(
-      `Presented ${options.length} choices to the user: ${labels}.${CARD_KINDS.choices.note}`,
+      `Presented ${options.length} choices to the user: ${labels}.${CHOICES_CARD_NOTE}`,
       card,
     );
   },

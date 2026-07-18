@@ -11,12 +11,12 @@ import { Button } from "@/components/ui/button";
 import { LoadingRow, Notice } from "@/components/ui/feedback";
 import { LinkButton } from "@/components/ui/link-button";
 import { SectionHeader } from "@/components/ui/section-header";
+import { StepCircle } from "@/components/ui/step-circle";
 import { Accounts } from "@/features/connections/Accounts";
 import { PipedreamWizard } from "@/features/connections/ConnectionsPanel";
 import { Providers } from "@/features/settings/Providers";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn } from "@/lib/utils";
 
 /**
  * If the freshly signed-in provider isn't the active one, silently make it
@@ -199,14 +199,9 @@ function Step({
       style={{ animationDelay: `${(index - 1) * 90}ms` }}
     >
       <div className="flex items-start gap-3">
-        <span
-          className={cn(
-            "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-xs font-medium tabular-nums",
-            done ? "tint-success" : "tint-neutral",
-          )}
-        >
+        <StepCircle tone={done ? "tint-success" : "tint-neutral"} className="mt-0.5">
           {done ? <Check className="h-3 w-3" /> : index}
-        </span>
+        </StepCircle>
         <SectionHeader title={title} description={description} />
       </div>
       <div className="sm:pl-8">{children}</div>

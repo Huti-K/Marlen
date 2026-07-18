@@ -14,22 +14,22 @@ import {
   type MailReadProvider,
   type SentMessage,
 } from "../read/readProviders.js";
-// Side-effect import: populates the MailReadProvider registry.
-import "../read/registerReadProviders.js";
 import { normalizeAddressSet, normalizeSubject, sameAddressSet } from "./addressSubject.js";
 import { resolveTiebreak } from "./matchLLM.js";
 
 const log = moduleLogger("learn-match");
 
-/** Standalone drafts only match sent mail within this window of their creation. */
+/** Standalone drafts only match sent mail within this window of their creation.
+ *  Doubles as the sweep's anchor floor — see sentSinceAnchor. */
 const STANDALONE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * One sweep's worth of the draft-vs-sent matcher: for every open agent_drafts
  * snapshot, look for the mail it turned into. Candidates come live from the
  * account's MailReadProvider — one listSentSince call per account per sweep,
- * anchored at that account's oldest open draft; accounts that are gone, have
- * no read driver, or fail the fetch are skipped without aborting the sweep.
+ * anchored at that account's oldest open draft (clamped, see
+ * sentSinceAnchor); accounts that are gone, have no read driver, or fail the
+ * fetch are skipped without aborting the sweep.
  *
  * Deterministic rules, in order:
  *  - Reply drafts (snapshot has a threadId): any candidate sharing that
@@ -88,12 +88,20 @@ function standaloneMatches(
   });
 }
 
-/** Oldest createdAt in the group — the listSentSince anchor covering every draft at once. */
-function oldestCreatedAt(drafts: OpenDraftSnapshot[]): string {
-  return drafts.reduce(
-    (oldest, draft) => (draft.createdAt < oldest ? draft.createdAt : oldest),
+/**
+ * The listSentSince anchor covering every draft in the group: the oldest
+ * createdAt, clamped to STANDALONE_WINDOW_MS ago. A stale draft that never
+ * matches must not drag the anchor arbitrarily far back — listSentSince caps
+ * its result, and an over-wide range spends that cap on mail no draft can
+ * match anymore.
+ */
+function sentSinceAnchor(drafts: OpenDraftSnapshot[]): string {
+  const oldest = drafts.reduce(
+    (min, draft) => (draft.createdAt < min ? draft.createdAt : min),
     drafts[0]?.createdAt ?? new Date().toISOString(),
   );
+  const floor = new Date(Date.now() - STANDALONE_WINDOW_MS).toISOString();
+  return oldest > floor ? oldest : floor;
 }
 
 async function matchDraft(
@@ -190,7 +198,7 @@ export async function runMatchSweep(deps: MatchSweepDeps = {}): Promise<MatchSwe
 
     let candidates: SentMessage[];
     try {
-      candidates = await provider.listSentSince(account, oldestCreatedAt(drafts));
+      candidates = await provider.listSentSince(account, sentSinceAnchor(drafts));
     } catch (error) {
       log.warn(
         { err: error, accountId, app: account.app },

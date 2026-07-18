@@ -3,12 +3,11 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 // On-state colour by tone. `accent` is the default (the one spot of colour);
-// `warning`/`danger` mark a switch whose on-state arms something risky (e.g. the
+// `warning` marks a switch whose on-state arms something risky (e.g. the
 // agent gaining permission to send or delete). Off is always the muted track.
 const CHECKED_TONE = {
   accent: "data-[state=checked]:bg-accent",
   warning: "data-[state=checked]:bg-warning",
-  danger: "data-[state=checked]:bg-destructive",
 } as const;
 
 export interface SwitchProps extends React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root> {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNotNull, isNull, max } from "drizzle-orm";
-import { db, schema } from "./index.js";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { db, lazyTransaction, schema } from "./index.js";
 
 /**
  * Snapshot store for agent-written drafts (agent_drafts +
@@ -31,9 +31,7 @@ export interface DraftSnapshotInput {
   to: string[];
   cc?: string[];
   bcc?: string[];
-  /** The account's configured signature at compose time; null when none. */
-  signature: string | null;
-  /** The body exactly as written to the provider (post-humanize, signature included). */
+  /** The body exactly as written to the provider (post-humanize). */
   body: string;
 }
 
@@ -51,33 +49,78 @@ async function findByProviderId(accountId: string, providerDraftId: string) {
   return rows[0];
 }
 
-/** Insert the snapshot row and its version 1 (author "agent"). */
-export async function createDraftSnapshot(input: DraftSnapshotInput): Promise<void> {
+// One transaction for the snapshot row and its version 1, so a failure
+// between the two inserts can never leave a draft without any version row.
+const insertSnapshotRows = lazyTransaction((input: DraftSnapshotInput): void => {
   const now = new Date().toISOString();
   const id = randomUUID();
-  await db.insert(schema.agentDrafts).values({
-    id,
-    accountId: input.accountId,
-    providerDraftId: input.providerDraftId,
-    providerMessageId: input.providerMessageId ?? null,
-    threadId: input.threadId ?? null,
-    subject: input.subject,
-    toAddrs: JSON.stringify(input.to),
-    ccAddrs: JSON.stringify(input.cc ?? []),
-    bccAddrs: JSON.stringify(input.bcc ?? []),
-    signature: input.signature,
-    createdAt: now,
-    updatedAt: now,
-  });
-  await db.insert(schema.agentDraftVersions).values({
-    draftId: id,
-    version: 1,
-    author: "agent",
-    subject: input.subject,
-    body: input.body,
-    createdAt: now,
-  });
+  db.insert(schema.agentDrafts)
+    .values({
+      id,
+      accountId: input.accountId,
+      providerDraftId: input.providerDraftId,
+      providerMessageId: input.providerMessageId ?? null,
+      threadId: input.threadId ?? null,
+      subject: input.subject,
+      toAddrs: JSON.stringify(input.to),
+      ccAddrs: JSON.stringify(input.cc ?? []),
+      bccAddrs: JSON.stringify(input.bcc ?? []),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+  db.insert(schema.agentDraftVersions)
+    .values({
+      draftId: id,
+      version: 1,
+      author: "agent",
+      subject: input.subject,
+      body: input.body,
+      createdAt: now,
+    })
+    .run();
+});
+
+/** Insert the snapshot row and its version 1 (author "agent"). */
+export async function createDraftSnapshot(input: DraftSnapshotInput): Promise<void> {
+  insertSnapshotRows(input);
 }
+
+// One transaction per appended version: the latest row is read and the next
+// version number computed inside it, so concurrent appends can never collide
+// on the (draft_id, version) primary key or lose the carry-forward baseline.
+const insertVersionRow = lazyTransaction(
+  (
+    draftId: string,
+    fallbackSubject: string,
+    author: DraftVersionAuthor,
+    patch: { body?: string; subject?: string },
+  ): void => {
+    const current = db
+      .select()
+      .from(schema.agentDraftVersions)
+      .where(eq(schema.agentDraftVersions.draftId, draftId))
+      .orderBy(desc(schema.agentDraftVersions.version))
+      .limit(1)
+      .get();
+
+    const now = new Date().toISOString();
+    db.insert(schema.agentDraftVersions)
+      .values({
+        draftId,
+        version: (current?.version ?? 0) + 1,
+        author,
+        subject: patch.subject ?? current?.subject ?? fallbackSubject,
+        body: patch.body ?? current?.body ?? "",
+        createdAt: now,
+      })
+      .run();
+    db.update(schema.agentDrafts)
+      .set({ updatedAt: now })
+      .where(eq(schema.agentDrafts.id, draftId))
+      .run();
+  },
+);
 
 /**
  * Append one version row for an in-app write (UI edit or agent rewrite).
@@ -92,35 +135,7 @@ export async function appendDraftVersion(
 ): Promise<boolean> {
   const row = await findByProviderId(accountId, providerDraftId);
   if (!row) return false;
-
-  const [latest] = await db
-    .select({ version: max(schema.agentDraftVersions.version) })
-    .from(schema.agentDraftVersions)
-    .where(eq(schema.agentDraftVersions.draftId, row.id));
-  const latestVersion = latest?.version ?? 0;
-  const [current] = await db
-    .select()
-    .from(schema.agentDraftVersions)
-    .where(
-      and(
-        eq(schema.agentDraftVersions.draftId, row.id),
-        eq(schema.agentDraftVersions.version, latestVersion),
-      ),
-    );
-
-  const now = new Date().toISOString();
-  await db.insert(schema.agentDraftVersions).values({
-    draftId: row.id,
-    version: latestVersion + 1,
-    author,
-    subject: patch.subject ?? current?.subject ?? row.subject,
-    body: patch.body ?? current?.body ?? "",
-    createdAt: now,
-  });
-  await db
-    .update(schema.agentDrafts)
-    .set({ updatedAt: now })
-    .where(eq(schema.agentDrafts.id, row.id));
+  insertVersionRow(row.id, row.subject, author, patch);
   return true;
 }
 
@@ -216,8 +231,8 @@ export async function getDraftConversationLinks(
  * Reads and mark-helpers for the draft-vs-sent learning loop
  * (email/learn/matcher.ts, email/learn/extractor.ts). The matcher sweeps
  * every open snapshot looking for the mail it turned into; the extractor
- * sweeps every sent-but-unlearned snapshot to diff against what the mirror
- * says was actually sent.
+ * sweeps every sent-but-unlearned snapshot to diff against the sent message
+ * as fetched live from the provider.
  */
 
 export interface OpenDraftSnapshot {
@@ -257,7 +272,6 @@ export interface SentDraftSnapshot {
   accountId: string;
   providerDraftId: string;
   sentMessageId: string;
-  signature: string | null;
 }
 
 /** Sent snapshots the nightly extraction sweep hasn't consumed yet. */
@@ -267,7 +281,6 @@ export async function listUnlearnedSentDrafts(): Promise<SentDraftSnapshot[]> {
       accountId: schema.agentDrafts.accountId,
       providerDraftId: schema.agentDrafts.providerDraftId,
       sentMessageId: schema.agentDrafts.sentMessageId,
-      signature: schema.agentDrafts.signature,
     })
     .from(schema.agentDrafts)
     .where(
@@ -283,7 +296,6 @@ export async function listUnlearnedSentDrafts(): Promise<SentDraftSnapshot[]> {
       accountId: row.accountId,
       providerDraftId: row.providerDraftId,
       sentMessageId: row.sentMessageId as string,
-      signature: row.signature,
     }));
 }
 

@@ -1,15 +1,20 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type * as React from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
-/** Quiet text disclosure for list rows — chevron + label, no fill. */
+/**
+ * Quiet text disclosure for list rows — chevron + label, no fill. With `open`
+ * it is a two-way toggle (chevron flips, `aria-expanded` announced); without
+ * it, a one-way reveal affordance (chevron stays down, no expanded state).
+ */
 export function DisclosureToggle({
   open,
   onToggle,
   className,
   children,
 }: {
-  open: boolean;
+  open?: boolean;
   onToggle: () => void;
   className?: string;
   children: React.ReactNode;
@@ -32,4 +37,10 @@ export function DisclosureToggle({
       {children}
     </button>
   );
+}
+
+/** The reveal-more affordance under a capped list — pairs with `usePagedVisible`. */
+export function ShowMoreButton({ count, onClick }: { count: number; onClick: () => void }) {
+  const { t } = useTranslation();
+  return <DisclosureToggle onToggle={onClick}>{t("library.showMore", { count })}</DisclosureToggle>;
 }

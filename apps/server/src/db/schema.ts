@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const conversations = sqliteTable("conversations", {
   id: text("id").primaryKey(),
@@ -42,37 +42,38 @@ export const messages = sqliteTable("messages", {
  * rows exist for the draft-vs-sent learning loop and for navigation
  * (conversation_id lets the Drafts list reopen the chat that wrote a draft).
  * Body text lives in agent_draft_versions; the row keeps identity, recipients
- * as at creation, the account signature at compose time (so diffs can strip
- * it), and the draft's fate.
+ * as at creation, and the draft's fate.
  */
-export const agentDrafts = sqliteTable("agent_drafts", {
-  id: text("id").primaryKey(),
-  accountId: text("account_id").notNull(),
-  providerDraftId: text("provider_draft_id").notNull(),
-  providerMessageId: text("provider_message_id"),
-  /** Provider thread id the draft replies to; null for standalone drafts. */
-  threadId: text("thread_id"),
-  /** Chat/automation conversation whose turn created the draft; null until linked. */
-  conversationId: text("conversation_id"),
-  subject: text("subject").notNull().default(""),
-  /** JSON-encoded string[]. */
-  toAddrs: text("to_addrs").notNull().default("[]"),
-  /** JSON-encoded string[]. */
-  ccAddrs: text("cc_addrs").notNull().default("[]"),
-  /** JSON-encoded string[]. */
-  bccAddrs: text("bcc_addrs").notNull().default("[]"),
-  /** The account's configured signature at compose time; null when none. */
-  signature: text("signature"),
-  status: text("status", { enum: ["open", "sent", "discarded"] })
-    .notNull()
-    .default("open"),
-  /** Provider id of the sent message, when known (in-app sends record it exactly). */
-  sentMessageId: text("sent_message_id"),
-  /** Set once the learning loop has consumed this row; prevents double-learning. */
-  learnedAt: text("learned_at"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const agentDrafts = sqliteTable(
+  "agent_drafts",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerDraftId: text("provider_draft_id").notNull(),
+    providerMessageId: text("provider_message_id"),
+    /** Provider thread id the draft replies to; null for standalone drafts. */
+    threadId: text("thread_id"),
+    /** Chat/automation conversation whose turn created the draft; null until linked. */
+    conversationId: text("conversation_id"),
+    subject: text("subject").notNull().default(""),
+    /** JSON-encoded string[]. */
+    toAddrs: text("to_addrs").notNull().default("[]"),
+    /** JSON-encoded string[]. */
+    ccAddrs: text("cc_addrs").notNull().default("[]"),
+    /** JSON-encoded string[]. */
+    bccAddrs: text("bcc_addrs").notNull().default("[]"),
+    status: text("status", { enum: ["open", "sent", "discarded"] })
+      .notNull()
+      .default("open"),
+    /** Provider id of the sent message, when known (in-app sends record it exactly). */
+    sentMessageId: text("sent_message_id"),
+    /** Set once the learning loop has consumed this row; prevents double-learning. */
+    learnedAt: text("learned_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [uniqueIndex("idx_agent_drafts_provider").on(table.accountId, table.providerDraftId)],
+);
 
 /**
  * Append-only body/subject history of an agent draft: version 1 is what the
@@ -80,19 +81,24 @@ export const agentDrafts = sqliteTable("agent_drafts", {
  * manual UI edits (author "user"). The learning loop diffs the sent text
  * against the last agent-authored version.
  */
-export const agentDraftVersions = sqliteTable("agent_draft_versions", {
-  draftId: text("draft_id").notNull(),
-  version: integer("version").notNull(),
-  author: text("author", { enum: ["agent", "user"] }).notNull(),
-  subject: text("subject").notNull().default(""),
-  body: text("body").notNull(),
-  createdAt: text("created_at").notNull(),
-});
+export const agentDraftVersions = sqliteTable(
+  "agent_draft_versions",
+  {
+    draftId: text("draft_id").notNull(),
+    version: integer("version").notNull(),
+    author: text("author", { enum: ["agent", "user"] }).notNull(),
+    subject: text("subject").notNull().default(""),
+    body: text("body").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.draftId, table.version] })],
+);
 
 export const automations = sqliteTable("automations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   instruction: text("instruction").notNull(),
+  /** Five-field cron, or "" for a manual-only automation (runs only on demand). */
   schedule: text("schedule").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   showInActivity: integer("show_in_activity", { mode: "boolean" }).notNull().default(true),
@@ -247,3 +253,46 @@ export const learnRuns = sqliteTable("learn_runs", {
   startedAt: text("started_at").notNull(),
   finishedAt: text("finished_at").notNull(),
 });
+
+/**
+ * The WhatsApp mirror (whatsapp/store.ts): the paired personal account's
+ * contacts, chats and messages, accumulated from the pairing history sync
+ * and live socket events — the protocol pushes state instead of answering
+ * queries, so anything not stored here is unreachable later. Text only;
+ * media is kept as a bracketed marker. Wiped on unlink.
+ */
+export const waContacts = sqliteTable("wa_contacts", {
+  jid: text("jid").primaryKey(),
+  /** Address-book name on the user's phone; "" when unknown. */
+  name: text("name").notNull().default(""),
+  /** The contact's own push name; "" when unknown. */
+  notify: text("notify").notNull().default(""),
+  /** Digits only; "" when the jid carries no phone number (LID-only contact). */
+  phoneNumber: text("phone_number").notNull().default(""),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const waChats = sqliteTable("wa_chats", {
+  jid: text("jid").primaryKey(),
+  /** Subject for groups; usually "" for direct chats (the contact row names those). */
+  name: text("name").notNull().default(""),
+  lastMessageAt: text("last_message_at"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const waMessages = sqliteTable(
+  "wa_messages",
+  {
+    chatJid: text("chat_jid").notNull(),
+    /** Provider message id — unique per chat, not globally. */
+    id: text("id").notNull(),
+    /** The author's jid in group chats; "" in direct chats and for own messages. */
+    senderJid: text("sender_jid").notNull().default(""),
+    /** The author's push name as seen when the message arrived; "" when unknown. */
+    senderName: text("sender_name").notNull().default(""),
+    fromMe: integer("from_me").notNull().default(0),
+    text: text("text").notNull(),
+    timestamp: text("timestamp").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.chatJid, table.id] })],
+);

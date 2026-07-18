@@ -5,7 +5,7 @@ import { linkDraftConversation } from "../db/draftStore.js";
 import { db, schema, sqlite } from "../db/index.js";
 import { emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 import {
   type AgentSession,
   buildTurnTimeNote,
@@ -64,13 +64,19 @@ function collectTurnCards(conversationId: string): {
       // triggers would miss the conversationId.
       linkDraftConversation(card.account?.accountId ?? "", card.draft.draftId, conversationId)
         .then(() => emitServerEvent("drafts"))
-        .catch(() => {});
+        .catch((err: unknown) => {
+          log.warn({ err, conversationId }, "linking the turn's draft to its conversation failed");
+        });
     }
 
     // Cards are also how the agent's activity moves the conversation's focus
     // (agent/focus.ts) — fire-and-forget for the same reason as the link.
     const focus = focusFromCard(card);
-    if (focus) applyConversationFocus(conversationId, focus).catch(() => {});
+    if (focus) {
+      applyConversationFocus(conversationId, focus).catch((err: unknown) => {
+        log.warn({ err, conversationId }, "applying the card's conversation focus failed");
+      });
+    }
   };
 
   return { cards, onCard };
@@ -118,7 +124,10 @@ const realSessions: TurnSessions = {
 
 let sessions: TurnSessions = realSessions;
 
-/** Test-only seam: pass null to restore the real emailAgent-backed sessions. */
+/**
+ * Test-only seam: pass null to restore the real emailAgent-backed sessions.
+ * @internal
+ */
 export function _setSessionsForTest(override: TurnSessions | null): void {
   sessions = override ?? realSessions;
 }
@@ -229,7 +238,9 @@ export function beginTurn(conversationId: string): Turn {
         if (opts.focusAccountId) {
           await applyConversationFocus(conversationId, {
             accountId: opts.focusAccountId,
-          }).catch(() => {});
+          }).catch((err: unknown) => {
+            opts.log.warn({ err }, "applying the pre-selected account focus failed");
+          });
         }
 
         // Focus follows an @-mention (last one wins), and the standing focus
@@ -237,7 +248,9 @@ export function beginTurn(conversationId: string): Turn {
         // note is what makes focus the agent's tool-call default.
         const refFocus = focusFromRefs(opts.refs);
         if (refFocus) {
-          await applyConversationFocus(conversationId, refFocus).catch(() => {});
+          await applyConversationFocus(conversationId, refFocus).catch((err: unknown) => {
+            opts.log.warn({ err }, "applying the @-mention's conversation focus failed");
+          });
         }
         const focusNote = await conversationFocusNote(conversationId).catch(() => "");
         // The clock rides the turn prompt, not the system prompt, so the model

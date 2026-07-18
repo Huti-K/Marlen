@@ -3,48 +3,48 @@ import { Type } from "@sinclair/typebox";
 import { isLanguage, SUPPORTED_LANGUAGES } from "@trailin/shared";
 import { resetSessions } from "../agent/emailAgent.js";
 import { rescheduleAll } from "../automations/scheduler.js";
+import { rescheduleNightlySuggest } from "../automations/suggestService.js";
 import {
   getAccountColors,
-  getAccountVoices,
+  getAccountPermissions,
+  getFileAccessSettings,
   getLanguageSetting,
   getTimezoneSetting,
-  getWriteAccessAccounts,
   isValidTimezone,
   LANGUAGE_SETTING_KEY,
   setAccountColors,
-  setAccountVoices,
+  setAccountPermissions,
+  setFileAccessSettings,
   setSetting,
-  setWriteAccessAccounts,
   TIMEZONE_SETTING_KEY,
 } from "../db/settings.js";
+import { rescheduleNightlyLearn } from "../email/learn/service.js";
 import { badRequest } from "../errors.js";
 
 const languageBody = Type.Object({ language: Type.String() });
 
 const timezoneBody = Type.Object({ timezone: Type.String() });
 
-const writeAccessBody = Type.Object({ accountIds: Type.Array(Type.String()) });
-
-const accountColorsBody = Type.Object({
-  colors: Type.Array(Type.Object({ accountId: Type.String(), hex: Type.String() })),
-});
-
-const accountVoicesBody = Type.Object({
-  voices: Type.Array(
+const accountPermissionsBody = Type.Object({
+  permissions: Type.Array(
     Type.Object({
       accountId: Type.String(),
-      signature: Type.Optional(Type.String({ maxLength: 20_000 })),
-      signatureHtml: Type.Optional(Type.String({ maxLength: 100_000 })),
+      write: Type.Boolean(),
+      send: Type.Boolean(),
+      delete: Type.Boolean(),
     }),
   ),
 });
 
-function sanitizeSignatureHtml(html: string): string {
-  return html
-    .replace(/<(script|style|iframe|object|embed|form)[\s\S]*?<\/\1\s*>/gi, "")
-    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/((?:href|src)\s*=\s*["'])\s*javascript:/gi, "$1");
-}
+const fileAccessBody = Type.Object({
+  read: Type.Boolean(),
+  write: Type.Boolean(),
+  bash: Type.Boolean(),
+});
+
+const accountColorsBody = Type.Object({
+  colors: Type.Array(Type.Object({ accountId: Type.String(), hex: Type.String() })),
+});
 
 export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/settings/language", async () => ({ language: await getLanguageSetting() }));
@@ -69,25 +69,53 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
       throw badRequest("timezone must be a valid IANA timezone");
     }
     await setSetting(TIMEZONE_SETTING_KEY, timezone);
-    // node-cron bakes the timezone into each task when it is created, so the
-    // existing tasks would keep firing on the old zone until a restart.
+    // node-cron bakes the timezone into each task when it is created, so
+    // every cron-driven schedule is rebuilt against the new zone: the user's
+    // automations plus the fixed nightly jobs (learning extraction and the
+    // automation-suggestion sweep) — otherwise they'd keep firing on the old
+    // zone until a restart.
     await rescheduleAll();
+    await rescheduleNightlyLearn();
+    await rescheduleNightlySuggest();
     // The current time is baked into the system prompt, so drop in-memory
     // agents — the next prompt in every conversation picks up the change.
     await resetSessions();
     return { timezone };
   });
 
-  app.get("/api/settings/write-access", async () => ({
-    accountIds: await getWriteAccessAccounts(),
+  app.get("/api/settings/permissions", async () => ({
+    permissions: await getAccountPermissions(),
   }));
 
-  app.put("/api/settings/write-access", { schema: { body: writeAccessBody } }, async (req) => {
-    const accountIds = [...new Set(req.body.accountIds)];
-    await setWriteAccessAccounts(accountIds);
-    // The per-account gate decides which tools get registered — rebuild agent toolsets.
+  app.put(
+    "/api/settings/permissions",
+    { schema: { body: accountPermissionsBody } },
+    async (req) => {
+      // Last entry wins per account; all-false records are dropped so the
+      // stored list only names accounts with at least one grant (absence is
+      // the read-only default).
+      const byId = new Map(req.body.permissions.map((p) => [p.accountId, p]));
+      const permissions = [...byId.values()].filter((p) => p.write || p.send || p.delete);
+      await setAccountPermissions(permissions);
+      // The per-account grants decide which tools get registered — rebuild agent toolsets.
+      await resetSessions();
+      return { permissions };
+    },
+  );
+
+  // ---- File access ----
+
+  app.get("/api/settings/file-access", async () => ({
+    fileAccess: await getFileAccessSettings(),
+  }));
+
+  app.put("/api/settings/file-access", { schema: { body: fileAccessBody } }, async (req) => {
+    const fileAccess = req.body;
+    await setFileAccessSettings(fileAccess);
+    // The grants decide which file tools buildAgent mounts and what the
+    // system prompt says about them — rebuild agent sessions.
     await resetSessions();
-    return { accountIds };
+    return { fileAccess };
   });
 
   // ---- Account colors ----
@@ -99,24 +127,5 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.put("/api/settings/account-colors", { schema: { body: accountColorsBody } }, async (req) => {
     await setAccountColors(req.body.colors);
     return { colors: req.body.colors };
-  });
-
-  app.get("/api/settings/account-voices", async () => ({ voices: await getAccountVoices() }));
-
-  app.put("/api/settings/account-voices", { schema: { body: accountVoicesBody } }, async (req) => {
-    const stored = await getAccountVoices();
-    const voices = req.body.voices.map((voice) => {
-      const existing = stored.find((item) => item.accountId === voice.accountId);
-      return {
-        ...voice,
-        ...(voice.signatureHtml !== undefined
-          ? { signatureHtml: sanitizeSignatureHtml(voice.signatureHtml) }
-          : {}),
-        ...(existing?.learnedAt ? { learnedAt: existing.learnedAt } : {}),
-        ...(existing?.styleMemoryIds ? { styleMemoryIds: existing.styleMemoryIds } : {}),
-      };
-    });
-    await setAccountVoices(voices);
-    return { voices };
   });
 };

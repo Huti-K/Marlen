@@ -137,7 +137,6 @@
         "cc": "Cc:",
         "bcc": "Bcc:",
         "open": "Im Postfach öffnen",
-        "signatureNote": "Ihre Signatur wurde automatisch hinzugefügt.",
         "send": "Senden",
         "sendConfirm": "Diesen Entwurf jetzt senden? Er wird genau so verschickt, wie er geschrieben ist.",
         "discard": "Verwerfen",
@@ -233,6 +232,21 @@
       "memory": "Erinnerungen"
     }
   },
+  "whatsapp": {
+    "pairTitle": "WhatsApp verknüpfen",
+    "pairIntro": "Scannen Sie den QR-Code mit Ihrem Handy: WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät verknüpfen. Ihre Chats werden lokal auf diesem Computer gespiegelt und verlassen ihn nie.",
+    "pairQrAlt": "WhatsApp-Kopplungs-QR-Code",
+    "pairQrHint": "Der Code aktualisiert sich automatisch, solange die Kopplung offen ist.",
+    "pairGenerating": "QR-Code wird erzeugt …",
+    "pairExpired": "Der QR-Code ist abgelaufen, bevor er gescannt wurde.",
+    "pairRetry": "Neuen QR-Code erzeugen",
+    "pairedToast": "WhatsApp verknüpft.",
+    "statusConnected": "Verbunden",
+    "statusConnecting": "Verbindet …",
+    "statusOffline": "Getrennt",
+    "unlink": "WhatsApp trennen",
+    "unlinkConfirm": "Dieses Gerät trennen und die lokal gespiegelten Chats löschen? Ihr WhatsApp-Konto und die Chats auf Ihrem Handy bleiben unberührt."
+  },
   "onoffice": {
     "crmLabel": "CRM",
     "setupTitle": "onOffice verbinden",
@@ -244,9 +258,6 @@
     "save": "Speichern",
     "removeSaved": "Zugangsdaten entfernen",
     "removeSavedConfirm": "Die gespeicherten onOffice-Zugangsdaten von diesem Computer entfernen? Der Assistent verliert den Zugriff auf Ihr CRM, bis Sie sie erneut hinterlegen.",
-    "configuredFooter": "Verbunden · Zugangsdaten aus <code>{{source}}</code>",
-    "sourceSettings": "dieser App",
-    "sourceEnv": "Umgebung",
     "edit": "Zugangsdaten bearbeiten"
   },
   "connections": {
@@ -260,6 +271,7 @@
     "suggestedHeading": "Beliebte E-Mail-Apps",
     "moreAppsHeading": "Beliebte Integrationen",
     "crmHeading": "CRM",
+    "messagingHeading": "Messaging",
     "anyAppHint": "Das sind nur einige, suchen Sie oben, um eine von über 2.000 Apps zu verbinden, von anderen Mail-Diensten bis Kalender, Notizen und Chat.",
     "setupTitle": "Einmalige Einrichtung: Trailin mit Pipedream verbinden",
     "setupIntro": "Trailin nutzt <pd>Pipedream</pd>, einen kostenlosen Dienst, um Ihre E-Mail-Konten sicher zu verbinden, so viele Sie möchten, auch mehrere vom selben Anbieter. Dafür werden drei Werte aus Ihrem eigenen Pipedream-Workspace benötigt, die Sie einmalig kopieren:",
@@ -277,9 +289,63 @@
     "removeSaved": "Leeren",
     "removeSavedConfirm": "Die in der App gespeicherten Pipedream-Zugangsdaten entfernen?",
     "emailAccounts": "Verbundene Konten",
+    "permissions": {
+      "edit": "Berechtigungen",
+      "hint": "Lesen ist immer erlaubt — der Assistent kann dieses Konto lesen und durchsuchen. Alles Weitere braucht eine eigene Freigabe:",
+      "hintEmail": "Lesen ist immer erlaubt — der Assistent kann dieses Konto lesen und durchsuchen sowie Entwürfe vorbereiten. Alles Weitere braucht eine eigene Freigabe:",
+      "write": {
+        "title": "Anlegen & Ändern",
+        "on": "Darf auf Ihre Anweisung in diesem Konto anlegen und ändern.",
+        "off": "Kann in diesem Konto nichts anlegen oder ändern.",
+        "offEmail": "Kann dieses Postfach nicht verändern — Entwürfe anlegen ist immer erlaubt.",
+        "confirmTitle": "Der KI Anlegen & Ändern als {{account}} erlauben?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung in diesem Konto anlegen und ändern. Senden und Löschen bleiben eigene Schalter. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "Anlegen & Ändern erlauben"
+      },
+      "send": {
+        "title": "Senden",
+        "on": "Darf auf Ihre Anweisung Nachrichten aus diesem Konto senden.",
+        "off": "Kann aus diesem Konto nichts senden.",
+        "offEmail": "Kann nichts senden — ausgehende E-Mails bleiben als Entwürfe zur Durchsicht.",
+        "confirmTitle": "Der KI das Senden als {{account}} erlauben?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung Nachrichten als {{account}} senden. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "Senden erlauben"
+      },
+      "delete": {
+        "title": "Löschen",
+        "on": "Darf auf Ihre Anweisung in diesem Konto löschen.",
+        "off": "Kann in diesem Konto nichts löschen.",
+        "confirmTitle": "Der KI das Löschen als {{account}} erlauben?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung in diesem Konto löschen. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "Löschen erlauben"
+      },
+      "onoffice": {
+        "title": "Automationen dürfen anlegen",
+        "rowOn": "Automationen dürfen CRM-Datensätze anlegen (Kontakte, Termine, Aufgaben, Verknüpfungen) — nie ändern, löschen oder senden.",
+        "rowOff": "Automationen lesen das CRM nur; Datensätze werden im Chat angelegt, mit Ihrer Bestätigung.",
+        "confirmTitle": "Automationen das Anlegen von onOffice-Datensätzen erlauben?",
+        "confirmBody": "Geplante Läufe (z. B. der Lead-Eingang) können dann selbstständig Kontakte, Termine, Aufgaben und Verknüpfungen in Ihrem Live-CRM anlegen — Ihre Kollegen sehen diese Datensätze. Ändern, Löschen und Senden bleiben dem Chat vorbehalten. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "Anlegen erlauben"
+      },
+      "onofficeWrites": {
+        "title": "Ändern, Löschen & Senden",
+        "rowOn": "Darf auf Ihre Anweisung im Chat CRM-Datensätze ändern oder löschen und über das CRM senden.",
+        "rowOff": "Der Chat kann das CRM lesen und Datensätze anlegen; Ändern, Löschen und Senden bleiben aus, bis Sie es aktivieren.",
+        "confirmTitle": "Der KI Ändern, Löschen und Senden in onOffice erlauben?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung im Chat Live-CRM-Datensätze ändern und löschen sowie über onOffice senden. Geplante Läufe erhalten diese Werkzeuge nie. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "CRM-Änderungen erlauben"
+      },
+      "whatsappSend": {
+        "title": "Nachrichten senden",
+        "rowOn": "Darf auf Ihre Anweisung im Chat WhatsApp-Nachrichten von Ihrem persönlichen Konto senden.",
+        "rowOff": "Kann WhatsApp-Chats lesen, aber nicht senden; Nachrichten gehen erst raus, wenn Sie dies aktivieren.",
+        "confirmTitle": "Darf die KI WhatsApp-Nachrichten senden?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung im Chat WhatsApp-Nachrichten von Ihrem persönlichen Konto senden — sie werden sofort zugestellt, ohne Entwurf zur Durchsicht. Geplante Läufe erhalten dieses Werkzeug nie. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "Senden erlauben"
+      }
+    },
     "noAccounts": "Noch keine E-Mail-Konten verbunden. Nutzen Sie die Schaltflächen oben, Sie können mehrere Konten pro Anbieter verbinden.",
     "finishConnecting": "Schließen Sie die Verbindung in dem gerade geöffneten Fenster ab, es schließt sich von selbst, sobald Sie fertig sind.",
-    "healthy": "OK",
     "unhealthy": "Gestört",
     "disconnect": "Trennen",
     "disconnectConfirm": "Dieses Konto trennen?",
@@ -291,8 +357,6 @@
     "advanced": "Erweitert",
     "advancedBuiltin": "Eingebautes Pipedream",
     "advancedCustom": "Eigenes Pipedream-Projekt",
-    "editNote": "Notiz bearbeiten",
-    "notePlaceholder": "Wofür dieses Konto ist — der Assistent liest diese Notiz",
     "learnVoiceStarted": "Dein Schreibstil von {{name}} wird gelernt – er erscheint in Kürze in den Einstellungen.",
     "voiceLearning": "Stil wird gelernt…",
     "voiceLearnFailed": "Stil-Lernen fehlgeschlagen",
@@ -376,13 +440,15 @@
       "daily": "Jeden Tag",
       "weekdays": "An Werktagen",
       "custom": "Tage wählen",
-      "date": "Bestimmtes Datum"
+      "date": "Bestimmtes Datum",
+      "manual": "Nur auf Abruf"
     },
     "time": "Uhrzeit",
     "month": "Monat",
     "day": "Tag",
     "customDaysRequired": "Wählen Sie mindestens einen Tag.",
     "dateOnceHint": "Läuft einmal an diesem Datum und schaltet sich danach automatisch aus.",
+    "manualHint": "Läuft nie von selbst — nur wenn Sie „Jetzt ausführen“ drücken.",
     "advancedToggle": "Erweitert: als Cron bearbeiten",
     "simpleToggle": "Zurück zum einfachen Zeitplan",
     "advancedLossNote": "Der eigene Cron-Ausdruck wurde durch den Zeitplan oben ersetzt.",
@@ -390,7 +456,8 @@
       "daily": "Täglich · {{time}}",
       "weekdays": "Werktags · {{time}}",
       "custom": "{{days}} · {{time}}",
-      "date": "{{date}} · {{time}}"
+      "date": "{{date}} · {{time}}",
+      "manual": "Auf Abruf"
     },
     "cronInvalid": "Sieht nicht wie ein Standard-Cron-Ausdruck mit 5 Feldern aus, wird beim Erstellen geprüft.",
     "cronHint": "<c>0 8 * * 1-5</c> läuft werktags um 08:00 Uhr.",
@@ -479,7 +546,6 @@
     "expand": "Erinnerungen ausklappen",
     "usedTimes": "{{count}}×",
     "lastUsed": "Zuletzt genutzt {{time}}",
-    "neverUsed": "Noch nie genutzt",
     "nearCap": "Der Speicher ist fast voll ({{count}}/{{max}}).",
     "pruneHint": "Entfernen Sie am besten selten genutzte Einträge — am wenigsten genutzt: „{{example}}“."
   },
@@ -511,9 +577,6 @@
         "description": "Was Ihr Assistent weiß: kurze Fakten, die immer verfügbar sind. Er merkt sich Dinge, wenn Sie „Merke dir …“ sagen, und Sie können sie hier bearbeiten.",
         "general": "Allgemein",
         "scopeLabel": "Bereich",
-        "filterAll": "Alle",
-        "filterAccountHint": "Nur Erinnerungen von {{name}} anzeigen",
-        "filterContactsHint": "Nur Kontakt-Erinnerungen anzeigen",
         "contacts": "Kontakte",
         "contact": "Kontakt",
         "contactPlaceholder": "E-Mail-Adresse des Kontakts",
@@ -531,6 +594,21 @@
           "runLessons_one": "{{count}} Stil-Lektion gelernt",
           "runLessons_other": "{{count}} Stil-Lektionen gelernt"
         }
+      },
+      "skills": {
+        "title": "Skills",
+        "description": "Gespeicherte Abläufe dafür, wie wiederkehrende Aufgaben erledigt werden sollen. Der Agent speichert einen, wenn Sie sagen „mach das immer so“ — oder Sie schreiben selbst einen.",
+        "empty": "Noch keine Skills. Beschreiben Sie dem Agenten, wie eine wiederkehrende Aufgabe ablaufen soll („ab jetzt, wenn ich … möchte“), oder legen Sie hier einen an.",
+        "add": "Skill hinzufügen",
+        "edit": "Skill bearbeiten",
+        "delete": "Skill löschen",
+        "deleteConfirm": "Diesen Skill löschen?",
+        "collapse": "Skills einklappen",
+        "expand": "Skills ausklappen",
+        "namePlaceholder": "name (z. B. marktbericht)",
+        "descriptionPlaceholder": "Eine Zeile: was er tut und wann er gilt",
+        "instructionsPlaceholder": "Der Ablauf: wann er gilt, welche Konten und Tools, die Schritte, wie das Ergebnis aussehen soll …",
+        "save": "Speichern"
       },
       "library": {
         "title": "Dokumente",
@@ -550,7 +628,7 @@
     "advancedLink": "Erweitert: eigenes Pipedream-Projekt verwenden",
     "allSetTitle": "Alles bereit",
     "allSetBody": "Der Assistent kann jetzt Ihre Post lesen, Antworten entwerfen und Ihre Fragen beantworten.",
-    "allSetReadOnly": "Trailin startet schreibgeschützt: Der Assistent entwirft und antwortet, sendet oder ändert aber nichts, bis Sie es unter Einstellungen → Berechtigungen erlauben.",
+    "allSetReadOnly": "Trailin startet schreibgeschützt: Der Assistent entwirft und antwortet, sendet, ändert oder löscht aber nichts, bis Sie es pro Konto erlauben — über das Schild-Symbol am Konto in den Einstellungen.",
     "openApp": "Trailin öffnen",
     "skip": "Später, ich sehe mich erst um",
     "offlineTitle": "Server nicht erreichbar",
@@ -572,14 +650,6 @@
         "chipConnected_other": "{{count}} verbunden",
         "chipNoAccounts": "Noch keine Konten"
       },
-      "onoffice": {
-        "title": "onOffice",
-        "description": "Verbinden Sie Ihr onOffice-CRM, damit der Assistent Immobilien, Interessenten, Termine und Aufgaben lesen und verwalten kann."
-      },
-      "permissions": {
-        "title": "Berechtigungen",
-        "description": "Was der Assistent in Ihrem Postfach und CRM darf — Senden und Änderungen bleiben aus, bis Sie den jeweiligen Zugriff aktivieren."
-      },
       "preferences": {
         "title": "Darstellung & Sprache",
         "description": "Wie Trailin aussieht, spricht und die Uhrzeit anzeigt."
@@ -587,6 +657,10 @@
       "data": {
         "title": "Lokale Daten",
         "description": "Alles, was Trailin auf diesem Computer gespeichert hat, und wie Sie es sichern."
+      },
+      "about": {
+        "title": "Über Trailin",
+        "description": "Welche Version Sie verwenden — und Updates, sobald eine neuere erscheint."
       },
       "language": {
         "title": "Sprache",
@@ -597,33 +671,6 @@
         "description": "Was Buttons wie \"Antwort entwerfen\" tun: die Anfrage sofort senden oder ins Eingabefeld legen, damit Sie sie vorher anpassen können.",
         "send": "Sofort senden",
         "prefill": "Vor dem Senden bearbeiten"
-      }
-    },
-    "permissions": {
-      "rowOn": "Darf auf Ihre Anweisung E-Mails senden und Änderungen vornehmen (Labels, Archivieren, Löschen).",
-      "rowOff": "Nur Lesen: Die KI kann hier lesen, suchen und Entwürfe erstellen, niemals senden, löschen oder etwas ändern.",
-      "confirmTitle": "Der KI das Senden und Ändern von E-Mails als {{account}} erlauben?",
-      "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung E-Mails als {{account}} senden und beantworten sowie dieses Postfach ändern — archivieren, beschriften, löschen. Sie können dies jederzeit wieder deaktivieren.",
-      "confirmCta": "Senden & Änderungen erlauben",
-      "chipOn_one": "Senden & Ändern aktiv für {{count}} Konto",
-      "chipOn_other": "Senden & Ändern aktiv für {{count}} Konten",
-      "chipOff": "Nur Lesen",
-      "noAccounts": "Noch keine Konten verbunden — verbinden Sie oben unter E-Mail verbinden eines.",
-      "onoffice": {
-        "title": "onOffice — Automationen dürfen anlegen",
-        "rowOn": "Automationen dürfen CRM-Datensätze anlegen (Kontakte, Termine, Aufgaben, Verknüpfungen) — nie ändern, löschen oder senden.",
-        "rowOff": "Automationen lesen das CRM nur; Datensätze werden im Chat angelegt, mit Ihrer Bestätigung.",
-        "confirmTitle": "Automationen das Anlegen von onOffice-Datensätzen erlauben?",
-        "confirmBody": "Geplante Läufe (z. B. der Lead-Eingang) können dann selbstständig Kontakte, Termine, Aufgaben und Verknüpfungen in Ihrem Live-CRM anlegen — Ihre Kollegen sehen diese Datensätze. Ändern, Löschen und Senden bleiben dem Chat vorbehalten. Sie können dies jederzeit wieder deaktivieren.",
-        "confirmCta": "Anlegen erlauben"
-      },
-      "onofficeWrites": {
-        "title": "onOffice — Ändern, Löschen & Senden",
-        "rowOn": "Darf auf Ihre Anweisung im Chat CRM-Datensätze ändern oder löschen und über das CRM senden.",
-        "rowOff": "Der Chat kann das CRM lesen und Datensätze anlegen; Ändern, Löschen und Senden bleiben aus, bis Sie es aktivieren.",
-        "confirmTitle": "Der KI Ändern, Löschen und Senden in onOffice erlauben?",
-        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung im Chat Live-CRM-Datensätze ändern und löschen sowie über onOffice senden. Geplante Läufe erhalten diese Werkzeuge nie. Sie können dies jederzeit wieder deaktivieren.",
-        "confirmCta": "CRM-Änderungen erlauben"
       }
     },
     "appearance": {
@@ -642,6 +689,22 @@
       "label": "Sicherung",
       "description": "Ein Abbild der lokalen Datenbank — Chats, Entwürfe, Erinnerungen und Automatisierungen, aber nicht die Zugangsdaten Ihrer verbundenen Konten.",
       "cta": "Herunterladen"
+    },
+    "about": {
+      "tagline": "Lokaler KI-Assistent für Ihre E-Mails und Leads",
+      "build": "Build",
+      "bundleId": "Bundle-ID",
+      "license": "Lizenz",
+      "licenseValue": "Quellcode einsehbar — alle Rechte vorbehalten",
+      "source": "Quellcode",
+      "viewOnGithub": "Auf GitHub ansehen",
+      "reportIssue": "Problem melden",
+      "check": "Nach Updates suchen",
+      "upToDate": "Sie sind auf dem neuesten Stand",
+      "downloading": "Version {{version}} wird geladen…",
+      "downloaded": "Version {{version}} bereit zur Installation",
+      "unavailable": "Die Updatesuche ist in diesem Build nicht verfügbar",
+      "checkFailed": "Updates konnten nicht geprüft werden"
     },
     "provider": "Anbieter",
     "model": "Modell",
@@ -665,7 +728,39 @@
     "signingInWith": "Anmeldung bei {{provider}}…",
     "openSignInPage": "Anmeldeseite öffnen",
     "enterCodeAt": "Geben Sie diesen Code ein unter <uri>{{uri}}</uri>",
-    "loginInputPlaceholder": "Code / Weiterleitungs-URL einfügen, falls der Vorgang nicht automatisch abschließt…"
+    "loginInputPlaceholder": "Code / Weiterleitungs-URL einfügen, falls der Vorgang nicht automatisch abschließt…",
+    "fileAccess": {
+      "title": "Dateizugriff",
+      "description": "Was der Assistent mit Dateien auf diesem Computer tun darf.",
+      "chipOff": "Kein Zugriff",
+      "read": {
+        "title": "Dateien lesen",
+        "badge": "Lesen",
+        "on": "Darf auf Ihre Anweisung Ordner auflisten, Dateien finden, Inhalte durchsuchen (grep) und Dateien lesen.",
+        "off": "Kann keine Dateien lesen.",
+        "confirmTitle": "Der KI das Lesen von Dateien erlauben?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung überall auf diesem Computer Ordner auflisten, Dateien finden, Inhalte durchsuchen (grep) und Dateien lesen — Downloads, Dokumente und alles, was Ihr Konto sehen kann. In einer E-Mail versteckte Anweisungen könnten versuchen, ihn private Dateien lesen zu lassen — er ist angewiesen, Dateiinhalte nie ohne Ihre Zustimmung weiterzugeben. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "Lesen erlauben"
+      },
+      "write": {
+        "title": "Dateien schreiben",
+        "badge": "Schreiben",
+        "on": "Darf auf Ihre Anweisung neue Dateien anlegen (write) und bestehende bearbeiten (edit).",
+        "off": "Kann keine Dateien anlegen oder ändern.",
+        "confirmTitle": "Der KI das Schreiben von Dateien erlauben?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung überall auf diesem Computer neue Dateien anlegen (write) und bestehende bearbeiten (edit). In einer E-Mail versteckte Anweisungen könnten ungewollte Änderungen anstoßen. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmCta": "Schreiben erlauben"
+      },
+      "bash": {
+        "title": "Befehle ausführen",
+        "badge": "Befehle",
+        "on": "Darf auf Ihre Anweisung Shell-Befehle als Sie ausführen (bash).",
+        "off": "Kann keine Befehle ausführen.",
+        "confirmTitle": "Der KI das Ausführen von Befehlen erlauben?",
+        "confirmBody": "Sobald aktiviert, kann der Assistent echte Shell-Befehle als Sie ausführen — mit allem, was Ihr Benutzerkonto darf. In einer empfangenen E-Mail versteckte Anweisungen könnten versuchen, schädliche Befehle anzustoßen. Aktivieren Sie dies nur, wenn Sie dieses Risiko verstehen. Sie können es jederzeit wieder deaktivieren.",
+        "confirmCta": "Befehle erlauben"
+      }
+    }
   },
   "ui": {
     "select": {

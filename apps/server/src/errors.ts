@@ -1,6 +1,6 @@
 import type { ApiErrorCode } from "@trailin/shared";
 import type { FastifyInstance } from "fastify";
-import { errorMessage } from "./util.js";
+import { errorMessage } from "./utils/util.js";
 
 /**
  * An error that already knows which HTTP status it deserves. Throw one of the
@@ -68,6 +68,20 @@ export function upstreamStatusCode(error: unknown): number | undefined {
   return typeof status === "number" ? status : undefined;
 }
 
+/**
+ * Map a failure from a provider call reached through the Pipedream proxy:
+ * an upstream 404 means the addressed id doesn't exist there anymore — a
+ * client-facing 404 (with the given message), not an outage — while anything
+ * else genuinely failed upstream and becomes a 502. An AppError already
+ * thrown deliberately by the route (a notFound for a missing account, a
+ * badRequest for an unsupported capability) passes through as-is.
+ */
+export function toProviderError(error: unknown, notFoundMessage: string): AppError {
+  if (error instanceof AppError) return error;
+  if (upstreamStatusCode(error) === 404) return notFound(notFoundMessage);
+  return upstreamError(errorMessage(error), error);
+}
+
 /** The `{ error }` envelope every non-2xx API response uses. `requestId` ties it to the logs. */
 export interface ErrorResponse {
   error: string;
@@ -78,6 +92,7 @@ export interface ErrorResponse {
 
 function statusOf(error: unknown): number {
   if (error instanceof AppError) return error.statusCode;
+  if (typeof error !== "object" || error === null) return 500;
   const candidate = error as { statusCode?: unknown; validation?: unknown };
   // Fastify's own schema validation failures.
   if (candidate.validation) return 400;

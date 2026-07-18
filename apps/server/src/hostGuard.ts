@@ -1,24 +1,58 @@
+import { isIP } from "node:net";
+
 /**
  * DNS-rebinding defense: is this Host header allowed to reach the API?
  *
- * The CORS check in index.ts reflects only localhost-ish Origins but still
- * lets requests through with no Origin header at all — and a page served
- * from a domain whose DNS answer has been "rebound" to 127.0.0.1 issues
- * exactly those no-Origin, same-origin-looking requests from the browser's
- * point of view. The Host header is the one signal that survives the rebind
- * (it still says the attacker's domain, not this server's), so pinning it to
- * loopback names plus whatever host was deliberately configured closes the
- * hole without touching the CORS logic.
+ * The CORS check in app.ts reflects only loopback Origins but still lets
+ * requests through with no Origin header at all — and a page served from a
+ * domain whose DNS answer has been "rebound" to 127.0.0.1 issues exactly
+ * those no-Origin, same-origin-looking requests from the browser's point of
+ * view. The Host header is the one signal that survives the rebind (it still
+ * says the attacker's domain, not this server's), so the guard admits only:
+ *
+ * - loopback names (localhost, *.localhost, 127.0.0.1, ::1),
+ * - IP literals — a rebind needs a domain name in the URL, so a browser
+ *   sending an IP as Host was pointed at that IP directly. This is what lets
+ *   deliberate LAN exposure (HOST=0.0.0.0 or a concrete bind address) accept
+ *   requests addressed to whichever machine IP the client used,
+ * - the configured host itself, for a non-IP HOST value (e.g. an mDNS name).
  */
 export function isAllowedHost(hostHeader: string | undefined, configuredHost: string): boolean {
   const hostname = extractHostname(hostHeader);
   if (!hostname) return false;
 
   const lower = hostname.toLowerCase();
-  if (lower === "localhost" || lower.endsWith(".localhost")) return true;
-  if (lower === "127.0.0.1" || lower === "::1") return true;
-  // Deliberate LAN exposure (HOST=192.168.x.x etc.) — same host, any port.
+  if (isLoopbackHostname(lower)) return true;
+  if (isIP(lower) !== 0) return true;
   return lower === configuredHost.toLowerCase();
+}
+
+/** Loopback names, the set shared by the host guard and the CORS origin check. */
+export function isLoopbackHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  return (
+    lower === "localhost" ||
+    lower.endsWith(".localhost") ||
+    lower === "127.0.0.1" ||
+    lower === "::1"
+  );
+}
+
+/**
+ * Whether an Origin header names a loopback web page (any port) — the set the
+ * CORS layer reflects. Anything unparseable or non-http(s) is rejected.
+ */
+export function isLoopbackOrigin(origin: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  // URL.hostname keeps the brackets on an IPv6 literal ("[::1]").
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  return isLoopbackHostname(hostname);
 }
 
 /**

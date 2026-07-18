@@ -1,5 +1,5 @@
 import type { ConnectedAccount } from "@trailin/shared";
-import { getWriteAccessAccounts } from "../db/settings.js";
+import { getAccountPermissions } from "../db/settings.js";
 import { listAccounts } from "../pipedream/connect.js";
 
 /**
@@ -32,46 +32,29 @@ export interface AccountParamResolution {
   account?: ConnectedAccount;
   /** Every connected account, regardless of what `raw` resolved to. */
   accounts: ConnectedAccount[];
-  /** Set when `raw` was given but didn't match any connected account. */
+  /** Set when `raw` didn't resolve; return it verbatim instead of proceeding. */
   error?: string;
 }
 
 /**
- * Resolve a tool's optional `account` parameter: unset (or blank) means "every
- * account" (the caller gets `accounts` back with no `account` and no error), a
- * name or id resolves to that one account, and anything else that doesn't
- * match a connected account comes back as `error` text the tool should return
- * verbatim instead of proceeding.
+ * Resolve a tool's `account` parameter. A name or id resolves to that one
+ * account; anything that doesn't match a connected account comes back as
+ * `error` text. An unset or blank value depends on the mode: "optional" means
+ * "every account" (the caller gets `accounts` back with no `account` and no
+ * error), "required" treats it as a no-match. In "required" mode, `account`
+ * is always set when `error` isn't.
  */
-export async function resolveAccountParam(raw: unknown): Promise<AccountParamResolution> {
-  const accounts = await listAccounts();
-  if (typeof raw !== "string" || raw.trim() === "") return { accounts };
-  const account = findAccount(accounts, raw);
-  if (!account) return { accounts, error: accountNotFoundText(raw, accounts) };
-  return { account, accounts };
-}
-
-/**
- * A true discriminated union (unlike AccountParamResolution) so callers get
- * `account` narrowed to defined after checking `error` — there is no
- * "every account, no error" state to represent, since the parameter is
- * required.
- */
-export type RequiredAccountResolution =
-  | { account: ConnectedAccount; accounts: ConnectedAccount[]; error?: undefined }
-  | { account?: undefined; accounts: ConnectedAccount[]; error: string };
-
-/**
- * Same resolution as resolveAccountParam, but for tools whose `account`
- * parameter is required: a blank or missing value is treated as a no-match
- * (there is no "every account" fallback) and always comes back as `error`.
- */
-export async function resolveRequiredAccountParam(
+export async function resolveAccountParam(
   raw: unknown,
-): Promise<RequiredAccountResolution> {
+  mode: "optional" | "required" = "optional",
+): Promise<AccountParamResolution> {
   const accounts = await listAccounts();
-  const value = typeof raw === "string" ? raw : "";
-  const account = value.trim() ? findAccount(accounts, value) : undefined;
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (value === "") {
+    if (mode === "optional") return { accounts };
+    return { accounts, error: accountNotFoundText("", accounts) };
+  }
+  const account = findAccount(accounts, value);
   if (!account) return { accounts, error: accountNotFoundText(value, accounts) };
   return { account, accounts };
 }
@@ -96,10 +79,12 @@ export async function fetchAccountNameMap(): Promise<Map<string, string>> {
 }
 
 /**
- * System-prompt section listing the connected accounts and whether each is
- * armed for send/change or read-only, so the model can pick the right
- * account without every tool description restating the list. Empty string
- * when nothing is connected (the prompt's setup guidance covers that case).
+ * System-prompt section listing the connected accounts and which permission
+ * grants each one carries (read-only when none), so the model can pick the
+ * right account without every tool description restating the list. With no
+ * account connected it carries the setup guidance instead; only a failed
+ * account listing (e.g. a Pipedream outage — not the same as "not set up")
+ * yields an empty string.
  */
 export async function buildAccountsContext(): Promise<string> {
   let accounts: ConnectedAccount[];
@@ -108,11 +93,23 @@ export async function buildAccountsContext(): Promise<string> {
   } catch {
     return "";
   }
-  if (accounts.length === 0) return "";
-  const writeAccess = new Set(await getWriteAccessAccounts());
+  if (accounts.length === 0) {
+    return (
+      `\n\nNo email account is connected yet, so there are no email tools. When the user asks ` +
+      `for anything that needs mail access, tell them to finish the email setup under ` +
+      `Settings → Connect email.`
+    );
+  }
+  const permissions = new Map((await getAccountPermissions()).map((p) => [p.accountId, p]));
   const lines = accounts.map((account) => {
     const app = account.appName ?? account.app;
-    const access = writeAccess.has(account.id) ? " — may send & change" : " — read-only";
+    const p = permissions.get(account.id);
+    const granted = [
+      ...(p?.write ? ["create & change"] : []),
+      ...(p?.send ? ["send"] : []),
+      ...(p?.delete ? ["delete"] : []),
+    ];
+    const access = granted.length > 0 ? ` — may ${granted.join(", ")}` : " — read-only";
     return `- ${account.name} (${app})${access}`;
   });
   return `\n\nConnected accounts:\n${lines.join("\n")}`;

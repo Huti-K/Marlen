@@ -383,4 +383,101 @@ export const SCHEMA_STEPS: readonly string[] = [
     ALTER TABLE automations ADD COLUMN notify_on_completion INTEGER NOT NULL DEFAULT 0;
     UPDATE automations SET run_on_new_mail = 1, notify_on_completion = 1 WHERE name = 'Lead-Eingang';
   `,
+  // 17: drop retired card kinds from stored card blobs — no tool emits
+  // email_hits or email_thread and no renderer exists for them, so stored
+  // entries of those kinds are dead weight. Rewrites only rows that contain
+  // one (messages.cards and automation_runs.cards hold the same MessageCard[]
+  // shape), carrying every other entry forward unchanged in the re-encoded
+  // array, and leaves malformed blobs untouched; a row whose every entry is
+  // retired becomes NULL, the "no cards" encoding the app writes.
+  `
+    UPDATE messages
+       SET cards = (
+         SELECT CASE WHEN COUNT(*) = 0 THEN NULL ELSE json_group_array(json(value)) END
+           FROM json_each(messages.cards)
+          WHERE json_extract(value, '$.card.kind') NOT IN ('email_hits', 'email_thread')
+       )
+     WHERE cards IS NOT NULL AND json_valid(cards)
+       AND EXISTS (
+         SELECT 1 FROM json_each(messages.cards)
+          WHERE json_extract(value, '$.card.kind') IN ('email_hits', 'email_thread')
+       );
+    UPDATE automation_runs
+       SET cards = (
+         SELECT CASE WHEN COUNT(*) = 0 THEN NULL ELSE json_group_array(json(value)) END
+           FROM json_each(automation_runs.cards)
+          WHERE json_extract(value, '$.card.kind') NOT IN ('email_hits', 'email_thread')
+       )
+     WHERE cards IS NOT NULL AND json_valid(cards)
+       AND EXISTS (
+         SELECT 1 FROM json_each(automation_runs.cards)
+          WHERE json_extract(value, '$.card.kind') IN ('email_hits', 'email_thread')
+       );
+  `,
+  // 18: per-account permission grants replace the binary write-access list —
+  // the settings row 'account.writeAccess' (a JSON array of armed account
+  // ids) becomes 'account.permissions' (an array of
+  // {accountId, write, send, delete} records). Formerly-armed accounts keep
+  // everything they could do: write access covered send, change and delete
+  // verbs alike, so each id maps to all three grants true. A malformed
+  // leftover value is dropped rather than carried (its default is read-only,
+  // the safe state).
+  `
+    UPDATE settings
+       SET key = 'account.permissions',
+           value = (
+             SELECT CASE WHEN COUNT(*) = 0 THEN '[]' ELSE json_group_array(
+               json_object('accountId', je.value, 'write', json('true'),
+                           'send', json('true'), 'delete', json('true'))
+             ) END
+               FROM json_each(settings.value) AS je
+           )
+     WHERE key = 'account.writeAccess' AND json_valid(value);
+    DELETE FROM settings WHERE key = 'account.writeAccess';
+  `,
+  // 19: the email-signature feature is gone — drop the per-draft signature
+  // snapshot column and strip the signature fields from the stored account
+  // voices, which keep only their voice-learn bookkeeping
+  // (learnedAt/styleMemoryIds).
+  `
+    ALTER TABLE agent_drafts DROP COLUMN signature;
+    UPDATE settings
+       SET value = (
+             SELECT CASE WHEN COUNT(*) = 0 THEN '[]' ELSE json_group_array(
+               json(json_remove(je.value, '$.signature', '$.signatureHtml'))
+             ) END
+               FROM json_each(settings.value) AS je
+           )
+     WHERE key = 'account.voices' AND json_valid(value);
+  `,
+  // 20: the WhatsApp mirror (whatsapp/store.ts) — the personal account's
+  // chats, contacts and messages, filled from the pairing history sync and
+  // live socket events. Text only (media stays a bracketed marker), capped
+  // per chat, wiped when the account is unlinked.
+  `
+    CREATE TABLE wa_contacts (
+      jid TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      notify TEXT NOT NULL DEFAULT '',
+      phone_number TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE wa_chats (
+      jid TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      last_message_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE wa_messages (
+      chat_jid TEXT NOT NULL,
+      id TEXT NOT NULL,
+      sender_jid TEXT NOT NULL DEFAULT '',
+      sender_name TEXT NOT NULL DEFAULT '',
+      from_me INTEGER NOT NULL DEFAULT 0,
+      text TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      PRIMARY KEY (chat_jid, id)
+    );
+    CREATE INDEX idx_wa_messages_chat_time ON wa_messages(chat_jid, timestamp);
+  `,
 ];

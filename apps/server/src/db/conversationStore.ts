@@ -1,5 +1,5 @@
 import { emitServerEvent } from "../events.js";
-import { db, schema, sqlite } from "./index.js";
+import { db, lazyTransaction, schema, sqlite } from "./index.js";
 
 /**
  * Owns the Conversation row's lifecycle (create/delete) and the
@@ -40,13 +40,12 @@ export async function ensureConversation(
 // Deletes a conversation and every row that references it. One SQLite
 // transaction so a crash or error between the two deletes can never leave a
 // conversation gone with its messages still around, or vice versa — the
-// same idiom as email/sync/mailStore.ts's applyTxn and
-// routes/automations.ts's pinExclusively. agent_drafts rows are deliberately
+// same idiom as automations/manage.ts's pinExclusively. agent_drafts rows are deliberately
 // left alone: a draft snapshot's conversationId is a navigation link, not an
 // ownership edge (db/draftStore.ts), and a dangling link degrades to "no
 // link" at read time (draftStore.ts's getDraftConversationLinks) rather than
 // needing to be cleaned up here.
-const deleteConversationRows = sqlite.transaction((id: string) => {
+const deleteConversationRows = lazyTransaction((id: string) => {
   sqlite.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);
   sqlite.prepare("DELETE FROM conversations WHERE id = ?").run(id);
 });

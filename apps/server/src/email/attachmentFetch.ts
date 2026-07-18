@@ -1,7 +1,11 @@
 import { findAccount } from "../agent/accounts.js";
 import { badRequest, notFound } from "../errors.js";
 import { listAccounts } from "../pipedream/connect.js";
-import { getAttachmentProvider } from "./attachmentProviders.js";
+import {
+  findAttachmentByFilename,
+  getAttachmentProvider,
+  resolveAttachmentBytes,
+} from "./attachmentProviders.js";
 
 /**
  * Resolve an email attachment's bytes on demand, by (accountId, messageId,
@@ -25,13 +29,10 @@ export async function fetchAttachment(
   if (!provider) throw badRequest(`${account.app} has no attachment support`);
 
   const attachments = await provider.listAttachments(account, messageId);
-  const wanted = filename.trim().toLowerCase();
-  const picked = attachments.find((a) => a.filename.toLowerCase() === wanted);
+  const picked = findAttachmentByFilename(attachments, filename);
   if (!picked) throw notFound(`no attachment named "${filename}" on this message`);
 
-  const bytes =
-    picked.data ??
-    (picked.ref ? await provider.downloadAttachment(account, messageId, picked.ref) : undefined);
+  const bytes = await resolveAttachmentBytes(provider, account, messageId, picked);
   if (!bytes) throw notFound("attachment has no downloadable data");
 
   return { filename: picked.filename, bytes };

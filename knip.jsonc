@@ -1,0 +1,35 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Modules export symbols for the test suite that they also use internally
+  // (coerce/build helpers, injectable dep interfaces, tuning constants); an
+  // export that is also used in its own file is deliberate, not dead.
+  "ignoreExportsUsedInFile": true,
+  // Pure test seams with no in-file use are tagged @internal at the export.
+  "tags": ["-internal"],
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.mjs"]
+    },
+    "apps/server": {
+      "entry": ["test/setup.ts", "test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      // pino transports are resolved as strings (require.resolve in
+      // logger.ts), invisible to import analysis.
+      "ignoreDependencies": ["pino-roll", "pino-pretty"]
+    },
+    "apps/web": {
+      "entry": ["test/**/*.test.{ts,tsx}"],
+      "project": ["src/**/*.{ts,tsx}", "test/**/*.{ts,tsx}"],
+      // tailwindcss is consumed via CSS `@import "tailwindcss"`, not a
+      // JS import.
+      "ignoreDependencies": ["tailwindcss"]
+    },
+    "apps/desktop": {
+      "entry": ["src/main.ts", "src/preload.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.mjs"]
+    },
+    "packages/shared": {
+      "project": ["src/**/*.ts"]
+    }
+  }
+}

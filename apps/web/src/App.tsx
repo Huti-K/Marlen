@@ -47,9 +47,11 @@ import { cn, MOD_LABEL } from "@/lib/utils";
 /** Set once setup finished (or was skipped); an established app never re-gates. */
 const SETUP_DISMISSED_KEY = "trailin-setup-dismissed";
 
-/** Drag range for the chat panel width, shared by the resize hook and the drag handle's ARIA value. */
+/** Drag range for the chat panel width, shared by the resize hook and the drag handle's
+ *  ARIA value. The hook additionally caps the panel at a fraction of the window, so the
+ *  px ceiling is only reachable on large screens. */
 const CHAT_WIDTH_MIN = 320;
-const CHAT_WIDTH_MAX = 640;
+const CHAT_WIDTH_MAX = 960;
 
 /** Narrows a raw route segment to a known nav view, for typed `t()` lookups. */
 function isNavView(path: string): path is View {
@@ -304,7 +306,7 @@ export default function App() {
 
   return (
     <div
-      className="flex h-dvh overflow-hidden"
+      className="flex h-dvh overflow-hidden bg-sidebar"
       style={{ "--chat-width": `${chatWidth}px` } as React.CSSProperties}
     >
       <a
@@ -333,7 +335,9 @@ export default function App() {
       <main
         id="main-content"
         className={cn(
-          "relative isolate flex min-w-0 flex-1 flex-col overflow-hidden",
+          // The grey canvas, inset into the chrome shell on desktop — rounded,
+          // with a small vertical gap so the chrome frames it on all sides.
+          "relative isolate flex min-w-0 flex-1 flex-col overflow-hidden bg-background md:my-3 md:rounded-2xl",
           onChatRoute && "hidden",
         )}
       >
@@ -400,8 +404,17 @@ export default function App() {
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-5 pb-10 pt-1 sm:px-8">
-          <div className="mx-auto max-w-3xl">
+        <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-5 pb-10 pt-1 sm:px-8 @container">
+          <div
+            className={cn(
+              // Steps up with the canvas (not the viewport — the sidebar and chat
+              // panel eat variable width), so large monitors aren't all gutter.
+              "mx-auto max-w-3xl @6xl:max-w-4xl @7xl:max-w-5xl",
+              // DEV showcase — remove with the route. Its inner nav hugs the
+              // canvas's left edge, so the gallery spans the full width.
+              import.meta.env.DEV && currentPath === "showcase" && "max-w-none",
+            )}
+          >
             <Routes>
               {/* The full-page Chat tab is rendered by the persistent chat instance below,
                   not here — this route just keeps the URL valid so it isn't redirected home. */}
@@ -475,7 +488,8 @@ export default function App() {
         className={cn(
           "flex flex-col min-h-0 min-w-0 overflow-hidden",
           onChatRoute
-            ? "static z-auto min-w-0 flex-1 translate-x-0"
+            ? // Same inset rounded canvas as <main> — the Chat tab replaces it in flow.
+              "static z-auto min-w-0 flex-1 translate-x-0 bg-background md:my-3 md:rounded-2xl"
             : cn(
                 "fixed inset-y-0 right-0 w-full max-w-sm transition-[transform,width] duration-200 ease-out md:static md:z-auto md:max-w-none md:translate-x-0",
                 agentCollapsed ? "md:w-0" : "md:w-[var(--chat-width)]",
@@ -559,7 +573,7 @@ export default function App() {
               than rising to white as they would on the canvas. */}
           <div
             className={cn(
-              "surface-fills flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+              "surface-fills flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden @container",
               onChatRoute && "rounded-2xl bg-surface",
             )}
           >

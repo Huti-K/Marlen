@@ -8,6 +8,11 @@
 /** 24h clock in every language — "h23" so midnight renders 00:32, never 24:32. */
 const HOUR_CYCLE: Intl.DateTimeFormatOptions = { hourCycle: "h23" };
 
+/** Whether the timestamp falls on the current local date. */
+export function isToday(iso: string): boolean {
+  return new Date(iso).toDateString() === new Date().toDateString();
+}
+
 const rtfCache = new Map<string, Intl.RelativeTimeFormat>();
 
 /** "3 days ago", "yesterday", "last month" — in the given language. */
@@ -77,7 +82,7 @@ export function dayTimeLabel(iso: string, lang: string, style: "short" | "long" 
     minute: "2-digit",
     ...HOUR_CYCLE,
   });
-  if (date.toDateString() === new Date().toDateString()) return time;
+  if (isToday(iso)) return time;
   const day =
     style === "long"
       ? date.toLocaleDateString(lang, { weekday: "long", day: "numeric", month: "short" })

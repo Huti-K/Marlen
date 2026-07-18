@@ -7,7 +7,7 @@ import { GRAPH_API } from "./message.js";
  * Outlook AttachmentProvider: lists a message's attachments and downloads
  * their bytes through the Connect proxy (Microsoft Graph, same pattern as
  * ./drafts.ts). Attachment selection, extension validation and library
- * ingest live one layer up in the provider-neutral ../attachmentTool.ts;
+ * ingest live in the provider-neutral ../../agent/attachmentTool.ts;
  * this file only speaks Graph's wire format. Registered by
  * ../registerAttachmentProviders.ts.
  *

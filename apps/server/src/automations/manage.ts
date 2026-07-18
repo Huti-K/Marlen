@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { deleteConversationCascade } from "../db/conversationStore.js";
-import { db, schema, sqlite } from "../db/index.js";
-import { badRequest, requireRow } from "../errors.js";
+import { db, lazyTransaction, schema, sqlite } from "../db/index.js";
+import { badRequest, conflict, requireRow } from "../errors.js";
 import { emitServerEvent } from "../events.js";
-import { isValidCron, refreshSchedule, unschedule } from "./scheduler.js";
+import { isRunInFlight, isValidCron, refreshSchedule, unschedule } from "./scheduler.js";
 
 /**
  * Create/update/delete for automations, shared by the HTTP routes and the
@@ -20,7 +20,9 @@ export type AutomationRow = typeof schema.automations.$inferSelect;
 export interface AutomationInput {
   name: string;
   instruction: string;
-  schedule: string;
+  /** Five-field cron, or empty/omitted for a manual-only automation that runs
+   *  only on demand ("Run now" or runOnNewMail), never on a schedule. */
+  schedule?: string;
   enabled?: boolean;
   showInActivity?: boolean;
   pinned?: boolean;
@@ -49,7 +51,7 @@ export interface AutomationPatch {
  * requests can never both leave a row pinned — whichever transaction commits
  * last wins, and the invariant (at most one pinned row) always holds.
  */
-const pinExclusively = sqlite.transaction((id: string) => {
+const pinExclusively = lazyTransaction((id: string) => {
   sqlite.prepare("UPDATE automations SET pinned = 0 WHERE id != ?").run(id);
   sqlite.prepare("UPDATE automations SET pinned = 1 WHERE id = ?").run(id);
 });
@@ -57,11 +59,11 @@ const pinExclusively = sqlite.transaction((id: string) => {
 export async function createAutomation(input: AutomationInput): Promise<AutomationRow> {
   const name = input.name.trim();
   const instruction = input.instruction.trim();
-  const schedule = input.schedule.trim();
-  if (!name || !instruction || !schedule) {
-    throw badRequest("name, instruction and schedule are required");
+  const schedule = input.schedule?.trim() ?? "";
+  if (!name || !instruction) {
+    throw badRequest("name and instruction are required");
   }
-  if (!isValidCron(schedule)) {
+  if (schedule && !isValidCron(schedule)) {
     throw badRequest(`invalid cron expression: ${input.schedule}`);
   }
   if (input.leadId) {
@@ -104,10 +106,11 @@ export async function updateAutomation(id: string, patch: AutomationPatch): Prom
     updates.instruction = instruction;
   }
   if (patch.schedule !== undefined) {
-    if (!isValidCron(patch.schedule.trim())) {
+    const schedule = patch.schedule.trim();
+    if (schedule && !isValidCron(schedule)) {
       throw badRequest(`invalid cron expression: ${patch.schedule}`);
     }
-    updates.schedule = patch.schedule.trim();
+    updates.schedule = schedule;
   }
   if (patch.enabled !== undefined) updates.enabled = patch.enabled;
   if (patch.showInActivity !== undefined) updates.showInActivity = patch.showInActivity;
@@ -141,12 +144,22 @@ export async function updateAutomation(id: string, patch: AutomationPatch): Prom
   );
 }
 
-/** Delete an automation and its whole run history. Returns false when no such automation exists. */
+/** Delete an automation and its whole run history. Returns false when no such
+ *  automation exists; throws conflict while a run of it is executing. */
 export async function deleteAutomation(id: string): Promise<boolean> {
   const [existing] = await db
     .select({ id: schema.automations.id })
     .from(schema.automations)
     .where(eq(schema.automations.id, id));
+  if (!existing) return false;
+
+  // A run executing right now would still write its run row and conversation
+  // messages after the cascade below (SQLite here enforces no FKs), leaving
+  // rows nothing ever cleans up — refuse instead of racing it, the same 409
+  // contract routes/chat.ts applies to deleting a conversation mid-turn.
+  if (isRunInFlight(id)) {
+    throw conflict("a run of this automation is in progress");
+  }
 
   unschedule(id);
 
@@ -166,5 +179,5 @@ export async function deleteAutomation(id: string): Promise<boolean> {
   await db.delete(schema.automations).where(eq(schema.automations.id, id));
   await db.delete(schema.automationRuns).where(eq(schema.automationRuns.automationId, id));
   emitServerEvent("automations");
-  return existing !== undefined;
+  return true;
 }

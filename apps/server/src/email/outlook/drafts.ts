@@ -1,17 +1,24 @@
 import type { ConnectedAccount, CreatedDraft, EmailDraft } from "@trailin/shared";
 import { moduleLogger } from "../../logger.js";
 import { proxyRequest } from "../../pipedream/connect.js";
-import { draftsMutated } from "../draftsService.js";
-import type {
-  CreateDraftInput,
-  DraftProvider,
-  SendDraftResult,
-  UpdateDraftPatch,
+import { draftsMutated } from "../draftsCache.js";
+import {
+  type CreateDraftInput,
+  DRAFTS_LIST_LIMIT,
+  type DraftProvider,
+  type SendDraftResult,
+  type UpdateDraftPatch,
 } from "../providers.js";
 import { snippetFrom, stripHtml } from "../textUtils.js";
 import { isConsumerOutlookAccount, outlookWebRoot, withOutlookLoginHint } from "../webLinks.js";
 import { addOutlookAttachments } from "./draftAttachments.js";
-import { addressListOf, GRAPH_API, type GraphRecipient, newestByReceivedDate } from "./message.js";
+import {
+  addressListOf,
+  fetchConversationMessages,
+  GRAPH_API,
+  type GraphRecipient,
+  newestByReceivedDate,
+} from "./message.js";
 
 /**
  * Outlook / Microsoft 365 draft provider, via the Connect proxy against
@@ -20,8 +27,8 @@ import { addressListOf, GRAPH_API, type GraphRecipient, newestByReceivedDate } f
  * "microsoft_outlook" at the bottom of this file.
  *
  * `listOutlookDrafts` is a pure live fetch — no caching in here (see
- * ../draftsService.ts, the shared cache every provider's listDrafts sits
- * behind). Every mutation below ends with draftsService's `draftsMutated`
+ * ../draftsCache.ts, the shared cache every provider's listDrafts sits
+ * behind). Every mutation below ends with draftsCache.ts's `draftsMutated`
  * epilogue, mirroring ../gmail/drafts.ts's flow.
  */
 
@@ -32,9 +39,6 @@ const LIST_SELECT = "id,subject,toRecipients,ccRecipients,bodyPreview,lastModifi
 
 /** Fields fetched when a reply draft just needs to find the conversation's newest message id. */
 const REPLY_TARGET_SELECT = "id,receivedDateTime";
-
-/** Page size for fetchConversationMessages — Graph's own default (10) is too small for an active thread. */
-const CONVERSATION_PAGE_SIZE = 50;
 
 /**
  * Hard cap on how many messages one conversation fetch will page through
@@ -47,7 +51,6 @@ const CONVERSATION_MESSAGE_CAP = 100;
 interface GraphMessage {
   id: string;
   subject?: string;
-  from?: GraphRecipient;
   toRecipients?: GraphRecipient[];
   ccRecipients?: GraphRecipient[];
   bccRecipients?: GraphRecipient[];
@@ -110,11 +113,11 @@ function toEmailDraft(account: ConnectedAccount, message: GraphMessage): EmailDr
   };
 }
 
-async function listOutlookDrafts(account: ConnectedAccount, limit = 15): Promise<EmailDraft[]> {
+async function listOutlookDrafts(account: ConnectedAccount): Promise<EmailDraft[]> {
   const res = (await proxyRequest(account.id, "get", `${GRAPH_API}/mailFolders/drafts/messages`, {
     params: {
       $select: LIST_SELECT,
-      $top: String(limit),
+      $top: String(DRAFTS_LIST_LIMIT),
       $orderby: "lastModifiedDateTime desc",
     },
   })) as ListMessagesResponse;
@@ -144,48 +147,6 @@ async function deleteOutlookDraft(account: ConnectedAccount, draftId: string): P
   draftsMutated(account.id);
 }
 
-/**
- * Every message in a conversation, paging through `@odata.nextLink` up to
- * CONVERSATION_MESSAGE_CAP, for the reply-draft path below (which scans the
- * result for the newest message).
- *
- * `$orderby` is deliberately not combined with `$filter` here — Graph often
- * rejects that pairing as an inefficient query — so the caller scans the
- * result itself; Graph's per-page order isn't otherwise guaranteed.
- */
-async function fetchConversationMessages(
-  account: ConnectedAccount,
-  threadId: string,
-  select: string,
-): Promise<GraphMessage[]> {
-  // OData string literals escape a single quote by doubling it.
-  const escapedThreadId = threadId.replace(/'/g, "''");
-  const messages: GraphMessage[] = [];
-  let url = `${GRAPH_API}/messages`;
-  let params: Record<string, string> | undefined = {
-    $filter: `conversationId eq '${escapedThreadId}'`,
-    $select: select,
-    $top: String(CONVERSATION_PAGE_SIZE),
-  };
-
-  while (messages.length < CONVERSATION_MESSAGE_CAP) {
-    const res = (await proxyRequest(
-      account.id,
-      "get",
-      url,
-      params ? { params } : {},
-    )) as ListMessagesResponse;
-    messages.push(...(res.value ?? []));
-    const nextLink = res["@odata.nextLink"];
-    if (!nextLink) break;
-    // nextLink is already a full URL carrying the escaped $filter/$select/$top
-    // as its query string — passing params again would duplicate them.
-    url = nextLink;
-    params = undefined;
-  }
-  return messages.slice(0, CONVERSATION_MESSAGE_CAP);
-}
-
 /** The brand-new, standalone-message path: no threadId, or a reply target that couldn't be resolved. */
 async function createStandaloneOutlookDraft(
   account: ConnectedAccount,
@@ -194,7 +155,7 @@ async function createStandaloneOutlookDraft(
   return (await proxyRequest(account.id, "post", `${GRAPH_API}/messages`, {
     body: {
       subject: input.subject,
-      body: { contentType: input.bodyFormat === "html" ? "HTML" : "Text", content: input.body },
+      body: { contentType: "Text", content: input.body },
       toRecipients: toRecipientsPayload(input.to),
       ...(input.cc?.length ? { ccRecipients: toRecipientsPayload(input.cc) } : {}),
       ...(input.bcc?.length ? { bccRecipients: toRecipientsPayload(input.bcc) } : {}),
@@ -221,7 +182,12 @@ async function createOutlookReplyDraft(
   threadId: string,
 ): Promise<GraphMessage> {
   const target = newestByReceivedDate(
-    await fetchConversationMessages(account, threadId, REPLY_TARGET_SELECT),
+    await fetchConversationMessages<GraphMessage>(
+      account,
+      threadId,
+      REPLY_TARGET_SELECT,
+      CONVERSATION_MESSAGE_CAP,
+    ),
   );
   if (!target) {
     log.warn(
@@ -243,13 +209,25 @@ async function createOutlookReplyDraft(
   // supplied them — an absent one keeps what createReply already filled in.
   return (await proxyRequest(account.id, "patch", `${GRAPH_API}/messages/${draft.id}`, {
     body: {
-      body: { contentType: input.bodyFormat === "html" ? "HTML" : "Text", content: input.body },
+      body: { contentType: "Text", content: input.body },
       ...(input.subject ? { subject: input.subject } : {}),
       ...(input.to.length ? { toRecipients: toRecipientsPayload(input.to) } : {}),
       ...(input.cc?.length ? { ccRecipients: toRecipientsPayload(input.cc) } : {}),
       ...(input.bcc?.length ? { bccRecipients: toRecipientsPayload(input.bcc) } : {}),
     },
   })) as GraphMessage;
+}
+
+/**
+ * Narrow the created draft's id before it is dereferenced — the proxy can
+ * answer an error envelope instead of a Graph message, and a descriptive
+ * failure beats a bare TypeError from inside a cast.
+ */
+function requireDraftId(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new Error("Graph draft response carries no message id — unexpected response shape.");
+  }
+  return value;
 }
 
 async function createOutlookDraft(
@@ -259,6 +237,7 @@ async function createOutlookDraft(
   const res = input.threadId
     ? await createOutlookReplyDraft(account, input, input.threadId)
     : await createStandaloneOutlookDraft(account, input);
+  const draftId = requireDraftId(res.id);
 
   // Graph can't attach files in the create call, so attachments are added to
   // the just-created draft. A failure propagates (the error names the draft
@@ -266,14 +245,14 @@ async function createOutlookDraft(
   // the cache invalidation still runs — the draft exists either way.
   try {
     if (input.attachments?.length) {
-      await addOutlookAttachments(account, res.id, input.attachments);
+      await addOutlookAttachments(account, draftId, input.attachments);
     }
   } finally {
     draftsMutated(account.id);
   }
   return {
-    draftId: res.id,
-    messageId: res.id,
+    draftId,
+    messageId: draftId,
     threadId: res.conversationId ?? "",
     webUrl: outlookDraftUrl(account, res.webLink),
   };

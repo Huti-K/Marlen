@@ -1,64 +1,61 @@
-# Trailin — local email agent
+# Trailin
 
-A locally-run AI email agent for **any email provider** — Gmail, Outlook / Microsoft 365 / Exchange Online, and anything else Pipedream can connect — built on:
+A local-first AI email assistant. It reads, drafts, and organizes your mail —
+Gmail, Outlook / Microsoft 365, and anything else Pipedream can connect — with
+scheduled automations and a chat you can ask anything. Everything runs and
+stays on your computer.
 
-- **[pi](https://github.com/badlogic/pi-mono)** (`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`) — the agent loop and LLM layer
-- **Pipedream Connect + MCP** — managed OAuth for every app in Pipedream's catalog; email tools come from Pipedream's MCP server, one session per connected account, so **several accounts — same provider or mixed — work at the same time**
-- **Fastify** API server with **SQLite** (Drizzle) persistence and a **node-cron** automation scheduler
-- **Vite + React + shadcn-style UI** (Tailwind v4)
+## Download
+
+Grab the macOS or Windows installer from the
+[latest release](https://github.com/Huti-K/Trailin/releases/latest). The app
+updates itself when a new release is published.
+
+(macOS, until builds are signed: allow the app once via System Settings →
+Privacy & Security → "Open Anyway".)
+
+## Run from source
+
+Requires Node 20+ and pnpm.
+
+```sh
+pnpm install
+pnpm dev        # server on :3001, web app on :5173
+```
+
+Or as a single process: `pnpm build && pnpm start` → http://localhost:3001.
+
+## First-time setup (in the app)
+
+Open **Settings**:
+
+1. **AI** — sign in with a Claude / Copilot / ChatGPT subscription (or an API
+   key) and pick a model.
+2. **Email** — follow the one-time Pipedream setup shown in the form (free
+   account, OAuth client, project URL), then **Connect an account** and sign
+   in to your mailbox. Add as many accounts as you like, mixed providers
+   included.
+
+## Repo layout
 
 ```
 apps/
-  server/   Fastify API: chat (SSE), Pipedream Connect, live mail tools, automations + scheduler
-  web/      Vite/React UI: Home briefing, Automations, Settings + a persistent chat rail
+  server/    Fastify API — chat, live email tools, automations, SQLite storage
+  web/       Vite/React UI
+  desktop/   Electron shell + auto-update (releases: see its README)
 packages/
-  shared/   Types shared between server and web
+  shared/    Types shared between server and web
 ```
-
-## Setup
-
-1. **Install** (Node 20+, pnpm):
-
-   ```sh
-   pnpm install
-   ```
-
-2. **Run** (starts server on :3001 and web on :5173):
-
-   ```sh
-   pnpm dev
-   ```
-
-3. **Configure in the app** — open http://localhost:5173 → **Settings**:
-
-   1. Sign in to an AI provider (Claude/Copilot/ChatGPT subscription, or an API key) and pick a model.
-   2. Under **Connect email**, follow the one-time Pipedream setup: create a free account, create an OAuth client under [Settings → API](https://pipedream.com/settings/api) (copy Client ID + Secret), create a [project](https://pipedream.com/projects) and paste its URL. The form checks the values with Pipedream before saving.
-   3. Hit **Connect an account**, pick a provider (Gmail and Outlook are suggested; the search covers Pipedream's full catalog) and finish the sign-in. Repeat to add more accounts — several from the same provider is fine. The Outlook connector covers outlook.com and Microsoft 365 / Exchange Online work accounts.
-
-## Hosted / single-process mode
-
-`pnpm build` builds the web app; when `apps/web/dist` exists, the server serves it itself:
-
-```sh
-pnpm build
-pnpm start   # everything on http://localhost:3001
-```
-
-## How it works
-
-- Each chat conversation gets its own **pi Agent**. On creation, the server connects to Pipedream's MCP server (`https://remote.mcp.pipedream.net/v3`) **once per connected account**, pinned with `x-pd-account-id` and in `tools-only` mode (structured parameters, no sub-agent), lists the tools, and bridges them into pi `AgentTool`s. With several accounts of the same app, tool names carry an account suffix (`gmail-find-email__work`) and every description names the account it acts as.
-- **Automations** are cron-scheduled standing instructions ("summarize unread mail every weekday at 8am"). Each run spins up a fresh agent, executes the instruction, and stores the result in SQLite (visible under *Recent runs*).
-- **Mail is read live** — the agent's read tools are the per-account Pipedream MCP tools; nothing is mirrored locally. Deterministic reads (the draft-vs-sent learning loop, voice learning) go through small live read drivers per provider (today: Gmail, Outlook).
-- **Web search works out of the box** — the agent (and its delegate research workers) carry a `web_search` tool that needs no key: searches go through Exa's keyless public MCP endpoint by default, or the Brave Search API when `BRAVE_SEARCH_API_KEY` is set (`src/websearch/`).
-- Provider-specific code (drafts, read, attachments) lives behind registries in `src/email/` — new providers register in the `register*.ts` files, nothing else hardcodes a provider.
-- Conversation transcripts, automations, drafts, and memories live in `data/trailin.db`. Agent context (tool-call history) is in-memory per conversation and resets on server restart.
 
 ## Development
 
-- **Tests:** `pnpm --filter @trailin/server test` (vitest). Tests live in `apps/server/test/`, mirroring `src/` — never colocated.
+```sh
+pnpm dev      # server + web with live reload
+pnpm check    # lint + conventions + typecheck + tests
+```
 
-## Current limitations (v1)
+## License
 
-- Single user (one `PIPEDREAM_EXTERNAL_USER_ID`) — fine for desktop, needs per-user ids before multi-tenant hosting.
-- Automations only *run and report*; triggers (e.g. "on new email") would use Pipedream triggers/webhooks — a natural next step.
-- MCP sessions are created per conversation; a very long-lived conversation may need a new conversation once the Pipedream access token expires (~1h).
+Source-available, all rights reserved — see [LICENSE](LICENSE). The code is
+public for transparency and so official builds can auto-update from this
+repo's releases.

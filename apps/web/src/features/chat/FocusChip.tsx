@@ -1,10 +1,12 @@
-import type { AccountColor, ConnectedAccount, Conversation } from "@trailin/shared";
+import type { Conversation } from "@trailin/shared";
 import { ChevronDown } from "lucide-react";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";
 import { Chip } from "@/components/ui/chip";
+import { OptionRow } from "@/components/ui/option-row";
+import { accountColor, useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
@@ -47,26 +49,9 @@ export function FocusChip({
   onPendingFocusChange?: (accountId: string | null) => void;
 }) {
   const { t } = useTranslation();
-  const [accounts, setAccounts] = React.useState<ConnectedAccount[]>([]);
-  const [colors, setColors] = React.useState<AccountColor[]>([]);
+  const { accounts, colors } = useAccountColors();
   const [focus, setFocus] = React.useState<Focus>(NO_FOCUS);
   const { open, setOpen, pos, triggerRef, popoverRef } = useAnchoredPopover<HTMLSpanElement>();
-
-  // Cosmetic (account list + colors for the popover rows) — a failed load
-  // just leaves the picker showing fewer accounts, never surfaced as an error.
-  React.useEffect(() => {
-    let cancelled = false;
-    Promise.all([api.pipedreamAccounts(), api.accountColors()])
-      .then(([accountList, { colors: colorList }]) => {
-        if (cancelled) return;
-        setAccounts(accountList);
-        setColors(colorList);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const loadFocus = React.useCallback(() => {
     if (!conversationId) {
@@ -122,7 +107,7 @@ export function FocusChip({
   const focusAccountId = conversationId ? focus.focusAccountId : (pendingFocusAccountId ?? null);
   const focusThreadSubject = conversationId ? focus.focusThreadSubject : null;
   const focusedAccount = accounts.find((a) => a.id === focusAccountId);
-  const focusedColor = colors.find((c) => c.accountId === focusAccountId)?.hex;
+  const focusedColor = accountColor(colors, focusAccountId);
   const hasFocus = Boolean(focusAccountId);
   const label = hasFocus
     ? [focusedAccount?.name ?? focusAccountId, focusThreadSubject].filter(Boolean).join(" · ")
@@ -181,7 +166,7 @@ export function FocusChip({
                 <FocusOption
                   key={account.id}
                   selected={account.id === focusAccountId}
-                  color={colors.find((c) => c.accountId === account.id)?.hex}
+                  color={accountColor(colors, account.id)}
                   label={account.name}
                   onClick={() => void pick(account.id)}
                 />
@@ -201,26 +186,18 @@ function FocusOption({
   onClick,
 }: {
   selected: boolean;
-  /** Omitted for the "all accounts" row — it isn't a real account color. */
+  /** Omitted for the "all accounts" row — the dot falls back to the unassigned grey. */
   color?: string;
   label: string;
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <OptionRow
+      selected={selected}
       onClick={onClick}
-      className={cn(
-        "flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
-        selected ? "bg-accent/10 text-accent" : "text-foreground hover:bg-secondary",
-      )}
-    >
-      {color ? (
-        <AccountDot color={color} />
-      ) : (
-        <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
-      )}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-    </button>
+      icon={<AccountDot color={color} />}
+      label={label}
+      className="py-2"
+    />
   );
 }

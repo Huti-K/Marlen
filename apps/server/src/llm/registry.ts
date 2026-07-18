@@ -1,10 +1,12 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { getOAuthProvider } from "@earendil-works/pi-ai/oauth";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { LlmProviderInfo, ModelSettings } from "@trailin/shared";
 import { getSetting, setSetting } from "../db/settings.js";
 import { env } from "../env.js";
+import { moduleLogger } from "../logger.js";
 import { credentialStore } from "./credentialStore.js";
+
+const log = moduleLogger("llm-registry");
 
 /**
  * Single model registry for the whole app. Auth resolution order per call:
@@ -41,25 +43,46 @@ export async function resolveActiveModel(): Promise<Model<Api>> {
   return resolved;
 }
 
-/** Cheap-tier candidates tried against the active provider, in order, before the active-model fallback. */
-const CHEAP_MODEL_CANDIDATES = ["claude-haiku-4-5", "claude-haiku-4-5-20251001"];
+/**
+ * The provider's cheapest model by the catalog's per-token cost metadata
+ * (input + output rate). Router pseudo-entries carry sentinel negative rates
+ * so they always "win" a naive sort — those never count as cheap.
+ */
+function cheapestModelOf(providerId: string): Model<Api> | undefined {
+  let best: Model<Api> | undefined;
+  let bestRate = Number.POSITIVE_INFINITY;
+  for (const model of modelRegistry.getProvider(providerId)?.getModels() ?? []) {
+    const { input, output } = model.cost;
+    if (input < 0 || output < 0) continue;
+    const rate = input + output;
+    if (rate < bestRate) {
+      best = model;
+      bestRate = rate;
+    }
+  }
+  return best;
+}
 
 /**
- * Cheap-tier model for high-volume background LLM seams (thread enrichment,
- * contact judging, draft-match tiebreak, nightly style extraction): tries an
- * optional caller override, then the built-in cheap candidates, against the
- * active provider — a different provider would need its own credentials —
- * falling back to the active model when none of them resolve.
+ * Cheap-tier model for high-volume background LLM seams (automation
+ * suggestions, the draft-match tiebreak, nightly style extraction): tries an
+ * optional caller override, then the cheapest model in the active provider's
+ * own catalog — a different provider would need its own credentials —
+ * falling back to the active model (with a warn, since every background call
+ * then runs at full price) when neither resolves.
  */
 export async function resolveCheapModel(overrideModelId?: string): Promise<Model<Api>> {
   const { provider } = await getActiveModelIds();
-  const candidates = overrideModelId
-    ? [overrideModelId, ...CHEAP_MODEL_CANDIDATES]
-    : CHEAP_MODEL_CANDIDATES;
-  for (const id of candidates) {
-    const model = modelRegistry.getModel(provider, id);
+  if (overrideModelId) {
+    const model = modelRegistry.getModel(provider, overrideModelId);
     if (model) return model;
   }
+  const cheapest = cheapestModelOf(provider);
+  if (cheapest) return cheapest;
+  log.warn(
+    { provider, ...(overrideModelId ? { overrideModelId } : {}) },
+    "no cheap-tier model resolved; background LLM seams run the full-price active model",
+  );
   return resolveActiveModel();
 }
 
@@ -81,7 +104,6 @@ export async function listProviders(): Promise<LlmProviderInfo[]> {
   return Promise.all(
     providers.map(async (provider): Promise<LlmProviderInfo> => {
       const models = provider.getModels();
-      const oauthProvider = getOAuthProvider(provider.id);
 
       let auth: LlmProviderInfo["auth"] = null;
       let authDetail: string | undefined;
@@ -110,8 +132,8 @@ export async function listProviders(): Promise<LlmProviderInfo[]> {
       return {
         id: provider.id,
         name: provider.name,
-        oauth: Boolean(oauthProvider ?? provider.auth.oauth),
-        oauthName: provider.auth.oauth?.name ?? oauthProvider?.name,
+        oauth: Boolean(provider.auth.oauth),
+        oauthName: provider.auth.oauth?.name,
         auth,
         authDetail,
         modelCount: models.length,

@@ -10,30 +10,14 @@ import { resolveCheapModel } from "../../llm/registry.js";
 import { moduleLogger } from "../../logger.js";
 import { listAccounts } from "../../pipedream/connect.js";
 import { collapseWhitespace } from "../../search/snippets.js";
-import { errorMessage } from "../../util.js";
+import { errorMessage } from "../../utils/util.js";
 import { getMailReadProvider, type MailReadProvider } from "../read/readProviders.js";
-// Side-effect import: populates the MailReadProvider registry.
-import "../read/registerReadProviders.js";
 import { extractLessons } from "./extractLLM.js";
 
 const log = moduleLogger("learn-extract");
 
 /** One account's LLM call covers at most this many pending pairs a night; any excess waits for the next sweep. */
 const MAX_PAIRS_PER_CALL = 10;
-
-/**
- * Whitespace-normalized body with the account's compose-time signature
- * stripped off the end, when it's present verbatim (agent-authored bodies
- * always have it; a provider round-trip on the sent copy sometimes doesn't
- * preserve it byte-for-byte, in which case the body is left as-is rather
- * than mis-stripped).
- */
-function stripSignature(body: string, signature: string | null): string {
-  const normalized = collapseWhitespace(body);
-  const normalizedSignature = signature ? collapseWhitespace(signature) : "";
-  if (!normalizedSignature || !normalized.endsWith(normalizedSignature)) return normalized;
-  return collapseWhitespace(normalized.slice(0, normalized.length - normalizedSignature.length));
-}
 
 interface PendingPair {
   providerDraftId: string;
@@ -76,10 +60,10 @@ export interface ExtractSweepResult {
 /**
  * One sweep's worth of the nightly extraction pass: every sent-but-unlearned
  * agent_drafts snapshot whose sent message the provider can still serve is
- * diffed against its own latest agent-authored version, signature stripped
- * from both sides. The sent body comes live from the account's
- * MailReadProvider. A pair identical after stripping needed no lesson and is
- * stamped learned_at directly; every other pair is batched per account (at
+ * diffed against its own latest agent-authored version, both sides
+ * whitespace-normalized. The sent body comes live from the account's
+ * MailReadProvider. A pair identical after normalizing needed no lesson and
+ * is stamped learned_at directly; every other pair is batched per account (at
  * most MAX_PAIRS_PER_CALL) into one LLM call whose reported directives
  * become account-scoped memories. Unresolvable pairs (account disconnected,
  * no read driver, fetch failed) and any account whose LLM call fails are
@@ -120,8 +104,8 @@ export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<E
     const draftBody = await getLatestAgentDraftBody(draft.accountId, draft.providerDraftId);
     if (draftBody === null) continue; // snapshot vanished or has no agent-authored version
 
-    const strippedDraft = stripSignature(draftBody, draft.signature);
-    const strippedSent = stripSignature(sentBody, draft.signature);
+    const strippedDraft = collapseWhitespace(draftBody);
+    const strippedSent = collapseWhitespace(sentBody);
     if (strippedDraft === strippedSent) {
       await markDraftLearned(draft.accountId, draft.providerDraftId);
       identical++;

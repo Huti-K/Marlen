@@ -1,17 +1,18 @@
 import type { PipedreamStatus } from "@trailin/shared";
-import { Check, ExternalLink, Loader2, Pencil, X } from "lucide-react";
+import { Check, ExternalLink, Pencil, X } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
-import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
+import { LoadingRow, RetryableError } from "@/components/ui/feedback";
 import { FormField } from "@/components/ui/form-field";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ListRow } from "@/components/ui/list-row";
+import { SettingRow } from "@/components/ui/setting-row";
+import { StepCircle } from "@/components/ui/step-circle";
 import { Switch } from "@/components/ui/switch";
 import { Accounts } from "@/features/connections/Accounts";
 import { api } from "@/lib/api";
@@ -58,12 +59,7 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
 
   if (!status) {
     return loadError ? (
-      <div className="flex flex-col items-start gap-2">
-        <ErrorBanner>{loadError}</ErrorBanner>
-        <Button variant="ghost" size="sm" onClick={() => void refresh()}>
-          {t("common.retry")}
-        </Button>
-      </div>
+      <RetryableError onRetry={() => void refresh()}>{loadError}</RetryableError>
     ) : (
       <LoadingRow />
     );
@@ -75,25 +71,24 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
   // matters during first-time setup, tucked under "Advanced" once an account
   // is connected. Same JSX either way, just relocated by `status.configured`.
   const modeToggle = (
-    <ListRow className="animate-in-up py-2.5" style={{ animationDelay: "0ms" }}>
-      <div className="min-w-0">
-        <Label htmlFor="pd-custom-toggle" className="text-sm font-medium">
-          {t("connections.customToggle")}
-        </Label>
-        <p className="text-xs text-muted-foreground">
-          {custom
-            ? t("connections.customToggleOn")
-            : status.builtinAvailable
-              ? t("connections.builtinInUse")
-              : t("connections.builtinMissing")}
-        </p>
-      </div>
+    <SettingRow
+      htmlFor="pd-custom-toggle"
+      label={t("connections.customToggle")}
+      description={
+        custom
+          ? t("connections.customToggleOn")
+          : status.builtinAvailable
+            ? t("connections.builtinInUse")
+            : t("connections.builtinMissing")
+      }
+      className="animate-in-up py-2.5"
+    >
       <Switch
         id="pd-custom-toggle"
         checked={custom}
         onCheckedChange={(next) => void toggleMode(next)}
       />
-    </ListRow>
+    </SettingRow>
   );
 
   const projectPanel = custom && (
@@ -268,9 +263,7 @@ export function PipedreamWizard({
         {GUIDE_STEPS.map((step, i) => (
           <li key={step.key} className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <span className="tint-accent flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-2xs font-semibold">
-                {i + 1}
-              </span>
+              <StepCircle tone="tint-accent">{i + 1}</StepCircle>
               <p className="text-xs text-muted-foreground">{t(`connections.${step.key}`)}</p>
             </div>
             <Button
@@ -325,13 +318,18 @@ export function PipedreamWizard({
             size="sm"
             onClick={() => setConfirmRemove(true)}
             disabled={busy !== null}
+            loading={busy === "remove"}
           >
-            {busy === "remove" && <Loader2 className="animate-spin" />}
             {t("connections.removeSaved")}
           </Button>
         )}
-        <Button size="sm" onClick={() => void save()} disabled={!canSave || busy !== null}>
-          {busy === "save" ? <Loader2 className="animate-spin" /> : <Check />}
+        <Button
+          size="sm"
+          onClick={() => void save()}
+          disabled={!canSave || busy !== null}
+          loading={busy === "save"}
+        >
+          <Check />
           {t("connections.saveVerify")}
         </Button>
       </div>

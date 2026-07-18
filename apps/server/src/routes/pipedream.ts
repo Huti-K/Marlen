@@ -1,11 +1,10 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import { type ConnectedAccount, EMAIL_APPS } from "@trailin/shared";
-import "../email/registerProviders.js";
 import { resetSessions } from "../agent/emailAgent.js";
-import { startVoiceLearnOnConnect } from "../agent/voiceLearnService.js";
+import { startVoiceLearnOnConnect } from "../agent/voiceLearn.js";
 import { deleteVoiceLearnRun } from "../db/voiceRuns.js";
-import { invalidateDraftsCache } from "../email/draftsService.js";
+import { invalidateDraftsCache } from "../email/draftsCache.js";
 import { env } from "../env.js";
 import { badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
 import {
@@ -23,7 +22,7 @@ import {
   setUseCustom,
   verifyConnectConfig,
 } from "../pipedream/connect.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 
 const pipedreamConfigBody = Type.Object({
   clientId: Type.String(),

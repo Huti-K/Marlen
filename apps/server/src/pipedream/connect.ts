@@ -9,6 +9,7 @@ import { EMAIL_APPS, POPULAR_APPS } from "@trailin/shared";
 import { deleteSetting, getSetting, setSetting } from "../db/settings.js";
 import { env } from "../env.js";
 import { AppError } from "../errors.js";
+import { createFetchCache } from "../utils/fetchCache.js";
 import { deleteClientSecret, readClientSecret, writeClientSecret } from "./secretFile.js";
 
 /**
@@ -239,35 +240,23 @@ export async function createConnectToken(app: string): Promise<ConnectTokenRespo
  * round-trip (paginated, one HTTP request per page), and many callers hit it
  * independently — every browser tab focus, plus /api/status, /api/drafts,
  * /api/waiting and Settings on the same page load. A short TTL plus
- * in-flight dedup turns N concurrent callers into one Pipedream request,
- * without ever serving data older than the TTL.
+ * in-flight dedup (fetchCache.ts, under this single fixed key) turns N
+ * concurrent callers into one Pipedream request, without ever serving data
+ * older than the TTL.
  *
- * Failed fetches never populate `accountsCache` — a broken/rate-limited
- * Pipedream call simply keeps throwing to its caller (who already handles
- * that) rather than quietly serving a stale list past its TTL.
+ * Failed fetches never populate the cache — a broken/rate-limited Pipedream
+ * call simply keeps throwing to its caller (who already handles that) rather
+ * than quietly serving a stale list past its TTL. And a fetch dispatched
+ * under old credentials never repopulates the cache once
+ * invalidateAccountsCache has run (fetchCache's generation counter).
  */
-const ACCOUNTS_TTL_MS = 60_000;
+const ACCOUNTS_CACHE_KEY = "accounts";
 
-let accountsCache: { accounts: ConnectedAccount[]; expiresAt: number } | null = null;
-// Shared by both the normal path and refresh: concurrent callers (including a
-// refresh landing mid-fetch) join the one request already in flight instead
-// of firing a second one at Pipedream.
-let accountsInFlight: Promise<ConnectedAccount[]> | null = null;
-/**
- * Generation accountsInFlight was dispatched under, paired with
- * accountsGeneration below — same generation-counter pattern as
- * draftsService.ts's per-account one: a fetch dispatched
- * under old credentials/state must not repopulate accountsCache, or be
- * joined by a new caller, once invalidateAccountsCache has moved the
- * generation on.
- */
-let accountsInFlightGeneration = 0;
-let accountsGeneration = 0;
+const accountsCache = createFetchCache<ConnectedAccount[]>({ ttlMs: 60_000 });
 
 /** Drop the cache so the next call fetches live. Call on anything that changes which accounts exist or which Pipedream project is active. */
 export function invalidateAccountsCache(): void {
-  accountsCache = null;
-  accountsGeneration++;
+  accountsCache.invalidate(ACCOUNTS_CACHE_KEY);
 }
 
 async function fetchAccountsLive(): Promise<ConnectedAccount[]> {
@@ -307,40 +296,11 @@ async function fetchAccountsLive(): Promise<ConnectedAccount[]> {
  * still joins an in-flight fetch rather than starting a second one.
  */
 export async function listAccounts(opts: { refresh?: boolean } = {}): Promise<ConnectedAccount[]> {
-  return listRealAccounts(opts);
-}
-
-async function listRealAccounts(opts: { refresh?: boolean }): Promise<ConnectedAccount[]> {
-  if (!opts.refresh && accountsCache && accountsCache.expiresAt > Date.now()) {
-    return accountsCache.accounts;
+  if (!opts.refresh) {
+    const hit = accountsCache.peek(ACCOUNTS_CACHE_KEY);
+    if (hit?.fresh) return hit.value;
   }
-
-  // Only join an in-flight fetch dispatched under the current generation —
-  // one left over from before an invalidateAccountsCache call is stale, so
-  // fall through and start a fresh fetch instead of joining it.
-  if (accountsInFlight && accountsInFlightGeneration === accountsGeneration)
-    return accountsInFlight;
-
-  const gen = accountsGeneration;
-  const promise: Promise<ConnectedAccount[]> = fetchAccountsLive()
-    .then((accounts) => {
-      // Only cache if nothing invalidated since this fetch was dispatched —
-      // otherwise it reflects the old project/account list and must be
-      // discarded rather than re-cached as fresh.
-      if (gen === accountsGeneration) {
-        accountsCache = { accounts, expiresAt: Date.now() + ACCOUNTS_TTL_MS };
-      }
-      return accounts;
-    })
-    .finally(() => {
-      // Only clear our own slot — a fresh fetch dispatched after us (because
-      // we were already stale) may have replaced it.
-      if (accountsInFlight === promise) accountsInFlight = null;
-    });
-  accountsInFlight = promise;
-  accountsInFlightGeneration = gen;
-
-  return accountsInFlight;
+  return (await accountsCache.fetch(ACCOUNTS_CACHE_KEY, fetchAccountsLive)).value;
 }
 
 /** Pipedream's catalog entries are untyped; pull the fields the app picker needs. */

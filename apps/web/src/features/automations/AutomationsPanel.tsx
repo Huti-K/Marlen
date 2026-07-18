@@ -1,5 +1,5 @@
 import type { Automation, AutomationSuggestion } from "@trailin/shared";
-import { CalendarClock, Loader2, Plus, Sparkles } from "lucide-react";
+import { CalendarClock, Plus, Sparkles } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LinkButton } from "@/components/ui/link-button";
 import { Select } from "@/components/ui/select";
+import { SettingRow } from "@/components/ui/setting-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -75,21 +76,25 @@ export function AutomationsPanel() {
     ? cron.trim().length > 0
     : preset.frequency !== "custom" || preset.weekdays.length > 0;
 
+  const load = React.useCallback(async () => {
+    const [automationRows, suggestionRows] = await Promise.all([
+      api.automations(),
+      api.automationSuggestions(),
+    ]);
+    setAutomations(automationRows);
+    setSuggestions(suggestionRows);
+  }, []);
+
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [automationRows, suggestionRows] = await Promise.all([
-        api.automations(),
-        api.automationSuggestions(),
-      ]);
-      setAutomations(automationRows);
-      setSuggestions(suggestionRows);
+      await load();
     } catch (err) {
       toast.error(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [load]);
 
   React.useEffect(() => {
     void refresh();
@@ -98,14 +103,7 @@ export function AutomationsPanel() {
   // Server-side changes (agent tools, scheduled runs, the suggestion sweep):
   // refetch without the loading gate — toggling it would unmount the cards
   // and drop their state.
-  useServerEvents(["automations"], () => {
-    void Promise.all([api.automations(), api.automationSuggestions()])
-      .then(([automationRows, suggestionRows]) => {
-        setAutomations(automationRows);
-        setSuggestions(suggestionRows);
-      })
-      .catch(() => {});
-  });
+  useServerEvents(["automations"], () => void load().catch(() => {}));
 
   const resetForm = () => {
     setForm({
@@ -235,15 +233,9 @@ export function AutomationsPanel() {
               </Button>
               <Button
                 onClick={() => void save()}
-                disabled={
-                  saving ||
-                  !form.name.trim() ||
-                  !form.instruction.trim() ||
-                  !schedule.trim() ||
-                  !scheduleValid
-                }
+                disabled={!form.name.trim() || !form.instruction.trim() || !scheduleValid}
+                loading={saving}
               >
-                {saving && <Loader2 className="animate-spin" />}
                 {editingId ? t("automations.save") : t("automations.create")}
               </Button>
             </div>
@@ -297,16 +289,19 @@ export function AutomationsPanel() {
                       { value: "weekdays", label: t("automations.frequency.weekdays") },
                       { value: "custom", label: t("automations.frequency.custom") },
                       { value: "date", label: t("automations.frequency.date") },
+                      { value: "manual", label: t("automations.frequency.manual") },
                     ]}
                   />
                 </div>
-                <Input
-                  type="time"
-                  value={preset.time}
-                  onChange={(e) => setPreset({ ...preset, time: e.target.value || "08:00" })}
-                  className="w-28 tabular-nums"
-                  aria-label={t("automations.time")}
-                />
+                {preset.frequency !== "manual" && (
+                  <Input
+                    type="time"
+                    value={preset.time}
+                    onChange={(e) => setPreset({ ...preset, time: e.target.value || "08:00" })}
+                    className="w-28 tabular-nums"
+                    aria-label={t("automations.time")}
+                  />
+                )}
               </div>
 
               {preset.frequency === "custom" && (
@@ -362,6 +357,9 @@ export function AutomationsPanel() {
           {!advanced && preset.frequency === "date" && (
             <p className="text-xs text-muted-foreground">{t("automations.dateOnceHint")}</p>
           )}
+          {!advanced && preset.frequency === "manual" && (
+            <p className="text-xs text-muted-foreground">{t("automations.manualHint")}</p>
+          )}
           <LinkButton onClick={toggleAdvanced}>
             {advanced ? t("automations.simpleToggle") : t("automations.advancedToggle")}
           </LinkButton>
@@ -377,39 +375,40 @@ export function AutomationsPanel() {
           />
         </FormField>
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <Label htmlFor="automation-activity">{t("automations.showInActivity")}</Label>
-            <p className="text-xs text-muted-foreground">{t("automations.showInActivityHint")}</p>
-          </div>
+        <SettingRow
+          bare
+          htmlFor="automation-activity"
+          label={t("automations.showInActivity")}
+          description={t("automations.showInActivityHint")}
+        >
           <Switch
             id="automation-activity"
             checked={form.showInActivity}
             onCheckedChange={(v) => setForm({ ...form, showInActivity: v })}
             aria-label={t("automations.showInActivity")}
           />
-        </div>
+        </SettingRow>
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <Label htmlFor="automation-run-on-new-mail">{t("automations.runOnNewMail")}</Label>
-            <p className="text-xs text-muted-foreground">{t("automations.runOnNewMailHint")}</p>
-          </div>
+        <SettingRow
+          bare
+          htmlFor="automation-run-on-new-mail"
+          label={t("automations.runOnNewMail")}
+          description={t("automations.runOnNewMailHint")}
+        >
           <Switch
             id="automation-run-on-new-mail"
             checked={form.runOnNewMail}
             onCheckedChange={(v) => setForm({ ...form, runOnNewMail: v })}
             aria-label={t("automations.runOnNewMail")}
           />
-        </div>
+        </SettingRow>
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <Label htmlFor="automation-notify">{t("automations.notifyOnCompletion")}</Label>
-            <p className="text-xs text-muted-foreground">
-              {t("automations.notifyOnCompletionHint")}
-            </p>
-          </div>
+        <SettingRow
+          bare
+          htmlFor="automation-notify"
+          label={t("automations.notifyOnCompletion")}
+          description={t("automations.notifyOnCompletionHint")}
+        >
           <Switch
             id="automation-notify"
             checked={form.notifyOnCompletion}
@@ -429,7 +428,7 @@ export function AutomationsPanel() {
             }}
             aria-label={t("automations.notifyOnCompletion")}
           />
-        </div>
+        </SettingRow>
       </Dialog>
 
       {suggestions.length > 0 && (
@@ -595,8 +594,7 @@ function SuggestionCard({
         <Button variant="ghost" size="sm" onClick={() => void decide("dismiss")} disabled={busy}>
           {t("automations.suggestions.dismiss")}
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => void decide("accept")} disabled={busy}>
-          {busy && <Loader2 className="animate-spin" />}
+        <Button variant="secondary" size="sm" onClick={() => void decide("accept")} loading={busy}>
           {t("automations.suggestions.accept")}
         </Button>
       </div>

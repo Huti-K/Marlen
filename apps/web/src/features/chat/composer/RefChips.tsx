@@ -4,6 +4,7 @@ import type * as React from "react";
 import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";
 import { IconButton } from "@/components/ui/icon-button";
+import { accountColor } from "@/lib/accounts";
 import { cn } from "@/lib/utils";
 
 /** Best available label for a pinned email: subject, then sender, then the bare thread id — always something. */
@@ -13,10 +14,6 @@ function refLabel(ref: EmailRef): string {
 
 function refKey(ref: EmailRef): string {
   return `${ref.threadId}:${ref.messageId ?? ""}`;
-}
-
-function colorFor(ref: EmailRef, colors?: AccountColor[]): string | undefined {
-  return colors?.find((c) => c.accountId === ref.accountId)?.hex;
 }
 
 /** The chip itself — dot + truncated label; tone and the optional trailing affordance vary per variant. */
@@ -35,7 +32,7 @@ function RefChip({
     <span
       className={cn("flex max-w-56 items-center gap-1.5 rounded-md px-2 py-1 text-xs", toneClass)}
     >
-      <AccountDot color={colorFor(item, colors)} className="shrink-0" />
+      <AccountDot color={accountColor(colors, item.accountId)} className="shrink-0" />
       <span className="min-w-0 truncate">{refLabel(item)}</span>
       {trailing}
     </span>

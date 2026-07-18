@@ -1,6 +1,6 @@
 import type { ConnectedAccount } from "@trailin/shared";
 import { proxyRequest } from "../../pipedream/connect.js";
-import { errorMessage } from "../../util.js";
+import { errorMessage } from "../../utils/util.js";
 import type { DraftAttachment } from "../providers.js";
 import { GRAPH_API } from "./message.js";
 

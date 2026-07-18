@@ -1,12 +1,12 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { listDraftsCached } from "../email/draftsService.js";
+import { listDraftsCached } from "../email/draftsCache.js";
 import { getDraftProvider } from "../email/providers.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 import { numberedList, textResult, tool } from "./toolkit.js";
 
 /**
  * The agent's draft-listing tool — live from each account's provider (via
- * draftsService's short cache), not from any local store. Registered for
+ * draftsCache.ts's short cache), not from any local store. Registered for
  * interactive and unattended sessions alike; listing drafts never dispatches
  * mail.
  */

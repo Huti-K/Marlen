@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type Dirent, type FSWatcher, watch } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, join, resolve, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { type HtmlToTextOptions, htmlToText } from "html-to-text";
 import mammoth from "mammoth";
@@ -11,7 +11,7 @@ import { getLibraryFolderSetting, LIBRARY_FOLDER_SETTING_KEY, setSetting } from 
 import { env } from "../env.js";
 import { emitServerEvent } from "../events.js";
 import { moduleLogger } from "../logger.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 import * as store from "./store.js";
 
 const ingestLog = moduleLogger("library");
@@ -52,6 +52,17 @@ let libraryDir = resolveFolder(env.libraryPath);
 
 export function getLibraryDir(): string {
   return libraryDir;
+}
+
+/**
+ * Resolve a document's stored relative path against the library folder.
+ * Returns the absolute path, or null when the result would escape the folder
+ * — a DB row must never point file access (read or delete) outside the
+ * library, however its path came to contain traversal segments.
+ */
+export function resolveLibraryPath(dir: string, relPath: string): string | null {
+  const absPath = resolve(dir, relPath);
+  return absPath.startsWith(dir + sep) ? absPath : null;
 }
 
 /** Documents are stored whole; this only guards against pathological files. */
@@ -489,11 +500,17 @@ export async function saveNote(title: string, content: string): Promise<string> 
   return writeIntoLibrary("notes", name, "note", trimmedContent);
 }
 
-/** Delete a document: its file in the folder and its index entry. */
+/**
+ * Delete a document: its file in the folder and its index entry. The file is
+ * removed only when its stored path resolves inside the library folder
+ * (resolveLibraryPath) — a traversal path in a row must never delete outside
+ * it; the index row is dropped either way.
+ */
 export async function deleteDocument(id: string): Promise<boolean> {
   const doc = await store.getDocument(id);
   if (!doc) return false;
-  await rm(join(libraryDir, doc.path), { force: true });
+  const absPath = resolveLibraryPath(libraryDir, doc.path);
+  if (absPath) await rm(absPath, { force: true });
   store.removeDocument(id);
   emitServerEvent("library");
   return true;

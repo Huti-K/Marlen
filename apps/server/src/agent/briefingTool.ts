@@ -3,15 +3,15 @@ import { Type } from "@sinclair/typebox";
 import type { BriefingItem, BriefingRollup, CardAccount, ConnectedAccount } from "@trailin/shared";
 import { threadWebUrl } from "../email/webLinks.js";
 import { listAccounts } from "../pipedream/connect.js";
-import { errorMessage, isNonEmptyString, isRecord } from "../util.js";
+import { errorMessage, isNonEmptyString, isRecord } from "../utils/util.js";
 import { findAccount } from "./accounts.js";
-import { toCardAccount } from "./card/common.js";
 import {
   buildBriefingCard,
-  CARD_KINDS,
+  cardNote,
   coerceBriefingItem,
   coerceBriefingRollup,
-} from "./card/kinds.js";
+  toCardAccount,
+} from "./cards.js";
 import { textResult, tool } from "./toolkit.js";
 
 /**
@@ -31,6 +31,12 @@ import { textResult, tool } from "./toolkit.js";
  * enforcing it here would reject the whole call over one malformed entry
  * instead of leaving that entry for the coercion pass to drop.
  */
+
+const BRIEFING_CARD_NOTE = cardNote(
+  "this briefing",
+  "Do not repeat the items in prose — close with exactly one line naming what needs them " +
+    'first, or "Quiet otherwise — nothing urgent" if nothing does.',
+);
 
 const PRIORITY_DESCRIPTION =
   '"urgent" when it is time-sensitive, a deadline could pass, or the user is blocked on it. ' +
@@ -253,7 +259,7 @@ export const composeBriefingTool: AgentTool = tool({
         );
       }
 
-      return textResult(`${summaryParts.join(", ")}.${CARD_KINDS.briefing.note}`, card);
+      return textResult(`${summaryParts.join(", ")}.${BRIEFING_CARD_NOTE}`, card);
     } catch (error) {
       return textResult(`Could not compose the briefing: ${errorMessage(error)}`);
     }

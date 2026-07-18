@@ -25,7 +25,8 @@ const idParams = Type.Object({ id: Type.String() });
 const automationBody = Type.Object({
   name: Type.String(),
   instruction: Type.String(),
-  schedule: Type.String(),
+  /** Empty (or omitted) = manual-only: the automation runs only on demand. */
+  schedule: Type.Optional(Type.String()),
   enabled: Type.Optional(Type.Boolean()),
   showInActivity: Type.Optional(Type.Boolean()),
   pinned: Type.Optional(Type.Boolean()),
@@ -170,9 +171,9 @@ export const automationRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
   /** Run every automation with an uncovered past slot now — the Home button's
    *  manual fallback when boot catch-up didn't (or couldn't). */
-  app.post("/api/runs/catch-up", async (_req, reply) => {
+  app.post("/api/runs/catch-up", async () => {
     const started = await runMissedAutomations();
-    return reply.code(202).send({ started });
+    return { started };
   });
 
   /** Pending proposals from the suggestion sweep, for the Automations page's accept/dismiss queue. */
@@ -221,11 +222,12 @@ export const automationRoutes: FastifyPluginAsyncTypebox = async (app) => {
   );
 
   app.delete("/api/automations/:id", { schema: { params: idParams } }, async (req) => {
-    await deleteAutomation(req.params.id);
+    const deleted = await deleteAutomation(req.params.id);
+    if (!deleted) throw notFound("no automation with this id");
     return { ok: true };
   });
 
-  app.post("/api/automations/:id/run", { schema: { params: idParams } }, async (req, reply) => {
+  app.post("/api/automations/:id/run", { schema: { params: idParams } }, async (req) => {
     await requireRow(
       db
         .select({ id: schema.automations.id })
@@ -237,7 +239,7 @@ export const automationRoutes: FastifyPluginAsyncTypebox = async (app) => {
     runAutomation(req.params.id, { manual: true }).catch((error) =>
       req.log.error(error, `manual run of ${req.params.id} failed`),
     );
-    return reply.code(202).send({ ok: true });
+    return { ok: true };
   });
 
   app.get("/api/automations/:id/runs", { schema: { params: idParams } }, async (req) => {

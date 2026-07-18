@@ -1,8 +1,9 @@
 import * as React from "react";
 
 interface UseResizableWidthOptions {
-  /** localStorage key the width is persisted under. */
+  /** localStorage key the width is persisted under, as a fraction of the window width. */
   storageKey: string;
+  /** Width in px when nothing is stored, converted against the current window. */
   defaultWidth: number;
   min: number;
   max: number;
@@ -18,13 +19,22 @@ interface UseResizableWidthOptions {
  *  rather than jitter against the stop. */
 const OVERDRAG_PX = 64;
 
-function readStored(key: string, min: number, max: number, fallback: number): number {
-  if (typeof window === "undefined") return fallback;
+/** A docked panel never takes more than this share of the window, whatever
+ *  `max` allows — it must always leave the majority of the screen to the
+ *  content it sits beside. */
+const MAX_VIEWPORT_FRACTION = 0.45;
+
+/** Stored values are window-width fractions in (0, 1); anything else is ignored. */
+function readStoredFraction(key: string): number | null {
+  if (typeof window === "undefined") return null;
   const saved = Number(window.localStorage.getItem(key));
-  return saved >= min && saved <= max ? saved : fallback;
+  return saved > 0 && saved < 1 ? saved : null;
 }
 
-/** Drag-to-resize width for a docked side panel, persisted across reloads. */
+/** Drag-to-resize width for a docked side panel, persisted across reloads as a
+ *  fraction of the window width — so the panel scales with the screen it is on
+ *  (laptop vs external monitor) instead of carrying one screen's pixel width to
+ *  the other. `min`/`max` bound the resolved px width on every screen. */
 export function useResizableWidth({
   storageKey,
   defaultWidth,
@@ -33,7 +43,24 @@ export function useResizableWidth({
   edge,
   onOverdrag,
 }: UseResizableWidthOptions) {
-  const [width, setWidth] = React.useState(() => readStored(storageKey, min, max, defaultWidth));
+  const [viewportWidth, setViewportWidth] = React.useState(() =>
+    typeof window === "undefined" ? 0 : window.innerWidth,
+  );
+  const [fraction, setFraction] = React.useState(() => {
+    const stored = readStoredFraction(storageKey);
+    if (stored !== null) return stored;
+    const vw = typeof window === "undefined" ? 0 : window.innerWidth;
+    return vw > 0 ? defaultWidth / vw : 0;
+  });
+
+  const maxPx = Math.max(min, Math.min(max, Math.round(viewportWidth * MAX_VIEWPORT_FRACTION)));
+  const width = Math.min(maxPx, Math.max(min, Math.round(fraction * viewportWidth)));
+
+  React.useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -59,7 +86,8 @@ export function useResizableWidth({
         onOverdrag();
         return;
       }
-      setWidth(Math.min(max, Math.max(min, next)));
+      const clamped = Math.min(maxPx, Math.max(min, next));
+      setFraction(clamped / window.innerWidth);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", stop);
@@ -70,8 +98,8 @@ export function useResizableWidth({
   };
 
   React.useEffect(() => {
-    window.localStorage.setItem(storageKey, String(width));
-  }, [storageKey, width]);
+    if (fraction > 0) window.localStorage.setItem(storageKey, String(fraction));
+  }, [storageKey, fraction]);
 
   return { width, onPointerDown };
 }

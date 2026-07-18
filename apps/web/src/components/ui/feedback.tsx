@@ -1,8 +1,9 @@
-import { Loader2, X } from "lucide-react";
+import { X } from "lucide-react";
 import type * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 /** Pale red banner for caught request errors. */
@@ -34,7 +35,7 @@ export function LoadingRow({ label, className }: { label?: string; className?: s
   const { t } = useTranslation();
   return (
     <div className={cn("flex items-center gap-2 py-2 text-sm text-muted-foreground", className)}>
-      <Loader2 className="h-4 w-4 animate-spin" /> {label ?? t("common.loading")}
+      <Spinner /> {label ?? t("common.loading")}
     </div>
   );
 }

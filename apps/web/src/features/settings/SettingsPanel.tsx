@@ -10,25 +10,26 @@ import {
   Check,
   DatabaseBackup,
   Download,
-  Loader2,
+  Info,
   Mail,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
 import { Label } from "@/components/ui/label";
-import { ListRow } from "@/components/ui/list-row";
 import { Section } from "@/components/ui/section-header";
 import { Select } from "@/components/ui/select";
-import { StatusChip } from "@/components/ui/status-chip";
+import { SettingRow } from "@/components/ui/setting-row";
+import { Spinner } from "@/components/ui/spinner";
 import { ConnectionsPanel } from "@/features/connections/ConnectionsPanel";
+import { AboutPanel } from "@/features/settings/About";
+import { FileAccessSection } from "@/features/settings/FileAccessSection";
 import { Providers } from "@/features/settings/Providers";
-import { OnOfficePermissions, WriteAccess } from "@/features/settings/WriteAccess";
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { type QuickActionMode, useQuickActionMode } from "@/lib/quickActions";
@@ -39,7 +40,6 @@ import { errorMessage } from "@/lib/utils";
 export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => void }) {
   const { t } = useTranslation();
   const [providers, setProviders] = React.useState<LlmProviderInfo[] | null>(null);
-  const [armedCount, setArmedCount] = React.useState<number | null>(null);
   const [status, setStatus] = React.useState<AppStatus | null>(null);
 
   const refresh = React.useCallback(async () => {
@@ -68,20 +68,20 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
     if (!status) return null;
     if (!status.pipedreamConfigured) {
       return (
-        <StatusChip tone="warning" icon={<TriangleAlert />}>
-          {t("settings.sections.email.chipSetup")}
-        </StatusChip>
+        <Badge variant="warning">
+          <TriangleAlert /> {t("settings.sections.email.chipSetup")}
+        </Badge>
       );
     }
     if (!status.emailAccountsKnown) return null;
     if (status.emailAccounts > 0) {
       return (
-        <StatusChip tone="success" icon={<Check />}>
-          {t("settings.sections.email.chipConnected", { count: status.emailAccounts })}
-        </StatusChip>
+        <Badge variant="success">
+          <Check /> {t("settings.sections.email.chipConnected", { count: status.emailAccounts })}
+        </Badge>
       );
     }
-    return <StatusChip tone="muted">{t("settings.sections.email.chipNoAccounts")}</StatusChip>;
+    return <Badge variant="muted">{t("settings.sections.email.chipNoAccounts")}</Badge>;
   })();
 
   return (
@@ -95,13 +95,13 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
         aside={
           status &&
           (status.modelConfigured ? (
-            <StatusChip tone="success" icon={<Check />}>
-              {t("settings.sections.ai.chipReady")}
-            </StatusChip>
+            <Badge variant="success">
+              <Check /> {t("settings.sections.ai.chipReady")}
+            </Badge>
           ) : (
-            <StatusChip tone="warning" icon={<TriangleAlert />}>
-              {t("settings.sections.ai.chipSignIn")}
-            </StatusChip>
+            <Badge variant="warning">
+              <TriangleAlert /> {t("settings.sections.ai.chipSignIn")}
+            </Badge>
           ))
         }
       >
@@ -122,28 +122,7 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
         <ConnectionsPanel onStatusChanged={() => void refresh()} />
       </Section>
 
-      <Section
-        index={2}
-        className="animate-in-up"
-        icon={<ShieldCheck />}
-        title={t("settings.sections.permissions.title")}
-        description={t("settings.sections.permissions.description")}
-        aside={
-          armedCount !== null &&
-          (armedCount > 0 ? (
-            <StatusChip tone="warning" icon={<TriangleAlert />}>
-              {t("settings.permissions.chipOn", { count: armedCount })}
-            </StatusChip>
-          ) : (
-            <StatusChip tone="success" icon={<ShieldCheck />}>
-              {t("settings.permissions.chipOff")}
-            </StatusChip>
-          ))
-        }
-      >
-        <WriteAccess onState={setArmedCount} />
-        <OnOfficePermissions />
-      </Section>
+      <FileAccessSection index={2} />
 
       <Section
         index={3}
@@ -169,6 +148,16 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
       >
         <BackupRow />
       </Section>
+
+      <Section
+        index={5}
+        className="animate-in-up"
+        icon={<Info />}
+        title={t("settings.sections.about.title")}
+        description={t("settings.sections.about.description")}
+      >
+        <AboutPanel />
+      </Section>
     </div>
   );
 }
@@ -179,25 +168,35 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
 function BackupRow() {
   const { t } = useTranslation();
   return (
-    <ListRow>
-      <div className="min-w-0">
-        <Label className="text-sm font-medium">{t("settings.backup.label")}</Label>
-        <p className="text-xs text-muted-foreground">{t("settings.backup.description")}</p>
-      </div>
-      <Button
-        variant="secondary"
-        size="sm"
-        className="shrink-0"
-        onClick={() => api.downloadBackup()}
-      >
+    <SettingRow label={t("settings.backup.label")} description={t("settings.backup.description")}>
+      <Button variant="secondary" size="sm" onClick={() => api.downloadBackup()}>
         <Download />
         {t("settings.backup.cta")}
       </Button>
-    </ListRow>
+    </SettingRow>
   );
 }
 
 /* ---------------- Preferences ---------------- */
+
+/** Shared idle/saving/error machine for the auto-saving preference controls:
+ *  `run` wraps one persist call, surfacing its failure as the row's error. */
+function useSaveState() {
+  const [state, setState] = React.useState<"idle" | "saving" | "error">("idle");
+  const [error, setError] = React.useState<string | null>(null);
+  const run = async (save: () => Promise<void>) => {
+    setState("saving");
+    setError(null);
+    try {
+      await save();
+      setState("idle");
+    } catch (err) {
+      setState("error");
+      setError(errorMessage(err));
+    }
+  };
+  return { state, error, run };
+}
 
 /** Shared row shape for every preference: label + description at left, a Select at right. */
 function PreferenceRow({
@@ -222,27 +221,18 @@ function PreferenceRow({
   searchable?: boolean;
 }) {
   return (
-    <ListRow>
-      <div className="min-w-0">
-        <Label htmlFor={id} className="text-sm font-medium">
-          {label}
-        </Label>
-        <p className="text-xs text-muted-foreground">{description}</p>
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-        <Select
-          id={id}
-          aria-label={label}
-          className="w-40 sm:w-52"
-          value={value}
-          onChange={onChange}
-          options={options}
-          searchable={searchable}
-        />
-      </div>
-    </ListRow>
+    <SettingRow htmlFor={id} label={label} description={description} error={error}>
+      {saving && <Spinner className="h-3.5 w-3.5 text-muted-foreground" />}
+      <Select
+        id={id}
+        aria-label={label}
+        className="w-40 sm:w-52"
+        value={value}
+        onChange={onChange}
+        options={options}
+        searchable={searchable}
+      />
+    </SettingRow>
   );
 }
 
@@ -268,24 +258,17 @@ function AppearanceRow() {
 
 function LanguageRow() {
   const { t, i18n } = useTranslation();
-  const [state, setState] = React.useState<"idle" | "saving" | "error">("idle");
-  const [error, setError] = React.useState<string | null>(null);
+  const { state, error, run } = useSaveState();
 
   // Auto-save like the model picker: persist on change, no Save button. The
   // server resets agent sessions so the assistant answers in the new language.
   const persist = async (value: string) => {
     if (!isLanguage(value) || value === i18n.language) return;
-    setState("saving");
-    setError(null);
-    try {
+    await run(async () => {
       const { language } = await api.setLanguage(value);
       await i18n.changeLanguage(language);
       rememberLanguage(language);
-      setState("idle");
-    } catch (err) {
-      setState("error");
-      setError(errorMessage(err));
-    }
+    });
   };
 
   return (
@@ -343,14 +326,14 @@ function TimezoneRow() {
   const { t, i18n } = useTranslation();
   const options = React.useMemo(getTimezoneOptions, []);
   const [timezone, setTimezone] = React.useState<string | null>(null);
-  const [state, setState] = React.useState<"idle" | "saving" | "error">("idle");
-  const [error, setError] = React.useState<string | null>(null);
+  const { state, error, run } = useSaveState();
 
+  // A failed read just leaves the browser-zone fallback below in place.
   React.useEffect(() => {
     api
       .timezone()
       .then((r) => setTimezone(r.timezone))
-      .catch((err) => setError(errorMessage(err)));
+      .catch(() => {});
   }, []);
 
   // Fall back to the browser's zone for display until the server answers.
@@ -359,17 +342,11 @@ function TimezoneRow() {
 
   const persist = async (next: string) => {
     if (next === value) return;
-    setState("saving");
-    setError(null);
-    try {
+    await run(async () => {
       // The server resets agent sessions itself so schedules re-anchor to the new zone.
       const { timezone: saved } = await api.setTimezone(next);
       setTimezone(saved);
-      setState("idle");
-    } catch (err) {
-      setState("error");
-      setError(errorMessage(err));
-    }
+    });
   };
 
   let localTime = "";
@@ -435,8 +412,8 @@ function ModelPicker({
   const [settings, setSettings] = React.useState<ModelSettings | null>(null);
   const [provider, setProvider] = React.useState("");
   const [model, setModel] = React.useState("");
-  const [state, setState] = React.useState<"idle" | "saving" | "error">("idle");
-  const [error, setError] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const { state, error, run } = useSaveState();
 
   React.useEffect(() => {
     api
@@ -446,11 +423,11 @@ function ModelPicker({
         setProvider(s.provider);
         setModel(s.model);
       })
-      .catch((err) => setError(errorMessage(err)));
+      .catch((err) => setLoadError(errorMessage(err)));
   }, []);
 
   if (!settings) {
-    return error ? <ErrorBanner>{error}</ErrorBanner> : <LoadingRow />;
+    return loadError ? <ErrorBanner>{loadError}</ErrorBanner> : <LoadingRow />;
   }
 
   // Only offer models from providers you're connected to (but always keep the
@@ -471,17 +448,11 @@ function ModelPicker({
     setProvider(nextProvider);
     setModel(nextModel);
     if (!nextModel) return;
-    setState("saving");
-    setError(null);
-    try {
+    await run(async () => {
       const next = await api.setModel(nextProvider, nextModel);
       setSettings(next);
-      setState("idle");
       await onSaved();
-    } catch (err) {
-      setState("error");
-      setError(errorMessage(err));
-    }
+    });
   };
 
   return (
@@ -512,7 +483,7 @@ function ModelPicker({
       <div className="flex h-4 items-center justify-end gap-1.5 text-xs text-muted-foreground">
         {state === "saving" ? (
           <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("common.saving")}
+            <Spinner className="h-3.5 w-3.5" /> {t("common.saving")}
           </>
         ) : state === "error" ? (
           <span className="text-destructive">{error}</span>

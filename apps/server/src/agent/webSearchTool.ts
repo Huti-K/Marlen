@@ -1,6 +1,6 @@
 import { Type } from "@sinclair/typebox";
-import { webSearch } from "../websearch/search.js";
 import { clampLimit, limitParam, numberedList, textResult, tool } from "./toolkit.js";
+import { webSearch } from "./websearch/search.js";
 
 const DEFAULT_COUNT = 5;
 const MAX_COUNT = 10;

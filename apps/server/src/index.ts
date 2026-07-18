@@ -1,18 +1,18 @@
 import { resetSessions } from "./agent/emailAgent.js";
 import { recoverInterruptedTurns } from "./agent/turnRecorder.js";
-import { reconcileVoiceLearns } from "./agent/voiceLearnService.js";
+import { reconcileVoiceLearns } from "./agent/voiceLearn.js";
 import { buildApp } from "./app.js";
 import { seedDefaultAutomations } from "./automations/defaults.js";
 import { startMailProbe, stopMailProbe } from "./automations/mailProbe.js";
 import { startScheduler, stopScheduler } from "./automations/scheduler.js";
 import { startNightlySuggest, stopNightlySuggest } from "./automations/suggestService.js";
-import { startNightlyLearning, stopNightlyLearning } from "./email/learn/extractService.js";
-import { startDraftMatching, stopDraftMatching } from "./email/learn/matchService.js";
+import { startLearning, stopLearning } from "./email/learn/service.js";
 import { env } from "./env.js";
 import { getLibraryDir, startLibrary, stopLibrary } from "./library/ingest.js";
 import { activeModelConfigured } from "./llm/registry.js";
 import { installProcessErrorHandlers, logger } from "./logger.js";
 import { pipedreamConfigured } from "./pipedream/connect.js";
+import { onWhatsAppLinkedChange, startWhatsApp, stopWhatsApp } from "./whatsapp/session.js";
 
 async function main(): Promise<void> {
   const app = await buildApp();
@@ -27,11 +27,10 @@ async function main(): Promise<void> {
   // Close out any chat/automation turn left dangling by a mid-turn restart.
   await recoverInterruptedTurns();
 
-  // The draft-vs-sent learning loop (email/learn/): the matcher polls each
+  // The draft-vs-sent learning loops (email/learn/): the matcher polls each
   // account's sent mail live to find what an agent draft became, and the
   // nightly extraction diffs draft vs. sent to learn style lessons.
-  startDraftMatching();
-  await startNightlyLearning();
+  await startLearning();
   // The automation-suggestion sweep: recurring chat requests become pending
   // suggestions on the Automations page (automations/suggestService.ts).
   await startNightlySuggest();
@@ -44,6 +43,12 @@ async function main(): Promise<void> {
   await startLibrary((message) => app.log.info(message));
   app.log.info(`Document library folder: ${getLibraryDir()}`);
 
+  // Reconnect a paired WhatsApp account (no-op while none is linked). Live
+  // agent sessions hold a tool list built for the old link state, so a
+  // pairing or unlink rebuilds them.
+  onWhatsAppLinkedChange(() => void resetSessions());
+  startWhatsApp();
+
   // Everything started above is torn down by close(): cron tasks, the learn
   // loops, the folder watcher, and each cached agent session's MCP toolset —
   // so app.close() is the one complete teardown path, for signals and
@@ -51,10 +56,10 @@ async function main(): Promise<void> {
   app.addHook("onClose", async () => {
     stopScheduler();
     stopMailProbe();
-    stopDraftMatching();
-    stopNightlyLearning();
+    stopLearning();
     stopNightlySuggest();
     stopLibrary();
+    await stopWhatsApp();
     await resetSessions();
   });
 

@@ -7,12 +7,11 @@ import {
   getDraftStatus,
   markDraftStatus,
 } from "../db/draftStore.js";
-import "../email/registerProviders.js";
-import { listDraftsCached } from "../email/draftsService.js";
+import { listDraftsCached } from "../email/draftsCache.js";
 import { type DraftProvider, getDraftProvider } from "../email/providers.js";
-import { AppError, badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
+import { badRequest, notFound, toProviderError, upstreamError } from "../errors.js";
 import { listAccounts, pipedreamConfigured } from "../pipedream/connect.js";
-import { errorMessage } from "../util.js";
+import { errorMessage } from "../utils/util.js";
 
 /** Resolve a connected account (any app with a draft provider) by its Pipedream account id. */
 async function findDraftAccount(
@@ -23,19 +22,6 @@ async function findDraftAccount(
   if (!account) return null;
   const provider = getDraftProvider(account.app);
   return provider ? { account, provider } : null;
-}
-
-/**
- * A draft provider (reached via the Pipedream proxy) throwing 404 means the
- * id doesn't exist there anymore — that's a client-facing 404, not an
- * outage. Anything else genuinely failed upstream and stays a 502. An
- * AppError already thrown deliberately below (e.g. notFound("account not
- * found"), badRequest for an unsupported capability) passes through as-is.
- */
-function toProviderError(error: unknown, notFoundMessage: string): AppError {
-  if (error instanceof AppError) return error;
-  if (upstreamStatusCode(error) === 404) return notFound(notFoundMessage);
-  return upstreamError(errorMessage(error), error);
 }
 
 /**
@@ -190,7 +176,7 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
   /**
    * Save body/subject edits to an existing draft, exactly as typed — no
-   * humanizer, no signature (those only run in the agent's create-draft
+   * humanizer (that only runs in the agent's create-draft
    * tool). `updateDraft` is an optional DraftProvider capability — a provider
    * without one (no driver written yet) reports 400 rather than assuming
    * every provider supports it.

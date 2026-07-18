@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { AgentCardView } from "@/components/cards";
 import { OpenRunInChatButton } from "@/components/OpenRunInChatButton";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
 import { AccountDot } from "@/components/ui/account-dot";
@@ -24,26 +25,26 @@ import { Button } from "@/components/ui/button";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner, LoadingRow, Notice } from "@/components/ui/feedback";
-import { Markdown } from "@/components/ui/markdown";
+import { GroupLabel } from "@/components/ui/group-label";
+import { SectionTitle } from "@/components/ui/section-header";
 import { Select } from "@/components/ui/select";
-import { AgentCardView } from "@/features/chat/cards";
-import { BriefingCard } from "@/features/chat/cards/BriefingCard";
 import { DraftRow } from "@/features/drafts/DraftRow";
-import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
-import { CollapsibleSectionTitle } from "@/features/home/CollapsibleSectionTitle";
+import { BriefingHero, findBriefingCard, RunBody } from "@/features/home/BriefingHero";
 import { GlanceStrip } from "@/features/home/GlanceStrip";
+import { accountColor } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import {
   dateTimeLabel,
   dayLabel as formatDayLabel,
   timeLabel as formatTimeLabel,
+  isToday,
 } from "@/lib/dates";
 import type { View } from "@/lib/nav";
 import { takePendingDraftFocus } from "@/lib/paletteFocus";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { subscribeTrailin } from "@/lib/trailinEvents";
-import { cn, errorMessage, toggleRowProps } from "@/lib/utils";
+import { cn, errorMessage, stagger, toggleRowProps } from "@/lib/utils";
 
 /** Widening windows for the "Needs your review" drafts filter; defaults to "today". */
 type DraftRange = "today" | "7d" | "30d" | "all";
@@ -345,14 +346,13 @@ function ReviewSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <CollapsibleSectionTitle
-          icon={FileText}
-          title={t("home.reviewTitle")}
-          count={filteredTotal}
-          expanded={isExpanded}
-          onToggle={() => setIsExpanded(!isExpanded)}
-        />
+      <SectionTitle
+        icon={FileText}
+        title={t("home.reviewTitle")}
+        count={filteredTotal}
+        expanded={isExpanded}
+        onToggle={() => setIsExpanded(!isExpanded)}
+      >
         {unfilteredTotal > 0 && (
           <Select
             id="draft-range"
@@ -368,7 +368,7 @@ function ReviewSection({
             ]}
           />
         )}
-      </div>
+      </SectionTitle>
 
       {isExpanded && (
         <div className="flex flex-col gap-3">
@@ -393,7 +393,7 @@ function ReviewSection({
                       <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                         <AccountDot
                           className="h-2.5 w-2.5"
-                          color={colors.find((c) => c.accountId === accountDrafts.accountId)?.hex}
+                          color={accountColor(colors, accountDrafts.accountId)}
                         />
                         <Mail className="h-3.5 w-3.5" />
                         {accountDrafts.account}
@@ -407,11 +407,7 @@ function ReviewSection({
                     ) : (
                       <div className="flex flex-col gap-3">
                         {accountDrafts.drafts.map((draft, i) => (
-                          <div
-                            key={draft.id}
-                            className="animate-in-up"
-                            style={{ animationDelay: `${i * 45}ms` }}
-                          >
+                          <div key={draft.id} className="animate-in-up" style={stagger(i)}>
                             <DraftRow
                               accountId={accountDrafts.accountId}
                               draft={draft}
@@ -463,7 +459,6 @@ function ActivitySection({
 
   const dayLabel = (iso: string) => formatDayLabel(iso, i18n.language);
   const timeLabel = (iso: string) => formatTimeLabel(iso, i18n.language);
-  const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
 
   const groupByDay = (list: RunFeedItem[]) => {
     const byDay = new Map<string, RunFeedItem[]>();
@@ -487,9 +482,7 @@ function ActivitySection({
     <div className="flex flex-col gap-8">
       {[...groupByDay(list).entries()].map(([day, dayRuns]) => (
         <div key={day} className="flex flex-col gap-3">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
-            {day}
-          </h3>
+          <GroupLabel>{day}</GroupLabel>
           <div className="flex flex-col gap-3">
             {dayRuns.map((run, i) => (
               <ActivityRunCard
@@ -510,7 +503,7 @@ function ActivitySection({
 
   return (
     <section className="flex flex-col gap-3">
-      <CollapsibleSectionTitle
+      <SectionTitle
         icon={Wrench}
         title={t("home.activityTitle")}
         expanded={expanded}
@@ -603,10 +596,7 @@ function ActivityRunCard({
   };
 
   return (
-    <div
-      className="animate-in-up flex flex-col gap-3"
-      style={{ animationDelay: `${index * 45}ms` }}
-    >
+    <div className="animate-in-up flex flex-col gap-3" style={stagger(index)}>
       <article className="surface flex flex-col gap-3 rounded-lg p-4">
         <div
           className={cn("flex items-center justify-between gap-3", expandable && "cursor-pointer")}
@@ -643,13 +633,7 @@ function ActivityRunCard({
           </div>
         </div>
         {expanded && (briefing || hasResult) && (
-          <div className="mt-1 border-t border-border pt-3">
-            {briefing ? (
-              <BriefingCard card={briefing} colors={colors} bare />
-            ) : (
-              <Markdown content={run.result} className="text-sm text-foreground/90" />
-            )}
-          </div>
+          <RunBody run={run} colors={colors} markdownClassName="text-sm text-foreground/90" />
         )}
       </article>
       {/* Sibling blocks, never nested in the row's surface (DESIGN.md: no card-in-card). */}

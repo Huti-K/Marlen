@@ -42,6 +42,9 @@ export function toggleRowProps(expanded: boolean, onToggle: () => void) {
   };
 }
 
+/** List-entrance stagger, capped so a full page of rows doesn't take a second to finish arriving. */
+export const stagger = (i: number) => ({ animationDelay: `${Math.min(i, 8) * 45}ms` });
+
 /** The modifier the Cmd/Ctrl shortcuts listen for, spelled the way this keyboard prints it. */
 export const MOD_LABEL =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)

@@ -1,4 +1,7 @@
+import { ChevronDown, ChevronUp, type LucideIcon } from "lucide-react";
 import type * as React from "react";
+import { useTranslation } from "react-i18next";
+import { Badge } from "@/components/ui/badge";
 import { IconChip } from "@/components/ui/icon-chip";
 
 /** Title + description pair shared by top-level section/step headers. */
@@ -27,6 +30,86 @@ export function SectionHeader({
   );
 }
 
+/**
+ * Page-section title row: icon tile, title, live count, optional collapse
+ * toggle, a trailing slot for the section's own controls, and an optional
+ * description line below. Every top-level list section (Home, Knowledge)
+ * uses this one shape.
+ */
+export function SectionTitle({
+  icon: Icon,
+  tone = "tint-accent",
+  title,
+  count,
+  description,
+  expanded,
+  onToggle,
+  children,
+}: {
+  icon: LucideIcon;
+  /** Always a `tint-*` token, never a hand-mixed fill. */
+  tone?: "tint-accent" | "tint-neutral";
+  title: string;
+  /** `null` while the first fetch is in flight, so the badge doesn't flash a zero. */
+  count?: number | null;
+  /** The section's one-line blurb, rendered below the header row when given. */
+  description?: string;
+  expanded?: boolean;
+  /** Makes the title row a collapse toggle with a trailing chevron. */
+  onToggle?: () => void;
+  children?: React.ReactNode;
+}) {
+  const { t } = useTranslation();
+  const badge = typeof count === "number" && count > 0 && (
+    <Badge variant="muted" className="tabular">
+      {count}
+    </Badge>
+  );
+
+  return (
+    <>
+      <div className="flex items-center gap-2.5">
+        {onToggle ? (
+          <h2 className="text-base font-semibold tracking-tight">
+            <button
+              type="button"
+              onClick={onToggle}
+              title={t(expanded ? "common.collapse" : "common.expand")}
+              aria-expanded={expanded}
+              className="flex select-none items-center gap-2.5 transition-colors hover:text-muted-foreground"
+            >
+              <IconChip tone={tone}>
+                <Icon />
+              </IconChip>
+              {title}
+              {badge}
+              {expanded ? (
+                <ChevronUp className="ml-1 h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="ml-1 h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+          </h2>
+        ) : (
+          <>
+            <IconChip tone={tone}>
+              <Icon />
+            </IconChip>
+            <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+            {badge}
+          </>
+        )}
+        {children ? (
+          <div className="ml-auto flex shrink-0 items-center gap-1">{children}</div>
+        ) : null}
+      </div>
+      {description && (
+        <p className="max-w-prose text-pretty text-sm text-muted-foreground">{description}</p>
+      )}
+    </>
+  );
+}
+
 /** A standard wrapper that groups a SectionHeader with its content. */
 export function Section({
   title,
@@ -34,7 +117,6 @@ export function Section({
   children,
   className,
   index = 0,
-  layout = "stack",
   icon,
   aside,
 }: {
@@ -43,9 +125,8 @@ export function Section({
   children: React.ReactNode;
   className?: string;
   index?: number;
-  layout?: "stack" | "row";
   icon?: React.ReactNode;
-  /** Stack layout only: rendered beside the header (e.g. a status chip). */
+  /** Rendered beside the header (e.g. a status chip). */
   aside?: React.ReactNode;
 }) {
   const header = <SectionHeader title={title} description={description} icon={icon} />;
@@ -55,24 +136,15 @@ export function Section({
       className={`relative flex flex-col gap-4 ${className || ""}`}
       style={{ animationDelay: `${index * 70}ms`, zIndex: 10 - index }}
     >
-      {layout === "row" ? (
-        <div className="flex items-center justify-between gap-4">
+      {aside ? (
+        <div className="flex items-start justify-between gap-4">
           {header}
-          {children}
+          {aside}
         </div>
       ) : (
-        <>
-          {aside ? (
-            <div className="flex items-start justify-between gap-4">
-              {header}
-              {aside}
-            </div>
-          ) : (
-            header
-          )}
-          {children}
-        </>
+        header
       )}
+      {children}
     </section>
   );
 }

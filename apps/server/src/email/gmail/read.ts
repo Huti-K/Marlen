@@ -1,6 +1,7 @@
 import type { ConnectedAccount, EmailThreadMessage } from "@trailin/shared";
-import { mapWithConcurrency } from "../../jobs.js";
+import { upstreamStatusCode } from "../../errors.js";
 import { proxyRequest } from "../../pipedream/connect.js";
+import { mapWithConcurrency } from "../../utils/jobs.js";
 import type { MailReadProvider, SentMessage, ThreadDetail } from "../read/readProviders.js";
 import { splitAddressList } from "../textUtils.js";
 import {
@@ -35,13 +36,6 @@ interface GmailMessageFull {
   payload?: MessagePart & { headers?: { name: string; value: string }[] };
 }
 
-/** Duck-typed HTTP status off whatever proxyRequest's underlying SDK throws (see PipedreamError in @pipedream/sdk). */
-function statusCodeOf(error: unknown): number | undefined {
-  if (typeof error !== "object" || error === null) return undefined;
-  const status = (error as { statusCode?: unknown }).statusCode;
-  return typeof status === "number" ? status : undefined;
-}
-
 function toSentMessage(msg: GmailMessageFull): SentMessage {
   const header = headerLookup(msg.payload);
   return {
@@ -65,6 +59,9 @@ async function listSentSince(
 ): Promise<SentMessage[]> {
   const limit = opts?.limit ?? DEFAULT_LIMIT;
   const afterEpochSeconds = Math.floor(Date.parse(sinceIso) / 1000);
+  // messages.list returns newest first, so maxResults keeps the newest
+  // `limit` ids (the listSentSince contract); the sort at the end restores
+  // the oldest-first return order.
   const list = (await proxyRequest(account.id, "get", `${GMAIL_API}/messages`, {
     params: {
       q: `in:sent after:${afterEpochSeconds}`,
@@ -123,7 +120,7 @@ async function getMessageBody(
       signal,
     })) as GmailMessageFull;
   } catch (error) {
-    if (statusCodeOf(error) === 404) return null;
+    if (upstreamStatusCode(error) === 404) return null;
     throw error;
   }
   return plainTextBody(msg.payload);
@@ -156,7 +153,7 @@ async function getThread(
       { params: { format: "full" }, signal },
     )) as ThreadGetResponse;
   } catch (error) {
-    if (statusCodeOf(error) === 404) return null;
+    if (upstreamStatusCode(error) === 404) return null;
     throw error;
   }
   // Unsent drafts sit inside the thread they answer — the conversation view

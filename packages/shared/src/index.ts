@@ -2,6 +2,7 @@ import type { AgentCard } from "./cards.js";
 
 export * from "./cards.js";
 export * from "./onoffice.js";
+export * from "./whatsapp.js";
 
 /**
  * Suggested email apps, shown before the user searches the full catalog.
@@ -118,21 +119,45 @@ export interface AccountColor {
 }
 
 /**
- * Per-account voice: the signature applied mechanically by the create-draft
- * tool. Unlike the app/name (which come from Pipedream), this is app-local.
- * Writing style is NOT a field here — style directives live as
- * account-scoped memories, learned from sent mail by voiceLearn or written
- * by the user, and reach the agent through the memory section of its system
- * prompt.
+ * Per-account permission grants for the agent's provider tools. Reading is
+ * always allowed (that's what connecting an account is for); each grant arms
+ * one verb-classified category of tools. An account with no record is
+ * read-only.
+ */
+export interface AccountPermissions {
+  /** Pipedream account id. */
+  accountId: string;
+  /** Create and change things: every non-read verb not covered by send/delete. */
+  write: boolean;
+  /** Outward communication: send, reply, forward, publish. */
+  send: boolean;
+  /** Destructive verbs: delete, remove, trash, destroy, purge. */
+  delete: boolean;
+}
+
+/**
+ * The agent's filesystem grants. Each switch arms one whole-filesystem
+ * capability — reading files, creating/changing them, running shell
+ * commands; with nothing armed the agent has no file access at all.
+ * Relative paths and commands start in the user's home directory. All of it
+ * applies to interactive sessions only.
+ */
+export interface FileAccessSettings {
+  read: boolean;
+  write: boolean;
+  bash: boolean;
+}
+
+/**
+ * Per-account voice-learn bookkeeping. Writing style is NOT a field here —
+ * style directives live as account-scoped memories, learned from sent mail
+ * by voiceLearn or written by the user, and reach the agent through the
+ * memory section of its system prompt.
  */
 export interface AccountVoice {
   /** Pipedream account id. */
   accountId: string;
-  /** Plain-text form, used for previews and backwards compatibility. */
-  signature?: string;
-  /** Sanitized rich-text signature HTML, as authored/pasted in Settings. */
-  signatureHtml?: string;
-  /** Set when the signature/style was last derived from the account's sent mail. */
+  /** Set when the style was last derived from the account's sent mail. */
   learnedAt?: string;
   /** Memory ids the last voice-learn run wrote, so re-learning replaces them. */
   styleMemoryIds?: string[];
@@ -239,7 +264,8 @@ export interface Automation {
   name: string;
   /** Natural-language instruction the agent executes on each run. */
   instruction: string;
-  /** Standard 5-field cron expression, e.g. "0 8 * * 1-5". */
+  /** Standard 5-field cron expression, e.g. "0 8 * * 1-5"; "" for a
+   *  manual-only automation that runs only on demand ("Run now"). */
   schedule: string;
   enabled: boolean;
   /** Whether this automation's runs appear in the Home activity feed. */
@@ -470,6 +496,26 @@ export interface MemoryEntry {
   updatedAt: string;
 }
 
+/** Longest a skill's instruction body may be — a playbook, not a document. */
+export const SKILL_MAX_LENGTH = 10_000;
+
+/**
+ * One user-defined skill: a named playbook the agent follows on demand. The
+ * name and description are listed in the agent's system prompt; the
+ * instructions load only when the skill is invoked (skill_read). Stored as
+ * one markdown file per skill in the skills folder.
+ */
+export interface Skill {
+  /** Slug identity — also the markdown file's basename. */
+  name: string;
+  /** One line, shown in the agent's skill index and on the Knowledge page. */
+  description: string;
+  /** The playbook body the agent follows. */
+  instructions: string;
+  /** ISO mtime of the skill's file. */
+  updatedAt: string;
+}
+
 /**
  * One recorded run of the draft-vs-sent learning sweep (match + extraction),
  * shown on the Knowledge page so "did the loop run, and what did it find"
@@ -575,11 +621,13 @@ export type ServerEventTopic =
   | "runs" // automation run started/finished (activity feed, run history)
   | "drafts" // a Gmail draft was created or deleted
   | "memories" // agent memory saved/updated/deleted
+  | "skills" // skill written or deleted
   | "library" // library document written/changed
   | "conversations" // chat/automation conversation list changed
   | "automations" // automation definitions created/updated/deleted
   | "learn" // a learning sweep run was recorded
   | "leads" // a lead was recorded, updated or deleted
+  | "whatsapp" // the WhatsApp link's connection state changed (pairing QR, open, unlinked)
   | "notification"; // a notify-flagged automation run finished (carries the payload)
 
 /** Payload of a "notification" event — one finished run of a notify-flagged automation. */

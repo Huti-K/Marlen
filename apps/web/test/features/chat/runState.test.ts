@@ -63,7 +63,7 @@ describe("reduceRunEvent", () => {
         isError: false,
         result: [],
       },
-      { type: "card", toolCallId: "call-1", card: { kind: "email_hits", hits: [] } },
+      { type: "card", toolCallId: "call-1", card: { kind: "attachments", items: [] } },
       { type: "done", text: "Hi there" },
     ]);
 
@@ -86,7 +86,7 @@ describe("reduceRunEvent", () => {
       },
     ]);
     expect(assistant?.cards).toEqual([
-      { toolCallId: "call-1", card: { kind: "email_hits", hits: [] } },
+      { toolCallId: "call-1", card: { kind: "attachments", items: [] } },
     ]);
     // messageCache reflects the same conversation state, keyed by its id.
     expect(state.messageCache["conv-1"]).toEqual(state.messages);
@@ -109,17 +109,17 @@ describe("reduceRunEvent", () => {
       {
         type: "card",
         toolCallId: "call-1",
-        card: { kind: "email_hits", hits: [], query: "first" },
+        card: { kind: "attachments", items: [], subject: "first" },
       },
       {
         type: "card",
         toolCallId: "call-1",
-        card: { kind: "email_hits", hits: [], query: "second" },
+        card: { kind: "attachments", items: [], subject: "second" },
       },
     ]);
 
     expect(state.messages[1]?.cards).toEqual([
-      { toolCallId: "call-1", card: { kind: "email_hits", hits: [], query: "second" } },
+      { toolCallId: "call-1", card: { kind: "attachments", items: [], subject: "second" } },
     ]);
   });
 

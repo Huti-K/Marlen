@@ -3,7 +3,7 @@ import { createProviderRegistry } from "./registry.js";
 
 /**
  * Attachment-provider abstraction — mirrors ./providers.ts's DraftProvider
- * registry so the save-attachment agent tool (./attachmentTool.ts) can be
+ * registry so the save-attachment agent tool (../agent/attachmentTool.ts) can be
  * built for whichever connected accounts have a driver instead of hardcoding
  * "gmail". An app with nothing registered simply doesn't get the tool, same
  * as an app with no DraftProvider gets no draft tool.
@@ -32,6 +32,31 @@ export interface AttachmentProvider {
   listAttachments(account: ConnectedAccount, messageId: string): Promise<EmailAttachment[]>;
   /** Fetch the bytes of an attachment whose `data` wasn't inline, by its `ref`. */
   downloadAttachment(account: ConnectedAccount, messageId: string, ref: string): Promise<Buffer>;
+}
+
+/** The attachment whose filename equals `filename` case-insensitively, or undefined. */
+export function findAttachmentByFilename(
+  attachments: EmailAttachment[],
+  filename: string,
+): EmailAttachment | undefined {
+  const wanted = filename.trim().toLowerCase();
+  return attachments.find((a) => a.filename.toLowerCase() === wanted);
+}
+
+/**
+ * One attachment's bytes: the inline `data` when the provider delivered it
+ * in the list call, otherwise a download by `ref`. Undefined when the
+ * attachment carries neither — each caller reports that in its own idiom.
+ */
+export async function resolveAttachmentBytes(
+  provider: AttachmentProvider,
+  account: ConnectedAccount,
+  messageId: string,
+  attachment: EmailAttachment,
+): Promise<Buffer | undefined> {
+  if (attachment.data) return attachment.data;
+  if (!attachment.ref) return undefined;
+  return provider.downloadAttachment(account, messageId, attachment.ref);
 }
 
 const registry = createProviderRegistry<AttachmentProvider>();

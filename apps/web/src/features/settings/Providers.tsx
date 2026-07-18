@@ -1,5 +1,5 @@
 import type { LlmProviderInfo, LoginFlowStatus } from "@trailin/shared";
-import { ExternalLink, Loader2, Plus, X } from "lucide-react";
+import { ExternalLink, Plus, X } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
 import { Select } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn, errorMessage, openExternal } from "@/lib/utils";
@@ -249,7 +250,7 @@ function ApiKeyEditor({
           autoFocus
           disabled={saving}
         />
-        {saving && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+        {saving && <Spinner className="shrink-0 text-muted-foreground" />}
         <IconButton
           // Cancel on mousedown so it fires before the input's blur-save.
           onMouseDown={(e) => {
@@ -296,7 +297,7 @@ function LoginFlowCard({ flow, onClose }: { flow: LoginFlowStatus; onClose: () =
       <div className="flex items-center justify-between">
         {/* tint-accent also tints text; restore the default ink since this row relies on it. */}
         <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <Loader2 className="h-4 w-4 animate-spin text-accent" />
+          <Spinner className="text-accent" />
           {t("settings.signingInWith", { provider: flow.providerName ?? flow.providerId })}
         </p>
         <Button

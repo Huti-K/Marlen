@@ -18,29 +18,16 @@ export interface UpsertSpec {
   insertOnly?: readonly string[];
   /** Inserted and overwritten from `excluded` on conflict. */
   update: readonly string[];
-  /**
-   * Inserted, but on conflict updated as `COALESCE(excluded.col, table.col)`:
-   * a null in the incoming row keeps the stored value. For columns a later
-   * write may legitimately not re-supply (e.g. lazily-resolved List-Unsubscribe
-   * headers a routine sync page doesn't re-capture), so a null never clobbers
-   * a value another path resolved.
-   */
-  coalesceUpdate?: readonly string[];
 }
 
 /**
  * One INSERT … ON CONFLICT … DO UPDATE statement. `update` columns take the
- * excluded value; `coalesceUpdate` columns keep the stored value when the
- * excluded value is null. Columns not listed keep their schema defaults on
- * insert and their current value on conflict.
+ * excluded value; columns not listed keep their schema defaults on insert and
+ * their current value on conflict.
  */
 export function upsertSql(spec: UpsertSpec): string {
-  const coalesce = spec.coalesceUpdate ?? [];
-  const columns = [...spec.conflict, ...(spec.insertOnly ?? []), ...spec.update, ...coalesce];
-  const assignments = [
-    ...spec.update.map((c) => `${c} = excluded.${c}`),
-    ...coalesce.map((c) => `${c} = COALESCE(excluded.${c}, ${spec.table}.${c})`),
-  ].join(",\n    ");
+  const columns = [...spec.conflict, ...(spec.insertOnly ?? []), ...spec.update];
+  const assignments = spec.update.map((c) => `${c} = excluded.${c}`).join(",\n    ");
   return `
   INSERT INTO ${spec.table} (${columns.join(", ")})
   VALUES (${columns.map((c) => `@${camelize(c)}`).join(", ")})
