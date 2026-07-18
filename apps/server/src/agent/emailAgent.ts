@@ -24,7 +24,7 @@ import { automationManageTools, automationReadTools } from "./automationTools.js
 import { composeBriefingTool } from "./briefingTool.js";
 import { parseStoredCards } from "./cards.js";
 import { presentChoicesTool } from "./choicesTool.js";
-import { compactedMessages } from "./compaction.js";
+import { compactedMessages, maybeCompact } from "./compaction.js";
 import { buildDelegateTool } from "./delegate.js";
 import { listDraftsTool } from "./draftTools.js";
 import { decoratePrompt, parseStoredRefs } from "./emailRefs.js";
@@ -306,7 +306,12 @@ function createAgentSession(agent: Agent, toolset: EmailToolset): AgentSession {
     async runTurn(prompt, handlers, signal, log) {
       session.inFlight++;
       try {
-        return await runPrompt(session, prompt, handlers, signal, log);
+        return await runPrompt(session, prompt, {
+          handlers,
+          signal,
+          log,
+          compact: (options) => maybeCompact(session.agent, log, options),
+        });
       } finally {
         session.inFlight--;
         session.lastUsed = Date.now();

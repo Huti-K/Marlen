@@ -3,7 +3,6 @@ import { type AssistantMessage, isRetryableAssistantError } from "@earendil-work
 import type { AgentCard } from "@trailin/shared";
 import { moduleLogger } from "../logger.js";
 import { parseAgentCard } from "./cards.js";
-import { maybeCompact } from "./compaction.js";
 
 /**
  * The slice of pino's Logger a turn needs. Spelling out the narrow shape lets
@@ -30,6 +29,22 @@ export interface RunHandlers {
   onToolEnd?: (toolCallId: string, toolName: string, isError: boolean, result: unknown) => void;
   /** Fired for a tool_execution_end whose result carries a recognizable AgentCard, before onToolEnd. */
   onCard?: (toolCallId: string, card: AgentCard) => void;
+}
+
+export interface RunOptions {
+  handlers?: RunHandlers;
+  /** Aborts the in-flight run (streaming and any pending tool calls) if it fires mid-turn — e.g. the HTTP client disconnecting. */
+  signal?: AbortSignal;
+  /** Should carry whatever identifies this turn (a conversation id, an automation run id) so its tool calls can be picked out of the stream. */
+  log?: TurnLogger;
+  /**
+   * Trims the session's transcript when it nears the model's context window
+   * (see compaction.ts, wired by the session owner); called again with
+   * `force` after a provider context-overflow error, where it must actually
+   * shrink the transcript for a retry to be worth attempting. Absent for
+   * throwaway one-shot agents, whose single prompt cannot outgrow the window.
+   */
+  compact?: (options?: { force?: boolean }) => Promise<boolean>;
 }
 
 const defaultLog = moduleLogger("agent");
@@ -77,6 +92,7 @@ async function retryTransientFailures(
   agent: Agent,
   log: TurnLogger,
   signal?: AbortSignal,
+  compact?: RunOptions["compact"],
 ): Promise<void> {
   for (let attempt = 1; attempt <= MAX_TRANSIENT_RETRIES; attempt++) {
     const failure = agent.state.errorMessage;
@@ -95,7 +111,7 @@ async function retryTransientFailures(
       // Compact before touching the transcript tail: when nothing can be
       // compacted, the errored message stays in place and the failure
       // surfaces as-is rather than retrying into the same overflow.
-      if (!(await maybeCompact(agent, log, { force: true }))) return;
+      if (!compact || !(await compact({ force: true }))) return;
     }
 
     // continue() resumes from a user/toolResult tail — drop the errored
@@ -113,21 +129,14 @@ async function retryTransientFailures(
 
 /**
  * Run one prompt through the agent, forwarding streaming events to the
- * handlers. Resolves with the assistant's final text for this turn.
- *
- * `signal`, when given, aborts the in-flight run (streaming and any pending
- * tool calls) if it fires mid-turn — e.g. the HTTP client disconnecting.
- *
- * `log` should carry whatever identifies this turn (a conversation id, an
- * automation run id) so its tool calls can be picked out of the stream.
+ * option's handlers. Resolves with the assistant's final text for this turn.
  */
 export async function runPrompt(
   session: { agent: Agent },
   prompt: string,
-  handlers: RunHandlers = {},
-  signal?: AbortSignal,
-  log: TurnLogger = defaultLog,
+  options: RunOptions = {},
 ): Promise<string> {
+  const { handlers = {}, signal, log = defaultLog, compact } = options;
   // Already gone before we started — don't open a turn at all.
   if (signal?.aborted) return "";
 
@@ -212,12 +221,12 @@ export async function runPrompt(
     // Trim the transcript in advance if it's nearing the model's context
     // window — fails open (never throws), so a compaction hiccup can't sink
     // the turn itself.
-    await maybeCompact(session.agent, log);
+    await compact?.();
     await session.agent.prompt(prompt);
     // Transient provider failures (rate limits, 5xx, dropped streams) are
     // retried in place while the subscription above is still attached, so a
     // successful retry streams through the same handlers.
-    await retryTransientFailures(session.agent, log, signal);
+    await retryTransientFailures(session.agent, log, signal, compact);
   } finally {
     signal?.removeEventListener("abort", onAbort);
     if (typeof unsubscribe === "function") unsubscribe();

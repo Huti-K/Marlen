@@ -8,6 +8,7 @@ import type { Message } from "@earendil-works/pi-ai";
 import { moduleLogger } from "../logger.js";
 import { prompts } from "../prompts.js";
 import { runOneShot } from "./oneShot.js";
+import type { TurnLogger } from "./run.js";
 
 const defaultLog = moduleLogger("compaction");
 
@@ -15,11 +16,12 @@ const defaultLog = moduleLogger("compaction");
  * Keeps a long-running chat session inside its model's context window. pi's
  * Agent has no built-in compaction — a conversation left to grow forever
  * eventually overflows the provider's context and the turn fails outright.
- * Three seams share the same core (compactedMessages): runPrompt trims the
- * transcript before every agent.prompt(...), emailAgent's between-turns hook
- * trims mid-run when a tool-heavy run outgrows the window between LLM calls,
- * and run.ts force-compacts once when the provider reports a context
- * overflow the estimate missed.
+ * Three seams share the same core (compactedMessages), all wired by the
+ * session owner: runPrompt's injected `compact` option trims the transcript
+ * before every agent.prompt(...) and force-compacts once when the provider
+ * reports a context overflow the estimate missed, and emailAgent's
+ * between-turns hook trims mid-run when a tool-heavy run outgrows the window
+ * between LLM calls.
  */
 
 /** Fraction of the model's context window that triggers compaction. */
@@ -41,11 +43,6 @@ const DROPPED_NOTE =
 /** Marks the replacement message so a rendered transcript reads as a summary, not a real turn. */
 const SUMMARY_PREFIX =
   "[Summary of the earlier conversation — older turns were compacted to fit the context window:]";
-
-export interface CompactionLogger {
-  info(fields: Record<string, unknown>, message: string): void;
-  warn(fields: Record<string, unknown>, message: string): void;
-}
 
 /** chars/4 estimate for the system prompt plus the sum of pi's per-message estimate. */
 function estimateStateTokens(systemPrompt: string, messages: AgentMessage[]): number {
@@ -141,7 +138,7 @@ export interface CompactionState {
  */
 export async function compactedMessages(
   state: CompactionState,
-  log: CompactionLogger = defaultLog,
+  log: TurnLogger = defaultLog,
   options: CompactOptions = {},
 ): Promise<AgentMessage[] | null> {
   try {
@@ -186,7 +183,7 @@ export async function compactedMessages(
 /** Compacts agent.state.messages in place when the estimated context nears the model's window. Returns true when a compaction happened. Never throws — see compactedMessages. */
 export async function maybeCompact(
   agent: Agent,
-  log: CompactionLogger = defaultLog,
+  log: TurnLogger = defaultLog,
   options: CompactOptions = {},
 ): Promise<boolean> {
   const next = await compactedMessages(agent.state, log, options);

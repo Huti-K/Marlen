@@ -33,7 +33,7 @@ export async function runOneShot(opts: {
     initialState: { systemPrompt: opts.systemPrompt, model, tools: opts.tools ?? [] },
     streamFn: streamViaModelRegistry,
   });
-  return runPrompt({ agent }, opts.prompt, {}, opts.signal);
+  return runPrompt({ agent }, opts.prompt, { signal: opts.signal });
 }
 
 /**
