@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Automation, Lead, LeadScore, LeadStatus } from "@trailin/shared";
 import { CalendarClock, Phone, Plus, Trash2, Users } from "lucide-react";
 import * as React from "react";
@@ -16,7 +17,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { relativeTime } from "@/lib/dates";
-import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { stagger } from "@/lib/utils";
 
@@ -52,9 +52,21 @@ const EMPTY_FORM = { email: "", name: "", phone: "", interest: "", notes: "" };
 
 export function LeadsPanel() {
   const { t } = useTranslation();
-  const [leads, setLeads] = React.useState<Lead[]>([]);
-  const [automations, setAutomations] = React.useState<Automation[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const queryClient = useQueryClient();
+  // Server-side changes (intake runs, agent lead tools) land via topic
+  // invalidation; refetches keep previous data, so open rows keep their state.
+  const leadsQuery = useQuery({ queryKey: ["leads"], queryFn: () => api.leads() });
+  const automationsQuery = useQuery({
+    queryKey: ["automations", "list"],
+    queryFn: () => api.automations(),
+  });
+  const leads = leadsQuery.data ?? [];
+  const automations = automationsQuery.data ?? [];
+  const loading = leadsQuery.isPending || automationsQuery.isPending;
+  const loadError = leadsQuery.error ?? automationsQuery.error;
+  React.useEffect(() => {
+    if (loadError) toast.error(loadError);
+  }, [loadError]);
   const [filter, setFilter] = React.useState<LeadStatus | null>(null);
   const [scoreFilter, setScoreFilter] = React.useState<(typeof SCORES)[number] | null>(null);
   const [showForm, setShowForm] = React.useState(false);
@@ -62,23 +74,7 @@ export function LeadsPanel() {
   const [form, setForm] = React.useState(EMPTY_FORM);
   const [confirmDelete, setConfirmDelete] = React.useState<Lead | null>(null);
 
-  const load = React.useCallback(async () => {
-    const [leadRows, automationRows] = await Promise.all([api.leads(), api.automations()]);
-    setLeads(leadRows);
-    setAutomations(automationRows);
-  }, []);
-
-  React.useEffect(() => {
-    load()
-      .catch((err) => toast.error(err))
-      .finally(() => setLoading(false));
-  }, [load]);
-
-  // Server-side changes (intake runs, agent lead tools): refetch without the
-  // loading gate so open rows keep their state.
-  useServerEvents(["leads", "automations"], () => {
-    void load().catch(() => {});
-  });
+  const load = () => queryClient.invalidateQueries({ queryKey: ["leads"] });
 
   const visible = leads
     .filter((lead) => (filter ? lead.status === filter : true))

@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { WhatsAppStatus } from "@trailin/shared";
 import { LogOut, MessageCircle, Plus, RefreshCw, Settings, X } from "lucide-react";
 import * as React from "react";
@@ -13,7 +14,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { ArmedToggleRow } from "@/features/connections/AccountPermissions";
 import { api } from "@/lib/api";
-import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 
 /**
@@ -32,19 +32,16 @@ export function useWhatsAppStatus(): {
   status: WhatsAppStatus | null;
   refresh: () => Promise<void>;
 } {
-  const [status, setStatus] = React.useState<WhatsAppStatus | null>(null);
+  const queryClient = useQueryClient();
+  // Best-effort: a failed status just keeps WhatsApp out of the picker.
+  const { data: status } = useQuery({
+    queryKey: ["whatsapp", "status"],
+    queryFn: () => api.whatsAppStatus().catch(() => null),
+  });
   const refresh = React.useCallback(async () => {
-    try {
-      setStatus(await api.whatsAppStatus());
-    } catch {
-      // Best-effort: a failed status just keeps WhatsApp out of the picker.
-    }
-  }, []);
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
-  useServerEvents(["whatsapp"], () => void refresh());
-  return { status, refresh };
+    await queryClient.invalidateQueries({ queryKey: ["whatsapp"] });
+  }, [queryClient]);
+  return { status: status ?? null, refresh };
 }
 
 /** The WhatsApp row in the "add account" picker. */
