@@ -12,6 +12,22 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.3.2",
+    date: "2026-07-19",
+    notes: {
+      en: [
+        "Library files can be downloaded with one click, even the kinds that normally open in the browser.",
+        "A new button opens the current library folder straight in Finder or Explorer.",
+        "Accounts, automations, and email drafts now update on their own the moment something changes, no reload needed.",
+      ],
+      de: [
+        "Bibliotheksdateien lassen sich mit einem Klick herunterladen, auch solche, die sonst im Browser öffnen.",
+        "Ein neuer Knopf öffnet den aktuellen Bibliotheksordner direkt im Finder oder Explorer.",
+        "Konten, Automationen und E-Mail-Entwürfe aktualisieren sich von selbst, sobald sich etwas ändert, ganz ohne Neuladen.",
+      ],
+    },
+  },
+  {
     version: "0.3.1",
     date: "2026-07-19",
     notes: {
