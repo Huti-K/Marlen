@@ -1,17 +1,17 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { and, desc, eq, gte } from "drizzle-orm";
-import { resolveCheapModel } from "../agent/llm/registry.js";
-import { type ReportToolSpec, runReportPrompt } from "../agent/oneShot.js";
-import { prompts } from "../agent/prompts.js";
-import { moduleLogger } from "../core/logger.js";
-import { NightlyJob } from "../core/utils/jobs.js";
+import { resolveCheapModel } from "../../agent/llm/registry.js";
+import { type ReportToolSpec, runReportPrompt } from "../../agent/oneShot.js";
+import { prompts } from "../../agent/prompts.js";
+import { moduleLogger } from "../../core/logger.js";
+import { NightlyJob } from "../../core/utils/jobs.js";
 import {
   createSuggestion,
   listAllSuggestions,
   listPendingSuggestions,
-} from "../db/automationSuggestions.js";
-import { db, schema } from "../db/index.js";
-import { getSetting, getTimezoneSetting, setSetting } from "../db/settings.js";
+} from "../../db/automationSuggestions.js";
+import { db, schema } from "../../db/index.js";
+import { getSetting, getTimezoneSetting, setSetting } from "../../db/settings.js";
 import { isValidCron } from "./scheduler.js";
 
 const log = moduleLogger("suggest");

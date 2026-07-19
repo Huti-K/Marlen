@@ -2,11 +2,11 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import type { Automation, Lead } from "@trailin/shared";
 import { desc, eq } from "drizzle-orm";
-import { getNextRunAt } from "../automations/scheduler.js";
 import { notFound } from "../core/errors.js";
 import { db, schema } from "../db/index.js";
 import { getLead, type LeadPatch, listLeads, updateLead } from "../db/leads.js";
-import { recordLead, removeLead } from "../leads/manage.js";
+import { getNextRunAt } from "../services/automations/scheduler.js";
+import { recordLead, removeLead } from "../services/leads.js";
 
 const idParams = Type.Object({ id: Type.String() });
 

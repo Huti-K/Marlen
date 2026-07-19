@@ -2,8 +2,6 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import { isLanguage, SUPPORTED_LANGUAGES } from "@trailin/shared";
 import { resetSessions } from "../agent/sessionCache.js";
-import { rescheduleAll } from "../automations/scheduler.js";
-import { rescheduleNightlySuggest } from "../automations/suggest.js";
 import { badRequest } from "../core/errors.js";
 import { emitServerEvent } from "../core/events.js";
 import {
@@ -21,6 +19,8 @@ import {
   TIMEZONE_SETTING_KEY,
 } from "../db/settings.js";
 import { rescheduleNightlyLearn } from "../email/learn/service.js";
+import { rescheduleAll } from "../services/automations/scheduler.js";
+import { rescheduleNightlySuggest } from "../services/automations/suggest.js";
 
 const languageBody = Type.Object({ language: Type.String() });
 

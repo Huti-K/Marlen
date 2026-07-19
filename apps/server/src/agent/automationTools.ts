@@ -1,11 +1,15 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import { and, desc, eq, gte } from "drizzle-orm";
-import { createAutomation, deleteAutomation, updateAutomation } from "../automations/manage.js";
-import { getNextRunAt } from "../automations/scheduler.js";
 import { db, schema } from "../db/index.js";
 import { likeContains, likePattern } from "../db/like.js";
-import { collapseWhitespace } from "../search/snippets.js";
+import {
+  createAutomation,
+  deleteAutomation,
+  updateAutomation,
+} from "../services/automations/manage.js";
+import { getNextRunAt } from "../services/automations/scheduler.js";
+import { collapseWhitespace } from "../services/search/snippets.js";
 import { clampLimit, textResult, tool } from "./toolkit.js";
 
 /**

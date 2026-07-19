@@ -118,9 +118,9 @@ cpSync(
 );
 
 // Default automation instructions, read at runtime from instructions/ beside
-// the bundle (see apps/server/src/automations/defaults.ts).
+// the bundle (see apps/server/src/services/automations/defaults.ts).
 cpSync(
-  path.join(repoRoot, "apps", "server", "src", "automations", "instructions"),
+  path.join(repoRoot, "apps", "server", "src", "services", "automations", "instructions"),
   path.join(outDir, "server", "instructions"),
   { recursive: true },
 );

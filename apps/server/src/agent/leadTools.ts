@@ -2,7 +2,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import type { Lead } from "@trailin/shared";
 import { getLead, listLeads, updateLead } from "../db/leads.js";
-import { recordLead, removeLead } from "../leads/manage.js";
+import { recordLead, removeLead } from "../services/leads.js";
 import { textResult, tool } from "./toolkit.js";
 
 /**

@@ -1,11 +1,11 @@
 import type { ConnectedAccount } from "@trailin/shared";
 import { and, eq } from "drizzle-orm";
-import { moduleLogger } from "../core/logger.js";
-import { JobLoop } from "../core/utils/jobs.js";
-import { db, schema } from "../db/index.js";
-import { getSetting, setSetting } from "../db/settings.js";
-import { getMailReadProvider, type MailReadProvider } from "../email/read/readProviders.js";
-import { listAccounts } from "../integrations/pipedream/connect.js";
+import { moduleLogger } from "../../core/logger.js";
+import { JobLoop } from "../../core/utils/jobs.js";
+import { db, schema } from "../../db/index.js";
+import { getSetting, setSetting } from "../../db/settings.js";
+import { getMailReadProvider, type MailReadProvider } from "../../email/read/readProviders.js";
+import { listAccounts } from "../../integrations/pipedream/connect.js";
 import { requestRun } from "./scheduler.js";
 
 const log = moduleLogger("mailProbe");

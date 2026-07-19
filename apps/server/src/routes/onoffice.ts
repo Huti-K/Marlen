@@ -1,12 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import { resetSessions } from "../agent/sessionCache.js";
-import {
-  pauseOnOfficeDefaults,
-  resumeOnOfficeDefaults,
-  seedDefaultAutomations,
-} from "../automations/defaults.js";
-import { rescheduleAll } from "../automations/scheduler.js";
 import { badRequest } from "../core/errors.js";
 import { errorMessage } from "../core/utils/util.js";
 import { setOnOfficeAutomationCreates, setOnOfficeWriteAccess } from "../db/settings.js";
@@ -15,6 +9,12 @@ import {
   getOnOfficeStatus,
   saveOnOfficeConfig,
 } from "../integrations/onoffice/config.js";
+import {
+  pauseOnOfficeDefaults,
+  resumeOnOfficeDefaults,
+  seedDefaultAutomations,
+} from "../services/automations/defaults.js";
+import { rescheduleAll } from "../services/automations/scheduler.js";
 
 // The secret is never returned to the browser, so an edit may omit either field to keep the saved one.
 const onOfficeConfigBody = Type.Object({

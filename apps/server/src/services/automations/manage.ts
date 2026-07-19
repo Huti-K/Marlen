@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { badRequest, conflict, requireRow } from "../core/errors.js";
-import { emitServerEvent } from "../core/events.js";
-import { deleteConversationCascade } from "../db/conversationStore.js";
-import { db, lazyTransaction, schema, sqlite } from "../db/index.js";
+import { badRequest, conflict, requireRow } from "../../core/errors.js";
+import { emitServerEvent } from "../../core/events.js";
+import { deleteConversationCascade } from "../../db/conversationStore.js";
+import { db, lazyTransaction, schema, sqlite } from "../../db/index.js";
 import { isRunInFlight, isValidCron, refreshSchedule, unschedule } from "./scheduler.js";
 
 export type AutomationRow = typeof schema.automations.$inferSelect;

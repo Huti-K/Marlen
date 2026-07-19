@@ -9,7 +9,7 @@ import {
   markDraftLearned,
 } from "../../db/draftStore.js";
 import { listAccounts } from "../../integrations/pipedream/connect.js";
-import { collapseWhitespace } from "../../search/snippets.js";
+import { collapseWhitespace } from "../../services/search/snippets.js";
 import { createMemory } from "../../storage/memories/store.js";
 import { getMailReadProvider, type MailReadProvider } from "../read/readProviders.js";
 import { extractLessons } from "./extractLLM.js";

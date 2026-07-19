@@ -2,17 +2,21 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
-import { createAutomation, deleteAutomation, updateAutomation } from "../automations/manage.js";
+import { notFound, requireRow } from "../core/errors.js";
+import { decideSuggestion, listPendingSuggestions } from "../db/automationSuggestions.js";
+import { db, schema } from "../db/index.js";
+import { likeContains, likePattern } from "../db/like.js";
+import {
+  createAutomation,
+  deleteAutomation,
+  updateAutomation,
+} from "../services/automations/manage.js";
 import {
   findMissedAutomations,
   getNextRunAt,
   runAutomation,
   runMissedAutomations,
-} from "../automations/scheduler.js";
-import { notFound, requireRow } from "../core/errors.js";
-import { decideSuggestion, listPendingSuggestions } from "../db/automationSuggestions.js";
-import { db, schema } from "../db/index.js";
-import { likeContains, likePattern } from "../db/like.js";
+} from "../services/automations/scheduler.js";
 
 const runsQuery = Type.Object({
   q: Type.Optional(Type.String()),

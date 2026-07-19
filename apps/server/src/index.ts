@@ -3,11 +3,6 @@ import { resetSessions } from "./agent/sessionCache.js";
 import { beginTurn, recoverInterruptedTurns, serializeTurnCards } from "./agent/turnRecorder.js";
 import { reconcileVoiceLearns } from "./agent/voiceLearn.js";
 import { buildApp } from "./app.js";
-import { seedDefaultAutomations } from "./automations/defaults.js";
-import { startMailProbe, stopMailProbe } from "./automations/mailProbe.js";
-import { startScheduler, stopScheduler } from "./automations/scheduler.js";
-import { startNightlySuggest, stopNightlySuggest } from "./automations/suggest.js";
-import { registerTurnRunner } from "./automations/turnRunner.js";
 import { env } from "./core/env.js";
 import { installProcessErrorHandlers, logger } from "./core/logger.js";
 import { startLearning, stopLearning } from "./email/learn/service.js";
@@ -17,6 +12,11 @@ import {
   startWhatsApp,
   stopWhatsApp,
 } from "./integrations/whatsapp/session.js";
+import { seedDefaultAutomations } from "./services/automations/defaults.js";
+import { startMailProbe, stopMailProbe } from "./services/automations/mailProbe.js";
+import { startScheduler, stopScheduler } from "./services/automations/scheduler.js";
+import { startNightlySuggest, stopNightlySuggest } from "./services/automations/suggest.js";
+import { registerTurnRunner } from "./services/automations/turnRunner.js";
 import { initAgentHome, stopHomeWatchers } from "./storage/home/agentHome.js";
 import { getLibraryDir, startLibrary, stopLibrary } from "./storage/library/ingest.js";
 

@@ -85,7 +85,7 @@ export class KeyedJobs {
 
 export interface NightlyJobOptions {
   name: string;
-  /** Fixed, server-defined cron (user-configurable schedules live in automations/scheduler.ts). */
+  /** Fixed, server-defined cron (user-configurable schedules live in services/automations/scheduler.ts). */
   cron: string;
   run: (reason: "boot" | "scheduled") => Promise<void>;
 }

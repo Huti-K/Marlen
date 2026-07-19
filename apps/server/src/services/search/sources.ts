@@ -1,14 +1,14 @@
 import type { SearchResult } from "@trailin/shared";
 import { and, desc, eq, ne, or } from "drizzle-orm";
-import { moduleLogger } from "../core/logger.js";
-import { db, lazyStatement, schema } from "../db/index.js";
-import { likePattern } from "../db/like.js";
-import { buildFtsMatch } from "../db/sql.js";
-import { listDraftsCached } from "../email/draftsCache.js";
-import { getDraftProvider } from "../email/providers.js";
-import { listAccounts } from "../integrations/pipedream/connect.js";
-import { listDocuments, searchChunks } from "../storage/library/store.js";
-import { listMemories } from "../storage/memories/store.js";
+import { moduleLogger } from "../../core/logger.js";
+import { db, lazyStatement, schema } from "../../db/index.js";
+import { likePattern } from "../../db/like.js";
+import { buildFtsMatch } from "../../db/sql.js";
+import { listDraftsCached } from "../../email/draftsCache.js";
+import { getDraftProvider } from "../../email/providers.js";
+import { listAccounts } from "../../integrations/pipedream/connect.js";
+import { listDocuments, searchChunks } from "../../storage/library/store.js";
+import { listMemories } from "../../storage/memories/store.js";
 import { buildSnippet, plainText } from "./snippets.js";
 
 const log = moduleLogger("search");

@@ -5,7 +5,7 @@ import { env } from "./env.js";
 /**
  * The slice of pino's Logger the turn machinery passes around. The narrow shape
  * lets a route hand over req.log.child(...) (typed FastifyBaseLogger, not
- * pino.Logger) without a cast, and lets automations/ depend on it without
+ * pino.Logger) without a cast, and lets services/automations/ depend on it without
  * importing the agent.
  */
 export interface TurnLogger {

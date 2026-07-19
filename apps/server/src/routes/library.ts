@@ -7,7 +7,7 @@ import type { LibraryDocumentContent, LibrarySearchHit, LibraryStatus } from "@t
 import { badRequest, notFound } from "../core/errors.js";
 import { contentDisposition, inlineForMime, mimeForExt } from "../core/utils/fileResponse.js";
 import { errorMessage } from "../core/utils/util.js";
-import { trimSnippet } from "../search/snippets.js";
+import { trimSnippet } from "../services/search/snippets.js";
 import {
   createFolder,
   deleteDocument,

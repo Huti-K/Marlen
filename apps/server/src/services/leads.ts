@@ -1,6 +1,5 @@
 import type { Lead } from "@trailin/shared";
 import { eq } from "drizzle-orm";
-import { deleteAutomation } from "../automations/manage.js";
 import { badRequest } from "../core/errors.js";
 import { db, schema } from "../db/index.js";
 import {
@@ -11,6 +10,7 @@ import {
   normalizeLeadEmail,
   updateLead,
 } from "../db/leads.js";
+import { deleteAutomation } from "./automations/manage.js";
 
 /**
  * Lead intake and removal, shared by the HTTP routes and the agent's lead tools

@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { eq, inArray } from "drizzle-orm";
-import { moduleLogger } from "../core/logger.js";
-import { db, schema } from "../db/index.js";
-import { deleteSetting, getSetting, setSetting } from "../db/settings.js";
-import { getOnOfficeConfig } from "../integrations/onoffice/config.js";
+import { moduleLogger } from "../../core/logger.js";
+import { db, schema } from "../../db/index.js";
+import { deleteSetting, getSetting, setSetting } from "../../db/settings.js";
+import { getOnOfficeConfig } from "../../integrations/onoffice/config.js";
 import { updateAutomation } from "./manage.js";
 
 const log = moduleLogger("automations");

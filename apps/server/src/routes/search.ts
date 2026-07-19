@@ -9,7 +9,7 @@ import {
   searchDrafts,
   searchMemories,
   searchRuns,
-} from "../search/sources.js";
+} from "../services/search/sources.js";
 
 const searchQuery = Type.Object({ q: Type.Optional(Type.String()) });
 
