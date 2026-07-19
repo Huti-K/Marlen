@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AccountColor,
   AccountDrafts,
@@ -31,7 +32,7 @@ import { Select } from "@/components/ui/select";
 import { DraftRow } from "@/features/drafts/DraftRow";
 import { BriefingHero, findBriefingCard, RunBody } from "@/features/home/BriefingHero";
 import { GlanceStrip } from "@/features/home/GlanceStrip";
-import { accountColor } from "@/lib/accounts";
+import { accountColor, useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import {
   dateTimeLabel,
@@ -41,7 +42,6 @@ import {
 } from "@/lib/dates";
 import type { View } from "@/lib/nav";
 import { takePendingDraftFocus } from "@/lib/paletteFocus";
-import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { subscribeTrailin } from "@/lib/trailinEvents";
 import { cn, errorMessage, stagger, toggleRowProps } from "@/lib/utils";
@@ -65,33 +65,6 @@ function draftInRange(dateIso: string, range: DraftRange): boolean {
   return t >= now - days * 24 * 60 * 60 * 1000;
 }
 
-/** GET /api/runs/pinned's shape: the pinned automation and its latest
- *  successful run, or both null when nothing is pinned. */
-type PinnedRun = { run: RunFeedItem | null; automation: Automation | null };
-
-/**
- * Stale-while-revalidate cache. The Home route unmounts when you navigate away
- * (React Router swaps the route element), so without this every return to Home
- * re-fetches from scratch and flashes a spinner. Seeding state from the last
- * known data lets the page paint instantly while `load()` refreshes in the
- * background. Module-level so it survives the component's unmount/remount.
- */
-const cache: {
-  drafts: AccountDrafts[] | null;
-  runs: RunFeedItem[] | null;
-  automations: Automation[] | null;
-  colors: AccountColor[];
-  pinned: PinnedRun | null;
-  missed: MissedAutomation[];
-} = {
-  drafts: null,
-  runs: null,
-  automations: null,
-  colors: [],
-  pinned: null,
-  missed: [],
-};
-
 /**
  * The default view: what the agent prepared for you (drafts to review) and
  * what it has been doing (automation runs), on one page.
@@ -107,75 +80,43 @@ export function HomePanel({
   onNavigate: (view: View) => void;
 }) {
   const { t } = useTranslation();
-  const [drafts, setDrafts] = React.useState<AccountDrafts[] | null>(cache.drafts);
-  const [runs, setRuns] = React.useState<RunFeedItem[] | null>(cache.runs);
-  const [automations, setAutomations] = React.useState<Automation[] | null>(cache.automations);
-  const [colors, setColors] = React.useState<AccountColor[]>(cache.colors);
-  const [pinned, setPinned] = React.useState<PinnedRun | null>(cache.pinned);
-  const [missed, setMissed] = React.useState<MissedAutomation[]>(cache.missed);
-  const [error, setError] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // Independent queries, so each section paints the moment its own data lands
+  // — drafts fan out to live mailbox APIs and can take seconds cold while the
+  // rest are fast local-DB reads. The query cache is also what makes a return
+  // to Home paint instantly from the last known data while refreshing behind.
+  const draftsQuery = useQuery({ queryKey: ["drafts", "review"], queryFn: () => api.drafts() });
+  const runsQuery = useQuery({ queryKey: ["runs", "feed"], queryFn: () => api.runsFeed() });
+  const automationsQuery = useQuery({
+    queryKey: ["automations", "list"],
+    queryFn: () => api.automations(),
+  });
+  const pinnedQuery = useQuery({ queryKey: ["runs", "pinned"], queryFn: () => api.pinnedRun() });
+  const missedQuery = useQuery({ queryKey: ["runs", "missed"], queryFn: () => api.missedRuns() });
+  const { colors } = useAccountColors({ withAccounts: false });
+
+  const drafts = draftsQuery.data ?? null;
+  const runs = runsQuery.data?.items ?? null;
+  const automations = automationsQuery.data ?? null;
+  const pinned = pinnedQuery.data ?? null;
+  const missed = missedQuery.data?.items ?? [];
+  const queryError =
+    draftsQuery.error ??
+    runsQuery.error ??
+    automationsQuery.error ??
+    pinnedQuery.error ??
+    missedQuery.error;
+  const error = queryError ? errorMessage(queryError) : null;
+
   // Set by the search palette (see SearchPalette.tsx) when a draft hit is opened.
   const [focusDraft, setFocusDraft] = React.useState<{ accountId: string; draftId: string } | null>(
     null,
   );
 
-  // Bumped on every load() call so a stale in-flight load — this refetches on
-  // server-sent events and can overlap a newer call — never applies its
-  // results or error banner after a fresher one has started.
-  const loadToken = React.useRef(0);
-
-  const load = React.useCallback(async () => {
-    setError(null);
-    const token = ++loadToken.current;
-    const isCurrent = () => loadToken.current === token;
-
-    // Applies each result to its state setter and the cache the instant its
-    // own promise settles, instead of waiting on the slowest of the fan-out —
-    // drafts fans out to live mailbox APIs and can take several seconds cold
-    // while the rest are fast local-DB reads.
-    const apply = <T,>(promise: Promise<T>, onFulfilled: (value: T) => void) =>
-      promise.then((value) => {
-        if (isCurrent()) onFulfilled(value);
-      });
-
-    const results = await Promise.allSettled([
-      apply(api.drafts(), (v) => {
-        cache.drafts = v;
-        setDrafts(v);
-      }),
-      apply(api.runsFeed(), (v) => {
-        cache.runs = v.items;
-        setRuns(v.items);
-      }),
-      apply(api.automations(), (v) => {
-        cache.automations = v;
-        setAutomations(v);
-      }),
-      apply(api.accountColors(), (v) => {
-        cache.colors = v.colors;
-        setColors(v.colors);
-      }),
-      apply(api.pinnedRun(), (v) => {
-        cache.pinned = v;
-        setPinned(v);
-      }),
-      apply(api.missedRuns(), (v) => {
-        cache.missed = v.items;
-        setMissed(v.items);
-      }),
-    ]);
-
-    if (!isCurrent()) return;
-    const failed = results.find((x) => x.status === "rejected");
-    setError(failed ? errorMessage(failed.reason) : null);
-  }, []);
-
-  React.useEffect(() => {
-    void load();
-  }, [load]);
-
-  // Refetch in place when the agent or an automation changes data server-side.
-  useServerEvents(["runs", "drafts", "automations"], () => void load());
+  // A draft was sent or discarded from a row: refresh the review list without
+  // waiting for the server event's debounce.
+  const refreshDrafts = () => void queryClient.invalidateQueries({ queryKey: ["drafts"] });
 
   // The search palette navigates here, then dispatches this with the hit's
   // ids — but only once this effect's listener is attached, which loses the
@@ -258,7 +199,7 @@ export function HomePanel({
       <ReviewSection
         drafts={drafts}
         colors={colors}
-        onChanged={() => void load()}
+        onChanged={refreshDrafts}
         focusDraft={focusDraft}
       />
       <ActivitySection
