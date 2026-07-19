@@ -23,7 +23,8 @@ import {
 const log = moduleLogger("outlook-drafts");
 
 /** List-view fields; only bodyPreview (not the full body) is needed for the snippet. */
-const LIST_SELECT = "id,subject,toRecipients,ccRecipients,bodyPreview,lastModifiedDateTime,webLink";
+const LIST_SELECT =
+  "id,conversationId,subject,toRecipients,ccRecipients,bodyPreview,lastModifiedDateTime,webLink";
 
 const REPLY_TARGET_SELECT = "id,receivedDateTime";
 

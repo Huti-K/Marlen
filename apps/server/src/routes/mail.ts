@@ -24,7 +24,8 @@ const attachmentBody = Type.Object({
 
 const threadQuery = Type.Object({
   accountId: Type.String(),
-  threadId: Type.String(),
+  // Empty would reach the provider as a malformed id query (Graph: ErrorInvalidIdEmpty).
+  threadId: Type.String({ minLength: 1 }),
 });
 
 export const mailRoutes: FastifyPluginAsyncTypebox = async (app) => {

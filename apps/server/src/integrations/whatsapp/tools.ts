@@ -3,8 +3,8 @@ import { Type } from "@sinclair/typebox";
 import { buildMessageDraftCard, cardNote } from "../../agent/cards.js";
 import { clampLimit, limitParam, numberedList, textResult, tool } from "../../agent/toolkit.js";
 import { errorMessage } from "../../core/utils/util.js";
+import { createOutboundDraft, markOutboundStatus } from "../../db/outboundStore.js";
 import { getWhatsAppSendAccess } from "../../db/settings.js";
-import { createOutboundDraft, markOutboundStatus } from "../../outbound/store.js";
 import { dispatchWhatsApp } from "./session.js";
 import {
   chatDisplayName,
@@ -19,7 +19,7 @@ import {
  * The agent's WhatsApp surface, over the local mirror (whatsapp/store.ts).
  * Reads work from the mirror even while the link is reconnecting.
  * whatsapp_send_message drafts an outbound message the user approves on its
- * card (outbound/store.ts); it dispatches at once only when the call sets
+ * card (db/outboundStore.ts); it dispatches at once only when the call sets
  * send=true AND the Settings grant is armed, so it is safe in unattended runs.
  */
 

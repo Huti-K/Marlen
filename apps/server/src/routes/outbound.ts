@@ -1,12 +1,27 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
+import type { OutboundDraft } from "@trailin/shared";
 import { badRequest, notFound } from "../core/errors.js";
-import { getOutboundChannel } from "../outbound/registry.js";
-import { getOutboundDraft, markOutboundStatus } from "../outbound/store.js";
+import { getOutboundDraft, listOutboundDrafts, markOutboundStatus } from "../db/outboundStore.js";
+import { getOutboundChannel } from "../services/outbound/registry.js";
 
 const idParams = Type.Object({ id: Type.String() });
 
+const listQuery = Type.Object({
+  status: Type.Optional(
+    Type.Union([Type.Literal("open"), Type.Literal("sent"), Type.Literal("discarded")]),
+  ),
+});
+
 export const outboundRoutes: FastifyPluginAsyncTypebox = async (app) => {
+  app.get(
+    "/api/outbound",
+    { schema: { querystring: listQuery } },
+    async (req): Promise<OutboundDraft[]> => {
+      return listOutboundDrafts(req.query.status);
+    },
+  );
+
   /**
    * Human-initiated send (the card's Send button): no permission is consulted,
    * the explicit click is the authorization, and the agent has no tool over

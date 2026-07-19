@@ -504,4 +504,36 @@ export const SCHEMA_STEPS: readonly string[] = [
       updated_at TEXT NOT NULL
     );
   `,
+  // 26: todos gain a manual sort key (drag-and-drop order within an agenda
+  // group) and sub-todos gain their own optional due date (shown as a chip
+  // under the parent, never a standalone agenda item).
+  `
+    ALTER TABLE todos ADD COLUMN position REAL NOT NULL DEFAULT 0;
+    ALTER TABLE todo_steps ADD COLUMN due_at TEXT;
+  `,
+  // 27: a todo may link an automation fired when the user completes it
+  // (open→done), chaining a human step into the next agent step. Null = none.
+  `
+    ALTER TABLE todos ADD COLUMN linked_automation_id TEXT;
+  `,
+  // 28: sub-todos retired — todos are flat. Existing checklists fold into the
+  // parent's body as plain lines (content moves forward, never dropped), then
+  // the table goes.
+  `
+    UPDATE todos SET body = TRIM(
+      body || char(10) || char(10) || (
+        SELECT group_concat(
+          '- ' || CASE WHEN done THEN '☑ ' ELSE '☐ ' END || label ||
+            CASE WHEN due_at IS NOT NULL THEN ' · ' || due_at ELSE '' END,
+          char(10)
+        )
+        FROM (
+          SELECT label, done, due_at FROM todo_steps
+          WHERE todo_steps.todo_id = todos.id ORDER BY ordinal
+        )
+      )
+    )
+    WHERE EXISTS (SELECT 1 FROM todo_steps WHERE todo_steps.todo_id = todos.id);
+    DROP TABLE todo_steps;
+  `,
 ];

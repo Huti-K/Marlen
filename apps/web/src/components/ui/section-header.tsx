@@ -48,7 +48,7 @@ export function SectionTitle({
 }: {
   icon: LucideIcon;
   /** Always a `tint-*` token, never a hand-mixed fill. */
-  tone?: "tint-accent" | "tint-neutral";
+  tone?: "tint-accent" | "tint-neutral" | "tint-success" | "tint-warning";
   title: string;
   /** `null` while the first fetch is in flight, so the badge doesn't flash a zero. */
   count?: number | null;

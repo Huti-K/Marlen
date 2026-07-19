@@ -1,7 +1,10 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { MEMORY_MAX_LENGTH } from "@trailin/shared";
 import { type ReportToolSpec, runReportPrompt } from "../../agent/oneShot.js";
+import { appLanguageName } from "../../agent/prompt.js";
 import { prompts } from "../../agent/prompts.js";
+
+/** Cap per directive: several must fit the account's combined style memory (MEMORY_MAX_LENGTH). */
+const DIRECTIVE_MAX_LENGTH = 280;
 
 export interface ExtractionPair {
   draftBody: string;
@@ -21,7 +24,7 @@ const reportLessonsTool: ReportToolSpec<string[]> = {
         description:
           `0-6 general, content-free style directives (tone, greeting/sign-off habits, length, ` +
           `phrasing), each a single self-contained instruction another assistant could follow, ` +
-          `under ${MEMORY_MAX_LENGTH} characters. Empty when no consistent pattern shows up.`,
+          `under ${DIRECTIVE_MAX_LENGTH} characters. Empty when no consistent pattern shows up.`,
       },
     },
     required: ["directives"],
@@ -31,7 +34,7 @@ const reportLessonsTool: ReportToolSpec<string[]> = {
     return Array.isArray(raw)
       ? raw
           .filter((entry): entry is string => typeof entry === "string")
-          .map((entry) => entry.trim().slice(0, MEMORY_MAX_LENGTH))
+          .map((entry) => entry.trim().slice(0, DIRECTIVE_MAX_LENGTH))
           .filter(Boolean)
       : [];
   },
@@ -56,7 +59,7 @@ export async function extractLessons(
   timeoutMs = EXTRACT_TIMEOUT_MS,
 ): Promise<string[]> {
   return runReportPrompt({
-    systemPrompt: prompts.voiceExtract,
+    systemPrompt: `${prompts.voiceExtract}\n\nWrite every directive in ${await appLanguageName()}.`,
     tool: reportLessonsTool,
     prompt: renderPairs(pairs, accountName),
     model,

@@ -1,4 +1,4 @@
-import { integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const conversations = sqliteTable("conversations", {
   id: text("id").primaryKey(),
@@ -198,8 +198,8 @@ export const outboundDrafts = sqliteTable("outbound_drafts", {
 
 /**
  * A human-attention item the agent surfaces and maintains — you must do or
- * decide this. Its checklist lives in todo_steps. dedupe_key ("" for ad-hoc)
- * makes a repeating run's create idempotent so it upserts one todo, not many.
+ * decide this. dedupe_key ("" for ad-hoc) makes a repeating run's create
+ * idempotent so it upserts one todo, not many.
  */
 export const todos = sqliteTable("todos", {
   id: text("id").primaryKey(),
@@ -210,20 +210,14 @@ export const todos = sqliteTable("todos", {
     .default("open"),
   /** When the user should act; null = undated. The home agenda's sort/group key. */
   dueAt: text("due_at"),
+  /** Manual sort key within an agenda group (drag-and-drop); seeded from creation time. */
+  position: real("position").notNull().default(0),
   conversationId: text("conversation_id"),
+  /** Automation run when this todo completes (open→done); null = none. */
+  linkedAutomationId: text("linked_automation_id"),
   dedupeKey: text("dedupe_key").notNull().default(""),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-});
-
-/** One checklist step of a todo; ordinal fixes display order. Ticking the last open step auto-completes the todo. */
-export const todoSteps = sqliteTable("todo_steps", {
-  id: text("id").primaryKey(),
-  todoId: text("todo_id").notNull(),
-  ordinal: integer("ordinal").notNull(),
-  label: text("label").notNull(),
-  done: integer("done", { mode: "boolean" }).notNull().default(false),
-  createdAt: text("created_at").notNull(),
 });
 
 export const learnRuns = sqliteTable("learn_runs", {

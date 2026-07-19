@@ -14,6 +14,11 @@ const DATE_LOCALE_BY_LANGUAGE: Record<Language, string> = {
   de: "de-DE",
 };
 
+/** English name of the configured app language; memory and style learning write in it. */
+export async function appLanguageName(): Promise<string> {
+  return LANGUAGE_ENGLISH_NAMES[(await getLanguageSetting()) ?? "de"];
+}
+
 function formatNow(timezone: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, {
     timeZone: timezone,
@@ -148,7 +153,9 @@ export async function buildSystemPrompt(caps?: SessionCapabilities): Promise<str
   if (language !== "en") {
     prompt += `
 - Always answer in ${LANGUAGE_ENGLISH_NAMES[language]}, no matter what language the user's message
-  or their emails are written in. Quoted email text and draft emails may keep their own language.`;
+  or their emails are written in. Quoted email text and draft emails may keep their own language.
+  Write in ${LANGUAGE_ENGLISH_NAMES[language]} too whenever you save something the user will read
+  later: memory entries, knowledge notes, and skills.`;
   }
 
   prompt += await buildAccountsContext();

@@ -1,0 +1,488 @@
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type AccountColor,
+  type AccountDrafts,
+  type Automation,
+  type EmailDraft,
+  OUTBOUND_CHANNEL_LABELS,
+  type OutboundDraft,
+  type Todo,
+} from "@trailin/shared";
+import { CircleCheck, Clock, ListTodo, Mail, MessageSquare, TriangleAlert } from "lucide-react";
+import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { AccountDot } from "@/components/ui/account-dot";
+import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
+import { GroupLabel } from "@/components/ui/group-label";
+import { SectionTitle } from "@/components/ui/section-header";
+import { Select } from "@/components/ui/select";
+import { DraftRow } from "@/features/drafts/DraftRow";
+import { DAY_MS, dayIso, dueMs, startOfDayMs } from "@/features/home/agenda";
+import { OutboundRow } from "@/features/home/OutboundRow";
+import { TodoRow, useTodoPatch } from "@/features/home/TodoRow";
+import { accountColor } from "@/lib/accounts";
+import { api } from "@/lib/api";
+import { dateTimeLabel, dayLabel, timeLabel } from "@/lib/dates";
+import type { View } from "@/lib/nav";
+import { openConversationInChat } from "@/lib/quickActions";
+import { cn, stagger } from "@/lib/utils";
+
+const AUTOMATION_HORIZON_DAYS = 14;
+const OVERDUE = "overdue";
+const ANYTIME = "anytime";
+const dayGroupId = (ms: number) => `day:${ms}`;
+
+/** Draft rows shown per account before the disclosure unfolds the rest. */
+const DRAFTS_VISIBLE = 4;
+
+type Group = {
+  id: string;
+  heading: string;
+  overdue: boolean;
+  droppable: boolean;
+  /** The sortable todos, in display order. */
+  todos: Todo[];
+  /** Read-only automation rows (day groups only), pre-merged for render order. */
+  render: RenderItem[];
+};
+type RenderItem =
+  | { kind: "todo"; at: number; todo: Todo }
+  | { kind: "auto"; at: number; automation: Automation };
+
+function midpoint(a: number | undefined, b: number | undefined): number {
+  if (a === undefined && b === undefined) return Date.now();
+  if (a === undefined) return (b as number) - 1;
+  if (b === undefined) return a + 1;
+  return (a + b) / 2;
+}
+
+/**
+ * "Zu erledigen" — the one agenda of everything on your plate: overdue todos,
+ * every draft awaiting approval (email and outbound channels), then the days
+ * ahead — dated todos with the next scheduled automation runs interleaved
+ * read-only — and undated todos last. Drag a todo onto another day to
+ * reschedule, or onto "Anytime" to undate it; mutations are optimistic and
+ * the "todos" server event reconciles the cache.
+ */
+export function AttentionSection({
+  automations,
+  drafts,
+  colors,
+  focusDraft,
+  onDraftsChanged,
+  onNavigate,
+}: {
+  automations: Automation[] | null;
+  /** Email provider drafts; null while the (slow, live-mailbox) fetch is in flight. */
+  drafts: AccountDrafts[] | null;
+  colors: AccountColor[];
+  /** A draft opened via the search palette — expand and unfold so it's visible. */
+  focusDraft?: { accountId: string; draftId: string } | null;
+  /** A draft row was sent/discarded/saved: refresh the drafts list without waiting on the event debounce. */
+  onDraftsChanged: () => void;
+  onNavigate: (view: View) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
+  const queryClient = useQueryClient();
+  const [expanded, setExpanded] = React.useState(true);
+  /** Account id, or "all" — narrows the approvals block only. */
+  const [accountFilter, setAccountFilter] = React.useState("all");
+  const [rowError, setRowError] = React.useState<string | null>(null);
+
+  const todosQuery = useQuery({ queryKey: ["todos"], queryFn: () => api.todos("open") });
+  const outboundQuery = useQuery({
+    queryKey: ["outbound", "open"],
+    queryFn: () => api.outbound("open"),
+  });
+  const patch = useTodoPatch();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  React.useEffect(() => {
+    if (!focusDraft) return;
+    setExpanded(true);
+    setAccountFilter("all");
+  }, [focusDraft]);
+
+  const todos = todosQuery.data ?? [];
+  const todayStart = startOfDayMs(new Date());
+
+  // Partition todos into overdue / dated-by-day / anytime.
+  const overdueTodos = todos
+    .filter((td) => {
+      const at = dueMs(td);
+      return at !== null && startOfDayMs(new Date(at)) < todayStart;
+    })
+    .sort((a, b) => (dueMs(a) as number) - (dueMs(b) as number));
+  const anytimeTodos = todos.filter((td) => dueMs(td) === null);
+  const datedTodos = todos.filter((td) => {
+    const at = dueMs(td);
+    return at !== null && startOfDayMs(new Date(at)) >= todayStart;
+  });
+
+  const upcomingAutos = (automations ?? [])
+    .filter((a) => a.enabled && a.nextRunAt)
+    .map((a) => ({ automation: a, at: new Date(a.nextRunAt as string).getTime() }))
+    .filter((a) => a.at < todayStart + AUTOMATION_HORIZON_DAYS * DAY_MS);
+
+  // Day buckets keyed by local day-start ms, holding the day's todos + automations.
+  const dayKeys = new Set<number>();
+  for (const td of datedTodos) dayKeys.add(startOfDayMs(new Date(dueMs(td) as number)));
+  for (const a of upcomingAutos) dayKeys.add(startOfDayMs(new Date(a.at)));
+
+  const dayHeading = (ms: number): string => {
+    if (ms === todayStart) return t("home.todosToday");
+    if (ms === todayStart + DAY_MS) return t("home.todosTomorrow");
+    return dayLabel(new Date(ms).toISOString(), lang);
+  };
+
+  const groups: Group[] = [];
+  if (overdueTodos.length > 0) {
+    groups.push({
+      id: OVERDUE,
+      heading: t("home.todosOverdue"),
+      overdue: true,
+      droppable: false,
+      todos: overdueTodos,
+      render: overdueTodos.map((td) => ({ kind: "todo", at: dueMs(td) as number, todo: td })),
+    });
+  }
+  for (const ms of [...dayKeys].sort((a, b) => a - b)) {
+    const dayTodos = datedTodos
+      .filter((td) => startOfDayMs(new Date(dueMs(td) as number)) === ms)
+      .sort((a, b) => (dueMs(a) as number) - (dueMs(b) as number));
+    const render: RenderItem[] = [
+      ...dayTodos.map((td) => ({ kind: "todo" as const, at: dueMs(td) as number, todo: td })),
+      ...upcomingAutos
+        .filter((a) => startOfDayMs(new Date(a.at)) === ms)
+        .map((a) => ({ kind: "auto" as const, at: a.at, automation: a.automation })),
+    ].sort((a, b) => a.at - b.at);
+    groups.push({
+      id: dayGroupId(ms),
+      heading: dayHeading(ms),
+      overdue: false,
+      droppable: true,
+      todos: dayTodos,
+      render,
+    });
+  }
+  if (anytimeTodos.length > 0) {
+    groups.push({
+      id: ANYTIME,
+      heading: t("home.todosAnytime"),
+      overdue: false,
+      droppable: true,
+      todos: anytimeTodos,
+      render: anytimeTodos.map((td) => ({ kind: "todo", at: 0, todo: td })),
+    });
+  }
+
+  const outbound = outboundQuery.data ?? [];
+  const outboundByChannel = new Map<string, OutboundDraft[]>();
+  for (const d of outbound) {
+    outboundByChannel.set(d.channel, [...(outboundByChannel.get(d.channel) ?? []), d]);
+  }
+  const emailGroups = drafts ?? [];
+  const visibleEmailGroups = emailGroups
+    .filter((a) => accountFilter === "all" || a.accountId === accountFilter)
+    .filter((a) => a.drafts.length > 0 || a.error);
+  const approvalsCount = outbound.length + emailGroups.reduce((n, a) => n + a.drafts.length, 0);
+  const hasApprovals = approvalsCount > 0 || drafts === null || emailGroups.some((a) => a.error);
+  // Subheads only when more than one block shares the zone.
+  const showSubheads =
+    outboundByChannel.size + emailGroups.filter((a) => a.drafts.length > 0).length > 1;
+
+  const dateLabel = (iso: string) => dateTimeLabel(iso, lang);
+
+  const count = todos.length + approvalsCount;
+  const loaded = !!todosQuery.data && drafts !== null && !!outboundQuery.data;
+  const allClear =
+    loaded && count === 0 && upcomingAutos.length === 0 && !emailGroups.some((a) => a.error);
+
+  const groupOfTodo = new Map<string, Group>();
+  for (const g of groups) for (const td of g.todos) groupOfTodo.set(td.id, g);
+  const groupById = new Map(groups.map((g) => [g.id, g]));
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over) return;
+    const activeId = String(active.id);
+    const src = groupOfTodo.get(activeId);
+    if (!src) return;
+    const overId = String(over.id);
+    const dst = groupById.get(overId) ?? groupOfTodo.get(overId);
+    if (!dst?.droppable) return;
+
+    const overTodo = groupOfTodo.get(overId) ? overId : null;
+    const dropIndex = overTodo ? dst.todos.findIndex((td) => td.id === overTodo) : dst.todos.length;
+
+    if (dst.id === ANYTIME) {
+      // Reorder within / move into Anytime: clear any date, land at the drop slot.
+      const others = dst.todos.filter((td) => td.id !== activeId);
+      const pos = midpoint(others[dropIndex - 1]?.position, others[dropIndex]?.position);
+      patch(activeId, { dueAt: null, position: pos }, (list) =>
+        list.map((td) => (td.id === activeId ? { ...td, dueAt: null, position: pos } : td)),
+      );
+      return;
+    }
+    if (src.id === dst.id) return; // within a dated day: time-ordered, nothing to persist.
+    // Reschedule onto another day.
+    const iso = dayIso(Number(dst.id.slice(4)));
+    patch(activeId, { dueAt: iso }, (list) =>
+      list.map((td) => (td.id === activeId ? { ...td, dueAt: iso } : td)),
+    );
+  };
+
+  const renderGroup = (group: Group) => (
+    <GroupBlock key={group.id} group={group}>
+      <SortableContext
+        items={group.todos.map((td) => td.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        {group.render.map((item) =>
+          item.kind === "todo" ? (
+            <TodoRow
+              key={item.todo.id}
+              todo={item.todo}
+              overdue={group.overdue}
+              lang={lang}
+              todayStart={todayStart}
+              onPatch={patch}
+              automations={automations}
+              onOpenChat={
+                item.todo.conversationId
+                  ? () =>
+                      openConversationInChat(item.todo.conversationId as string, () =>
+                        onNavigate("chat"),
+                      )
+                  : undefined
+              }
+            />
+          ) : (
+            <AutomationRow
+              key={item.automation.id}
+              automation={item.automation}
+              at={item.at}
+              lang={lang}
+            />
+          ),
+        )}
+      </SortableContext>
+    </GroupBlock>
+  );
+
+  const approvalsZone = hasApprovals && (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <GroupLabel>{t("home.approvalsGroup")}</GroupLabel>
+        {emailGroups.length > 1 && (
+          <Select
+            id="draft-account"
+            value={accountFilter}
+            onChange={setAccountFilter}
+            aria-label={t("home.approvalsFilterAccount")}
+            className="ml-auto w-auto"
+            options={[
+              { value: "all", label: t("home.approvalsAllAccounts") },
+              ...emailGroups.map((a) => ({ value: a.accountId, label: a.account })),
+            ]}
+          />
+        )}
+      </div>
+      {drafts === null ? (
+        <LoadingRow />
+      ) : (
+        <div className="flex flex-col gap-5">
+          {accountFilter === "all" &&
+            [...outboundByChannel.entries()].map(([channel, rows]) => (
+              <div key={channel} className="flex flex-col gap-2">
+                {showSubheads && (
+                  <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {OUTBOUND_CHANNEL_LABELS[channel] ?? channel}
+                    <span className="text-muted-foreground/70">· {rows.length}</span>
+                  </h3>
+                )}
+                <div className="flex flex-col gap-2">
+                  {rows.map((draft, i) => (
+                    <div key={draft.id} className="animate-in-up" style={stagger(i)}>
+                      <OutboundRow
+                        draft={draft}
+                        dateLabel={dateLabel}
+                        onChanged={() =>
+                          void queryClient.invalidateQueries({ queryKey: ["outbound"] })
+                        }
+                        onError={setRowError}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          {visibleEmailGroups.map((account) => (
+            <AccountDraftGroup
+              key={account.accountId}
+              account={account}
+              color={accountColor(colors, account.accountId)}
+              showSubhead={showSubheads}
+              dateLabel={dateLabel}
+              focusDraft={focusDraft?.accountId === account.accountId ? focusDraft : null}
+              onChanged={onDraftsChanged}
+              onError={setRowError}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <section className="flex flex-col gap-3">
+      <SectionTitle
+        icon={ListTodo}
+        tone="tint-warning"
+        title={t("home.attentionTitle")}
+        count={loaded ? count : null}
+        expanded={expanded}
+        onToggle={() => setExpanded((v) => !v)}
+      />
+      {expanded && (
+        <>
+          {rowError && <ErrorBanner>{rowError}</ErrorBanner>}
+          {!todosQuery.data && <LoadingRow />}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <div className="flex flex-col gap-6">
+              {groups.filter((g) => g.overdue).map(renderGroup)}
+              {approvalsZone}
+              {groups.filter((g) => !g.overdue).map(renderGroup)}
+              {allClear && <EmptyState icon={CircleCheck} description={t("home.attentionEmpty")} />}
+            </div>
+          </DndContext>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** One email account's drafts: optional account subhead, capped rows behind a disclosure. */
+function AccountDraftGroup({
+  account,
+  color,
+  showSubhead,
+  dateLabel,
+  focusDraft,
+  onChanged,
+  onError,
+}: {
+  account: AccountDrafts;
+  color?: string;
+  showSubhead: boolean;
+  dateLabel: (iso: string) => string;
+  /** Set when the palette targeted a draft in THIS account — unfold and expand it. */
+  focusDraft: { accountId: string; draftId: string } | null;
+  onChanged: () => void;
+  onError: (message: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  const [showAll, setShowAll] = React.useState(false);
+
+  React.useEffect(() => {
+    if (focusDraft) setShowAll(true);
+  }, [focusDraft]);
+
+  const visible = showAll ? account.drafts : account.drafts.slice(0, DRAFTS_VISIBLE);
+  const hidden = account.drafts.length - visible.length;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {showSubhead && (
+        <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <AccountDot className="h-2.5 w-2.5" color={color} />
+          <Mail className="h-3.5 w-3.5" />
+          {account.account}
+          <span className="text-muted-foreground/70">· {account.drafts.length}</span>
+        </h3>
+      )}
+      {account.error ? (
+        <ErrorBanner>{account.error}</ErrorBanner>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {visible.map((draft: EmailDraft, i: number) => (
+            <div key={draft.id} className="animate-in-up" style={stagger(i)}>
+              <DraftRow
+                accountId={account.accountId}
+                draft={draft}
+                dateLabel={dateLabel}
+                onDeleted={onChanged}
+                onSaved={onChanged}
+                onError={onError}
+                forceOpen={focusDraft?.draftId === draft.id}
+              />
+            </div>
+          ))}
+          {account.drafts.length > DRAFTS_VISIBLE && (
+            <DisclosureToggle open={showAll} onToggle={() => setShowAll((v) => !v)}>
+              {showAll ? t("home.showLess") : t("home.approvalsShowMore", { count: hidden })}
+            </DisclosureToggle>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GroupBlock({ group, children }: { group: Group; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: group.id, disabled: !group.droppable });
+  return (
+    <div ref={setNodeRef} className={cn("flex flex-col gap-2 rounded-lg", isOver && "bg-accent/5")}>
+      <GroupLabel className={cn("flex items-center gap-1.5", group.overdue && "text-warning")}>
+        {group.overdue && <TriangleAlert className="h-3.5 w-3.5" />}
+        {group.heading}
+      </GroupLabel>
+      <div className="flex flex-col gap-2">{children}</div>
+    </div>
+  );
+}
+
+/** A scheduled run in the agenda: a real (raised) row so it reads as an item,
+ *  kept secondary through muted content — no checkbox, nothing to do yet. */
+function AutomationRow({
+  automation,
+  at,
+  lang,
+}: {
+  automation: Automation;
+  at: number;
+  lang: string;
+}) {
+  return (
+    <div className="surface flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground">
+      <Clock className="h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0 truncate text-foreground/80">{automation.name}</span>
+      <span className="ml-auto shrink-0 text-xs tabular-nums">
+        {timeLabel(new Date(at).toISOString(), lang)}
+      </span>
+    </div>
+  );
+}

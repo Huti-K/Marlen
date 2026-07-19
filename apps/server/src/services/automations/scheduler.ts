@@ -78,7 +78,10 @@ function isOneOffSchedule(expression: string): boolean {
 // number of mid-run requests yield exactly one coalesced follow-up.
 const pendingRuns = new Set<string>();
 
-async function runGuarded(automationId: string, opts: { manual?: boolean }): Promise<void> {
+async function runGuarded(
+  automationId: string,
+  opts: { manual?: boolean; catchUpDueAt?: string },
+): Promise<void> {
   const result = await runJobs.join(automationId, () => executeAutomationRun(automationId, opts));
   await retireIfOneOff(automationId, result);
 }
@@ -88,7 +91,7 @@ async function runGuarded(automationId: string, opts: { manual?: boolean }): Pro
  *  guard and one-off retirement; runRecorder.ts owns the run itself. */
 export async function runAutomation(
   automationId: string,
-  opts: { manual?: boolean } = {},
+  opts: { manual?: boolean; catchUpDueAt?: string } = {},
 ): Promise<void> {
   // A tick landing while the previous run works is dropped, not stacked.
   if (runJobs.isRunning(automationId)) {
@@ -169,13 +172,15 @@ export async function findMissedAutomations(now: Date = new Date()): Promise<Mis
  * Run every automation with an uncovered slot once now (boot catch-up and the
  * Home "run missed" button). Each goes through the same overlap guard as a
  * tick, so a real tick mid-catch-up is dropped and a just-disabled slot is
- * skipped. Fire-and-forget: returns what it started, not the outcomes.
+ * skipped. The missed slot travels into the run's prompt so the agent can
+ * widen its window over the whole gap, not just the latest slot.
+ * Fire-and-forget: returns what it started, not the outcomes.
  */
 export async function runMissedAutomations(): Promise<MissedAutomation[]> {
   const missed = await findMissedAutomations();
   for (const item of missed) {
     log.info({ automationId: item.id, dueAt: item.dueAt }, "catching up missed automation run");
-    runAutomation(item.id).catch((error: unknown) =>
+    runAutomation(item.id, { catchUpDueAt: item.dueAt }).catch((error: unknown) =>
       log.error({ err: error, automationId: item.id }, "catch-up run failed"),
     );
   }

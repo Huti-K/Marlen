@@ -14,7 +14,7 @@ import Fastify, {
 import "./email/registerProviders.js";
 import "./email/registerAttachmentProviders.js";
 import "./email/read/registerReadProviders.js";
-import "./outbound/registerChannels.js";
+import "./services/outbound/registerChannels.js";
 import { env } from "./core/env.js";
 import { type ErrorResponse, registerErrorHandler } from "./core/errors.js";
 import { isAllowedHost, isLoopbackOrigin } from "./core/hostGuard.js";

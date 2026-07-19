@@ -1,27 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
-import { db, schema } from "../db/index.js";
+import type { OutboundDraft, OutboundStatus } from "@trailin/shared";
+import { desc, eq } from "drizzle-orm";
+import { emitServerEvent } from "../core/events.js";
+import { db, schema } from "./index.js";
 
 /**
  * Pending outbound messages for comm channels without a native provider draft
- * (WhatsApp today). The row is inert until a human clicks Send on its card, or
- * an armed autosend dispatches it; the channel registry (outbound/registry.ts)
- * owns the actual sending. Email keeps its own provider-draft path.
+ * (WhatsApp today), the counterpart to draftStore.ts for email. The row is
+ * inert until a human clicks Send on its card, or an armed autosend dispatches
+ * it; the channel registry (services/outbound) owns the actual sending.
  */
-
-export type OutboundStatus = "open" | "sent" | "discarded";
-
-export interface OutboundDraft {
-  id: string;
-  channel: string;
-  target: string;
-  targetLabel: string;
-  body: string;
-  status: OutboundStatus;
-  sentRef: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface OutboundDraftInput {
   channel: string;
@@ -45,6 +33,7 @@ export async function createOutboundDraft(input: OutboundDraftInput): Promise<Ou
     updatedAt: now,
   };
   await db.insert(schema.outboundDrafts).values(draft);
+  emitServerEvent("outbound");
   return draft;
 }
 
@@ -54,6 +43,15 @@ export async function getOutboundDraft(id: string): Promise<OutboundDraft | null
     .from(schema.outboundDrafts)
     .where(eq(schema.outboundDrafts.id, id));
   return (row as OutboundDraft | undefined) ?? null;
+}
+
+export async function listOutboundDrafts(status?: OutboundStatus): Promise<OutboundDraft[]> {
+  const rows = await db
+    .select()
+    .from(schema.outboundDrafts)
+    .where(status ? eq(schema.outboundDrafts.status, status) : undefined)
+    .orderBy(desc(schema.outboundDrafts.createdAt));
+  return rows as OutboundDraft[];
 }
 
 export async function markOutboundStatus(
@@ -71,5 +69,6 @@ export async function markOutboundStatus(
       updatedAt: new Date().toISOString(),
     })
     .where(eq(schema.outboundDrafts.id, id));
+  emitServerEvent("outbound");
   return true;
 }

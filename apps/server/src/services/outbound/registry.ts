@@ -1,4 +1,4 @@
-import type { OutboundDraft } from "./store.js";
+import type { OutboundDraft } from "@trailin/shared";
 
 /**
  * Send registry for outbound comm channels, mirroring the email DraftProvider

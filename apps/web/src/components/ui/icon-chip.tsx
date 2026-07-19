@@ -12,7 +12,8 @@ export function IconChip({
   className,
   children,
 }: {
-  tone?: "tint-accent" | "tint-neutral";
+  /** Always a `tint-*` token; the tone is the item's type color (see DESIGN.md). */
+  tone?: "tint-accent" | "tint-neutral" | "tint-success" | "tint-warning";
   /** sm = 24px (inline SectionHeader chip), md = 28px (section titles, palette rows). */
   size?: "sm" | "md";
   className?: string;

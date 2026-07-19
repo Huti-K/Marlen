@@ -10,15 +10,16 @@ import { memoryDir } from "../home/agentHome.js";
 import { parseFrontmatter, serializeFrontmatter } from "../home/frontmatter.js";
 
 /**
- * Long-term memory: small standing facts, one markdown file each in the
+ * Long-term memory: standing facts, one markdown file per person/topic in the
  * agent home's memory/ folder. The filename (minus .md) is the entry id and
  * follows the content; scope, source and usage counters live in flat
- * frontmatter, the fact itself is the body. The folder is the source of
- * truth — a bare sentence dropped in by hand is a valid global user memory —
- * and every entry is injected into the agent's system prompt in full, so the
- * length cap keeps each to about a sentence. Single-process, last-writer-wins:
- * interleaved rewrites of one file (use-counter vs edit) are acceptable for a
- * single user.
+ * frontmatter, the facts themselves are the body. Related facts are combined
+ * into one file (updated as they change) rather than accumulating one-line
+ * entries. The folder is the source of truth — a bare sentence dropped in by
+ * hand is a valid global user memory — and every entry is injected into the
+ * agent's system prompt in full, so the length cap keeps each to a handful of
+ * short lines. Single-process, last-writer-wins: interleaved rewrites of one
+ * file (use-counter vs edit) are acceptable for a single user.
  */
 
 const log = moduleLogger("memories");

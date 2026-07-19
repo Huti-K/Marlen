@@ -2,7 +2,8 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
 import type { Todo } from "@trailin/shared";
 import { notFound } from "../core/errors.js";
-import { listTodos, type TodoUpdate, updateTodo } from "../db/todos.js";
+import { listTodos, type TodoUpdate } from "../db/todos.js";
+import { applyTodoUpdate } from "../services/todos.js";
 
 const idParams = Type.Object({ id: Type.String() });
 
@@ -19,9 +20,8 @@ const patchBody = Type.Object({
   body: Type.Optional(Type.String()),
   status: Type.Optional(statusValue),
   dueAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  addSteps: Type.Optional(Type.Array(Type.String())),
-  completeSteps: Type.Optional(Type.Array(Type.String())),
-  reopenSteps: Type.Optional(Type.Array(Type.String())),
+  position: Type.Optional(Type.Number()),
+  linkedAutomationId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
 export const todosRoutes: FastifyPluginAsyncTypebox = async (app) => {
@@ -33,7 +33,7 @@ export const todosRoutes: FastifyPluginAsyncTypebox = async (app) => {
     "/api/todos/:id",
     { schema: { params: idParams, body: patchBody } },
     async (req): Promise<Todo> => {
-      const todo = await updateTodo(req.params.id, req.body as TodoUpdate);
+      const todo = await applyTodoUpdate(req.params.id, req.body as TodoUpdate);
       if (!todo) throw notFound("no todo with this id");
       return todo;
     },

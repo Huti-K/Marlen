@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { env } from "../../core/env.js";
 import { emitRunNotification, emitServerEvent } from "../../core/events.js";
 import { moduleLogger } from "../../core/logger.js";
@@ -31,7 +31,7 @@ export interface AutomationRunResult {
 
 export async function executeAutomationRun(
   automationId: string,
-  opts: { manual?: boolean; timeoutMs?: number } = {},
+  opts: { manual?: boolean; timeoutMs?: number; catchUpDueAt?: string } = {},
 ): Promise<AutomationRunResult> {
   const [automation] = await db
     .select()
@@ -74,7 +74,30 @@ export async function executeAutomationRun(
   // errored is not silently disabled with zero successful executions.
   let succeeded = false;
   try {
-    const instructionMessage = `Scheduled automation "${automation.name}". Execute this instruction now and report the outcome:\n\n${automation.instruction}`;
+    // Anchors "since the last run" instructions; on a coalesced catch-up it
+    // lets the agent widen a literal time window instead of losing the gap.
+    const [lastSuccess] = await db
+      .select({ finishedAt: schema.automationRuns.finishedAt })
+      .from(schema.automationRuns)
+      .where(
+        and(
+          eq(schema.automationRuns.automationId, automationId),
+          eq(schema.automationRuns.status, "success"),
+        ),
+      )
+      .orderBy(desc(schema.automationRuns.startedAt))
+      .limit(1);
+    const context = [
+      lastSuccess?.finishedAt
+        ? `The previous successful run finished at ${lastSuccess.finishedAt}.`
+        : "This automation has no previous successful run.",
+    ];
+    if (opts.catchUpDueAt) {
+      context.push(
+        `This is a catch-up run: the scheduled slot due at ${opts.catchUpDueAt} was missed because the app was not running, and earlier slots since the previous successful run may have been skipped too. Cover the entire period since that run, widening any time window in the instruction accordingly.`,
+      );
+    }
+    const instructionMessage = `Scheduled automation "${automation.name}". ${context.join(" ")} Execute this instruction now and report the outcome:\n\n${automation.instruction}`;
 
     // The run id is the conversation id, so drafts created by this run link back
     // to its transcript. The turn runner writes the conversation and message

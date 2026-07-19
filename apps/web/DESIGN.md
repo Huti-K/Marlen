@@ -96,6 +96,12 @@ separates them.
   tint on the other links), links, the switch's on-state, matched search text, and the
   focus ring. It stays scarce everywhere else — never wash a whole panel or a page
   background in it.
+- **Type tints on icon chips.** A list row may front with an `IconChip` toned by the
+  item's *type*: accent = email draft, emerald (`tint-success`) = outbound message
+  (WhatsApp), amber (`tint-warning`) = needs-attention (the to-do section), neutral =
+  schedule/log. One tone per type, applied to the chip only — never to the row
+  background — so mixed lists (Home's attention list) scan by color while the page
+  stays quiet. Section title chips reuse the same tones.
 - **Ink** (`--primary`) is no longer a CTA fill; it remains the high-contrast "selected /
   pressed" tone — the active filter `Chip`, the skip-link — near-black in light,
   near-white in dark.
@@ -185,7 +191,9 @@ about floating panels still follows the rules above:
   for settings/setup-style pages.
 - **Settings rows:** the shared `SettingRow` (`ui/setting-row.tsx`) — label +
   description at left, control at right; `bare` inside an already-raised card or
-  dialog, `ListRow`-raised otherwise.
+  dialog, `ListRow`-raised otherwise. Settings auto-save on change (no Save
+  buttons); secrets save on Enter/blur; the Pipedream credentials form is the
+  one explicit-verify exception.
 - **Menu/picker rows:** the shared `OptionRow` (`ui/option-row.tsx`) — leading mark,
   truncated label, optional detail line and trailing slot; `fill` follows the tone
   ladder (`recessed`/`ghost`/`bare`), `selected` wears the pale accent tint.

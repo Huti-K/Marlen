@@ -1,6 +1,11 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
-import { type AccountVoice, type ConnectedAccount, EMAIL_APPS } from "@trailin/shared";
+import {
+  type AccountVoice,
+  type ConnectedAccount,
+  EMAIL_APPS,
+  MEMORY_MAX_LENGTH,
+} from "@trailin/shared";
 import { moduleLogger } from "../core/logger.js";
 import { errorMessage } from "../core/utils/util.js";
 import { getAccountVoices, patchAccountVoice } from "../db/settings.js";
@@ -14,9 +19,15 @@ import {
 import { normalizeAddressSet } from "../email/learn/addressSubject.js";
 import { getMailReadProvider, type SentMessage } from "../email/read/readProviders.js";
 import { listAccounts } from "../integrations/pipedream/connect.js";
-import { createMemory, deleteMemory, listMemories } from "../storage/memories/store.js";
+import {
+  createMemory,
+  deleteMemory,
+  listMemories,
+  updateMemory,
+} from "../storage/memories/store.js";
 import { activeModelConfigured } from "./llm/registry.js";
 import { type ReportToolSpec, runReportPrompt } from "./oneShot.js";
+import { appLanguageName } from "./prompt.js";
 import { textResult, tool } from "./toolkit.js";
 
 const log = moduleLogger("voiceLearn");
@@ -70,12 +81,12 @@ async function recordedLearn<T>(accountId: string, learn: () => Promise<T>): Pro
   }
 }
 
-function systemPromptFor(accountName: string): string {
+function systemPromptFor(accountName: string, languageName: string): string {
   return `You are a writing-style analyst for Trailin, a personal email assistant. Your only job is
 to study the user's OWN sent messages from the connected account ${accountName} — provided below in
 the prompt — and report back their writing style, nothing else. Study how the user writes: greeting,
-sign-off, tone, length, language(s). When you are done, call the report_style tool exactly once with
-your findings.`;
+sign-off, tone, length, language(s). Write every directive in ${languageName}. When you are done,
+call the report_style tool exactly once with your findings.`;
 }
 
 /**
@@ -149,12 +160,14 @@ const reportStyleTool: ReportToolSpec<LearnedVoice> = {
   }),
   narrow: (params) => {
     const { style } = (params ?? {}) as Record<string, unknown>;
+    // Per-entry and count caps keep the combined style file under MEMORY_MAX_LENGTH.
     return {
       style: Array.isArray(style)
         ? style
             .filter((entry): entry is string => typeof entry === "string")
-            .map((entry) => entry.trim())
+            .map((entry) => entry.trim().slice(0, 300))
             .filter(Boolean)
+            .slice(0, 6)
         : [],
     };
   },
@@ -208,25 +221,25 @@ async function learnVoiceCore(
   }
 
   const learned = await runReportPrompt({
-    systemPrompt: systemPromptFor(account.name),
+    systemPrompt: systemPromptFor(account.name, await appLanguageName()),
     tool: reportStyleTool,
     prompt: renderSamples(account.name, samples),
     missingReportError: "the style analysis finished without calling report_style — try again",
   });
 
-  // Write-then-delete: create the new memories and persist the voice pointing at
-  // them FIRST, then delete the previous run's memories. Deleting first risks a
+  // Write-then-delete: create the new style memory (ONE combined file per
+  // account, one directive per line) and persist the voice pointing at it
+  // FIRST, then delete the previous run's memories. Deleting first risks a
   // mid-run failure leaving the account with no style directives; an orphaned
-  // old memory is recoverable, a lost voice is not.
+  // old memory is recoverable, a lost voice is not. A create failure ("memory
+  // is full") throws and is recorded as this learn's error, leaving the
+  // previous voice intact.
   const styleMemoryIds: string[] = [];
-  for (const directive of learned.style) {
-    try {
-      // A dedup hit returns the existing entry; still record its id so a future re-learn replaces it too.
-      const { entry } = await createMemory(directive, "agent", accountId);
-      styleMemoryIds.push(entry.id);
-    } catch {
-      // Skip directives that don't fit memory's limits rather than failing the whole learn.
-    }
+  const body = learned.style.map((directive) => `- ${directive}`).join("\n");
+  if (body) {
+    // A dedup hit returns the existing entry; still record its id so a future re-learn replaces it too.
+    const { entry } = await createMemory(body, "agent", accountId);
+    styleMemoryIds.push(entry.id);
   }
 
   // patchAccountVoice swaps only this account's slot against the on-disk array
@@ -259,6 +272,70 @@ async function learnVoiceCore(
   return next;
 }
 
+/**
+ * Fold nightly draft-vs-sent lessons into the account's single style memory,
+ * creating it (and registering it on the voice) when none exists. Lines the
+ * file already holds are skipped; once the file is full the rest are dropped —
+ * the next voice_learn re-derives style from scratch. Returns how many
+ * directives were actually added.
+ */
+export async function mergeStyleDirectives(
+  accountId: string,
+  directives: string[],
+): Promise<number> {
+  const dedupKey = (line: string) =>
+    line
+      .replace(/^[-*]\s*/, "")
+      .replace(/\s+/g, " ")
+      .replace(/\.$/, "")
+      .trim()
+      .toLowerCase();
+
+  const voice = (await getAccountVoices()).find((v) => v.accountId === accountId);
+  const memories = await listMemories();
+  const byId = new Map(memories.map((m) => [m.id, m]));
+  const target = (voice?.styleMemoryIds ?? [])
+    .map((id) => byId.get(id))
+    .find((m) => m !== undefined);
+
+  let content = target?.content ?? "";
+  const seen = new Set(content.split("\n").map(dedupKey));
+  let added = 0;
+  for (const directive of directives) {
+    const key = dedupKey(directive);
+    if (!key || seen.has(key)) continue;
+    const next = content ? `${content}\n- ${directive}` : `- ${directive}`;
+    if (next.length > MEMORY_MAX_LENGTH) break;
+    seen.add(key);
+    content = next;
+    added++;
+  }
+  if (added === 0) return 0;
+
+  if (target) {
+    // updateMemory renames the file when content changes; keep the voice's
+    // pointer current so the next learn still replaces this file.
+    const entry = await updateMemory(target.id, content);
+    if (entry && entry.id !== target.id) {
+      await patchAccountVoice(accountId, (existing) => ({
+        ...existing,
+        accountId,
+        styleMemoryIds: (existing?.styleMemoryIds ?? []).map((id) =>
+          id === target.id ? entry.id : id,
+        ),
+      }));
+    }
+  } else {
+    const { entry } = await createMemory(content, "agent", accountId);
+    await patchAccountVoice(accountId, (existing) => ({
+      ...existing,
+      accountId,
+      styleMemoryIds: [...(existing?.styleMemoryIds ?? []), entry.id],
+    }));
+  }
+  return added;
+}
+
 export const voiceLearnTool: AgentTool = tool({
   name: "voice_learn",
   label: "Learn account voice",
@@ -273,17 +350,17 @@ export const voiceLearnTool: AgentTool = tool({
   execute: async (_params, { account }) => {
     const voice = await recordedLearn(account.id, () => learnVoiceCore(account.id));
 
-    // Look the directives back up by id: the learn returns only the voice record, not their text.
+    // Look the directives back up by id: the learn returns only the voice
+    // record, not their text. The content is already a bulleted list.
     const memories = await listMemories();
     const byId = new Map(memories.map((m) => [m.id, m.content]));
     const styleLines = (voice.styleMemoryIds ?? [])
       .map((id) => byId.get(id))
-      .filter((content): content is string => !!content)
-      .map((content) => `- ${content}`);
+      .filter((content): content is string => !!content);
     const styleText =
       styleLines.length > 0
-        ? `Learned ${account.name}'s writing style, saved as memories for this account ` +
-          `(review or edit them on the Knowledge page):\n${styleLines.join("\n")}`
+        ? `Learned ${account.name}'s writing style, saved as a memory for this account ` +
+          `(review or edit it on the Knowledge page):\n${styleLines.join("\n")}`
         : `No consistent writing-style pattern was found for ${account.name}.`;
 
     return textResult(styleText);

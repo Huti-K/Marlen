@@ -65,7 +65,7 @@ describe("memories", () => {
   });
 
   it("rejects empty and oversized content as 400", async () => {
-    for (const content of ["   ", "x".repeat(301)]) {
+    for (const content of ["   ", "x".repeat(2001)]) {
       const res = await app.inject({ method: "POST", url: "/api/memories", payload: { content } });
       expect(res.statusCode).toBe(400);
     }

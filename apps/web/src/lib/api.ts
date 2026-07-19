@@ -28,6 +28,8 @@ import type {
   ModelSettings,
   OnOfficeConfigInput,
   OnOfficeStatus,
+  OutboundDraft,
+  OutboundStatus,
   PipedreamApp,
   PipedreamConfigInput,
   PipedreamStatus,
@@ -214,12 +216,14 @@ export const api = {
 
   // Outbound message drafts (WhatsApp and future channels). Send is
   // human-initiated only, like email's sendDraft.
+  outbound: (status?: OutboundStatus) =>
+    get<OutboundDraft[]>(`/api/outbound${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   sendOutbound: (id: string) =>
     http<{ ok: boolean }>("POST", `/api/outbound/${encodeURIComponent(id)}/send`),
   discardOutbound: (id: string) =>
     http<{ ok: boolean }>("DELETE", `/api/outbound/${encodeURIComponent(id)}`),
   outboundStatus: (id: string) =>
-    get<{ status: "open" | "sent" | "discarded"; sentRef?: string }>(
+    get<{ status: OutboundStatus; sentRef?: string }>(
       `/api/outbound/${encodeURIComponent(id)}/status`,
     ),
 
@@ -352,9 +356,8 @@ export const api = {
       body?: string;
       status?: TodoStatus;
       dueAt?: string | null;
-      addSteps?: string[];
-      completeSteps?: string[];
-      reopenSteps?: string[];
+      position?: number;
+      linkedAutomationId?: string | null;
     },
   ) => http<Todo>("PATCH", `/api/todos/${encodeURIComponent(id)}`, patch),
 

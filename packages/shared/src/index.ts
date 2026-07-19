@@ -331,8 +331,9 @@ export function isSetupComplete(status: AppStatus): boolean {
   return status.modelConfigured && (status.emailAccounts > 0 || !status.emailAccountsKnown);
 }
 
-/** Longest a memory's content may be; entries are injected into the prompt in full. */
-export const MEMORY_MAX_LENGTH = 300;
+/** Longest a memory's content may be; entries are injected into the prompt in full.
+ *  Sized for a concise topic file (a handful of short lines), not a document. */
+export const MEMORY_MAX_LENGTH = 2000;
 
 /** Hard cap on stored memory entries; every one is injected into the prompt. */
 export const MEMORY_MAX_COUNT = 200;
@@ -449,17 +450,11 @@ export interface CreatedDraft {
 
 export type TodoStatus = "open" | "done" | "dismissed";
 
-export interface TodoStep {
-  id: string;
-  label: string;
-  done: boolean;
-}
-
 /**
  * A human-attention item the agent surfaces and maintains: something you must
- * do or decide, with an optional checklist of steps. The async, persistent
- * counterpart of the in-chat `choices` card. Distinct from an automation (that
- * is agent-executed); a run creates a todo when it needs a human.
+ * do or decide. The async, persistent counterpart of the in-chat `choices`
+ * card. Distinct from an automation (that is agent-executed); a run creates a
+ * todo when it needs a human.
  */
 export interface Todo {
   id: string;
@@ -468,9 +463,36 @@ export interface Todo {
   status: TodoStatus;
   /** When the user should do/decide this; null = undated ("anytime"). The home agenda groups and sorts on it. */
   dueAt: string | null;
+  /** Manual sort key within an agenda group (drag-and-drop order). */
+  position: number;
   /** Conversation/run that created it, for "open in chat"; null when none. */
   conversationId: string | null;
-  steps: TodoStep[];
+  /** Automation fired when this todo completes (open→done); null = none. */
+  linkedAutomationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OutboundStatus = "open" | "sent" | "discarded";
+
+/** Display names for outbound channels; fall back to the raw channel id. */
+export const OUTBOUND_CHANNEL_LABELS: Record<string, string> = { whatsapp: "WhatsApp" };
+
+/**
+ * A pending outbound message for a comm channel without a native provider
+ * draft (WhatsApp today), the counterpart of an email draft. Inert until a
+ * human approves it on Home or its card, unless armed autosend dispatched it
+ * at creation.
+ */
+export interface OutboundDraft {
+  id: string;
+  channel: string;
+  /** Channel-native recipient address (a WhatsApp jid). */
+  target: string;
+  targetLabel: string;
+  body: string;
+  status: OutboundStatus;
+  sentRef: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -478,6 +500,7 @@ export interface Todo {
 export type ServerEventTopic =
   | "runs"
   | "drafts"
+  | "outbound"
   | "todos"
   | "memories"
   | "skills"

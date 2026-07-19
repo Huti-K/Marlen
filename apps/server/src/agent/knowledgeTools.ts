@@ -59,18 +59,23 @@ const memorySave: AgentTool = tool({
   name: "memory_save",
   label: "Save to memory",
   description:
-    `Save one short, standing fact to long-term memory — a single self-contained sentence ` +
-    `(people, sign-offs, recurring context). Saved entries appear in your system prompt in ` +
-    `every future conversation, so keep them terse. Do not save one-off task details, whole ` +
-    `emails, or things already in memory. Anything longer-form or document-shaped — ` +
-    `correspondent background, a thread summary, research findings — belongs in your knowledge ` +
-    `folder instead: write it as a markdown note under knowledge/notes/ with file_write, and it ` +
-    `gets indexed for library_search. The user can review and edit memory on the Knowledge ` +
-    `page. When you file a longer note that should be remembered proactively, also save a ` +
-    `one-sentence memory naming it.`,
+    `Save a NEW standing fact to long-term memory. ALWAYS check the Long-term memory list in ` +
+    `your system prompt first: if any existing entry can be rewritten to also cover the new ` +
+    `info (same person, same topic, or a broader rule it fits under), rewrite that entry with ` +
+    `memory_update instead — memory_save is only for facts no existing entry can absorb. One ` +
+    `entry per person or topic, a handful of short lines at most (people, sign-offs, recurring ` +
+    `context); saved entries appear in your system prompt in every future conversation, so keep ` +
+    `them terse. Do not save one-off task details, whole emails, or things already in memory. ` +
+    `Anything longer-form or document-shaped — correspondent background, a thread summary, ` +
+    `research findings — belongs in your knowledge folder instead: write it as a markdown note ` +
+    `under knowledge/notes/ with file_write, and it gets indexed for library_search. The user ` +
+    `can review and edit memory on the Knowledge page. When you file a longer note that should ` +
+    `be remembered proactively, also save a one-line memory naming it.`,
   params: {
     content: Type.String({
-      description: "The fact to remember, as one short self-contained sentence.",
+      description:
+        "The fact(s) to remember: a short self-contained sentence, or a few short lines when " +
+        "several facts about the same person or topic arrive together.",
     }),
     scope: Type.Optional(
       Type.String({
@@ -108,16 +113,19 @@ const memoryUpdate: AgentTool = tool({
   name: "memory_update",
   label: "Update memory",
   description:
-    `Update one long-term memory entry when a fact has changed or the user corrects it — ` +
-    `instead of saving a second, contradicting entry. Use the id shown in brackets in the ` +
-    `Long-term memory list in your system prompt. Pass scope to move the entry — ` +
-    `${SCOPE_FORMS} — or omit it to keep the entry's current scope.`,
+    `Update one long-term memory entry: when a fact has changed or the user corrects it, and ` +
+    `when a new fact belongs to a person or topic the entry already covers — extend the entry ` +
+    `rather than saving a second one. Use the id shown in brackets in the Long-term memory ` +
+    `list in your system prompt. Pass scope to move the entry — ${SCOPE_FORMS} — or omit it ` +
+    `to keep the entry's current scope.`,
   params: {
     id: Type.String({
       description: "The memory id (the bracketed id from the Long-term memory list).",
     }),
     content: Type.String({
-      description: "The corrected fact, as one short self-contained sentence.",
+      description:
+        "The entry's full replacement content — the existing facts (minus anything obsolete) " +
+        "plus the correction or addition, as a few short lines at most.",
     }),
     scope: Type.Optional(
       Type.String({
@@ -305,7 +313,16 @@ export async function buildKnowledgeContext(): Promise<string> {
   // memory/ than createMemory would ever allow.
   const memories = (await listMemories()).slice(0, MEMORY_MAX_COUNT);
   if (memories.length > 0) {
-    const format = (list: MemoryEntry[]) => list.map((m) => `- [${m.id}] ${m.content}`).join("\n");
+    // Multi-line entries render as an id line with the body indented beneath it,
+    // so a combined topic file stays one list item.
+    const format = (list: MemoryEntry[]) =>
+      list
+        .map((m) =>
+          m.content.includes("\n")
+            ? `- [${m.id}]\n  ${m.content.split("\n").join("\n  ")}`
+            : `- [${m.id}] ${m.content}`,
+        )
+        .join("\n");
 
     const global = memories.filter((m) => m.accountId === null && m.contactId === null);
     const accountScoped = memories.filter((m) => m.accountId !== null);

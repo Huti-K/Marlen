@@ -1,73 +1,25 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  AccountColor,
-  AccountDrafts,
-  Automation,
-  MissedAutomation,
-  RunFeedItem,
-} from "@trailin/shared";
-import {
-  CalendarClock,
-  ChevronDown,
-  ChevronUp,
-  FileText,
-  Mail,
-  Newspaper,
-  RefreshCw,
-  Wrench,
-} from "lucide-react";
+import type { MissedAutomation, RunFeedItem } from "@trailin/shared";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { AgentCardView } from "@/components/cards";
-import { OpenRunInChatButton } from "@/components/OpenRunInChatButton";
-import { RunStatusBadge } from "@/components/RunStatusBadge";
-import { AccountDot } from "@/components/ui/account-dot";
 import { Button } from "@/components/ui/button";
-import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
-import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorBanner, LoadingRow, Notice } from "@/components/ui/feedback";
-import { GroupLabel } from "@/components/ui/group-label";
-import { SectionTitle } from "@/components/ui/section-header";
-import { Select } from "@/components/ui/select";
-import { DraftRow } from "@/features/drafts/DraftRow";
-import { BriefingHero, findBriefingCard, RunBody } from "@/features/home/BriefingHero";
-import { TodosSection } from "@/features/home/TodosSection";
-import { accountColor, useAccountColors } from "@/lib/accounts";
+import { ErrorBanner, Notice } from "@/components/ui/feedback";
+import { ActivitySection } from "@/features/home/ActivitySection";
+import { AttentionSection } from "@/features/home/AttentionSection";
+import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
+import { ResultsSection } from "@/features/home/ResultsSection";
+import { useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
-import {
-  dateTimeLabel,
-  dayLabel as formatDayLabel,
-  timeLabel as formatTimeLabel,
-  isToday,
-} from "@/lib/dates";
 import type { View } from "@/lib/nav";
 import { takePendingDraftFocus } from "@/lib/paletteFocus";
-import { toast } from "@/lib/toast";
 import { subscribeTrailin } from "@/lib/trailinEvents";
-import { cn, errorMessage, stagger, toggleRowProps } from "@/lib/utils";
-
-/** Widening windows for the "Needs your review" drafts filter; defaults to "today". */
-type DraftRange = "today" | "7d" | "30d" | "all";
-
-/** Whether a draft's timestamp falls within the selected range. Drafts with a
- * missing/unparseable date are never hidden, since we can't place them in time. */
-function draftInRange(dateIso: string, range: DraftRange): boolean {
-  if (range === "all" || !dateIso) return true;
-  const t = new Date(dateIso).getTime();
-  if (Number.isNaN(t)) return true;
-  const now = Date.now();
-  if (range === "today") {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return t >= start.getTime();
-  }
-  const days = range === "7d" ? 7 : 30;
-  return t >= now - days * 24 * 60 * 60 * 1000;
-}
+import { errorMessage } from "@/lib/utils";
 
 /**
- * The default view: what the agent prepared for you (drafts to review) and
- * what it has been doing (automation runs), on one page.
+ * The default view, top to bottom: the pinned automation's latest output
+ * (hero), everything actionable now (attention), fresh output from the other
+ * automations (results), the schedule ahead (coming up), and the collapsed
+ * run log (activity).
  */
 export function HomePanel({
   setupIncomplete,
@@ -159,9 +111,9 @@ export function HomePanel({
     return heroRun ? runs.filter((r) => r.id !== heroRun.id) : runs;
   }, [runs, heroRun]);
 
-  // No top-level loading gate: each section renders its own <LoadingRow /> while
-  // its data is null, so the fast local reads (runs/automations) paint straight
-  // away instead of waiting on the slow live mailbox drafts fetch.
+  // No top-level loading gate: each section renders its own loading state
+  // while its data is null, so the fast local reads (runs/automations) paint
+  // straight away instead of waiting on the slow live mailbox drafts fetch.
   return (
     <div className="flex flex-col gap-10 pt-1">
       {error && !offline && <ErrorBanner>{error}</ErrorBanner>}
@@ -194,12 +146,19 @@ export function HomePanel({
         />
       )}
 
-      <TodosSection automations={automations} onNavigate={onNavigate} />
-      <ReviewSection
+      <AttentionSection
+        automations={automations}
         drafts={drafts}
         colors={colors}
-        onChanged={refreshDrafts}
         focusDraft={focusDraft}
+        onDraftsChanged={refreshDrafts}
+        onNavigate={onNavigate}
+      />
+      <ResultsSection
+        runs={activityRuns}
+        heroAutomationId={heroRun?.automationId}
+        colors={colors}
+        onNavigate={onNavigate}
       />
       <ActivitySection
         runs={activityRuns}
@@ -243,343 +202,5 @@ function MissedRunsBanner({ missed }: { missed: MissedAutomation[] }) {
         {running ? t("home.missedRunning") : t("home.missedRun")}
       </Button>
     </Notice>
-  );
-}
-
-/* ---------------- Drafts waiting for review ---------------- */
-
-function ReviewSection({
-  drafts,
-  colors,
-  onChanged,
-  focusDraft,
-}: {
-  drafts: AccountDrafts[] | null;
-  colors: AccountColor[];
-  onChanged: () => void;
-  /** A draft opened via the search palette — widen the filter and expand so it's visible. */
-  focusDraft?: { accountId: string; draftId: string } | null;
-}) {
-  const { t, i18n } = useTranslation();
-  const [rowError, setRowError] = React.useState<string | null>(null);
-  const [range, setRange] = React.useState<DraftRange>("today");
-  const [isExpanded, setIsExpanded] = React.useState(true);
-
-  React.useEffect(() => {
-    if (!focusDraft) return;
-    setRange("all");
-    setIsExpanded(true);
-  }, [focusDraft]);
-
-  const dateLabel = (iso: string) => dateTimeLabel(iso, i18n.language);
-
-  const unfilteredTotal = drafts?.reduce((n, a) => n + a.drafts.length, 0) ?? 0;
-  // An account with a fetch error contributes 0 drafts, so unfiltered/filteredTotal
-  // alone can't be trusted to mean "nothing to show" — that would swallow the error.
-  const hasErroredAccount = drafts?.some((a) => a.error) ?? false;
-
-  const filteredAccounts: AccountDrafts[] =
-    drafts?.map((a) => ({ ...a, drafts: a.drafts.filter((d) => draftInRange(d.date, range)) })) ??
-    [];
-  const filteredTotal = filteredAccounts.reduce((n, a) => n + a.drafts.length, 0);
-
-  return (
-    <section className="flex flex-col gap-3">
-      <SectionTitle
-        icon={FileText}
-        title={t("home.reviewTitle")}
-        count={filteredTotal}
-        expanded={isExpanded}
-        onToggle={() => setIsExpanded(!isExpanded)}
-      >
-        {unfilteredTotal > 0 && (
-          <Select
-            id="draft-range"
-            value={range}
-            onChange={(v) => setRange(v as DraftRange)}
-            aria-label={t("home.filterPeriod")}
-            className="w-auto"
-            options={[
-              { value: "today", label: t("home.filterToday") },
-              { value: "7d", label: t("home.filter7Days") },
-              { value: "30d", label: t("home.filter30Days") },
-              { value: "all", label: t("home.filterAll") },
-            ]}
-          />
-        )}
-      </SectionTitle>
-
-      {isExpanded && (
-        <div className="flex flex-col gap-3">
-          {rowError && <ErrorBanner>{rowError}</ErrorBanner>}
-
-          {!drafts ? (
-            <LoadingRow />
-          ) : (unfilteredTotal === 0 || filteredTotal === 0) && !hasErroredAccount ? (
-            <EmptyState
-              icon={FileText}
-              description={t(
-                unfilteredTotal === 0 ? "home.reviewEmpty" : "home.reviewEmptyFiltered",
-              )}
-            />
-          ) : (
-            <div className="flex flex-col gap-8">
-              {filteredAccounts
-                .filter((a) => a.drafts.length > 0 || a.error)
-                .map((accountDrafts) => (
-                  <div key={accountDrafts.accountId} className="flex flex-col gap-3">
-                    {filteredAccounts.length > 1 && (
-                      <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <AccountDot
-                          className="h-2.5 w-2.5"
-                          color={accountColor(colors, accountDrafts.accountId)}
-                        />
-                        <Mail className="h-3.5 w-3.5" />
-                        {accountDrafts.account}
-                        <span className="text-muted-foreground/70">
-                          · {accountDrafts.drafts.length}
-                        </span>
-                      </h3>
-                    )}
-                    {accountDrafts.error ? (
-                      <ErrorBanner>{accountDrafts.error}</ErrorBanner>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {accountDrafts.drafts.map((draft, i) => (
-                          <div key={draft.id} className="animate-in-up" style={stagger(i)}>
-                            <DraftRow
-                              accountId={accountDrafts.accountId}
-                              draft={draft}
-                              dateLabel={dateLabel}
-                              onDeleted={onChanged}
-                              onSaved={onChanged}
-                              onError={setRowError}
-                              forceOpen={
-                                focusDraft?.accountId === accountDrafts.accountId &&
-                                focusDraft?.draftId === draft.id
-                              }
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/* ---------------- What the agent has been doing ---------------- */
-
-function ActivitySection({
-  runs,
-  automations,
-  colors,
-  onNavigate,
-  hasHero,
-}: {
-  runs: RunFeedItem[] | null;
-  automations: Automation[] | null;
-  colors: AccountColor[];
-  onNavigate: (view: View) => void;
-  /** The latest digest already leads the page as the BriefingHero — don't also auto-expand it here. */
-  hasHero: boolean;
-}) {
-  const { t, i18n } = useTranslation();
-  // Older runs stay collapsed behind this toggle; only today's ever show by
-  // default so the section doesn't grow unbounded with automation history.
-  const [showEarlier, setShowEarlier] = React.useState(false);
-  // The whole section folds away; open by default.
-  const [expanded, setExpanded] = React.useState(true);
-
-  const dayLabel = (iso: string) => formatDayLabel(iso, i18n.language);
-  const timeLabel = (iso: string) => formatTimeLabel(iso, i18n.language);
-
-  const groupByDay = (list: RunFeedItem[]) => {
-    const byDay = new Map<string, RunFeedItem[]>();
-    for (const run of list) {
-      const key = dayLabel(run.startedAt);
-      byDay.set(key, [...(byDay.get(key) ?? []), run]);
-    }
-    return byDay;
-  };
-
-  const todayRuns = (runs ?? []).filter((r) => isToday(r.startedAt));
-  const earlierRuns = (runs ?? []).filter((r) => !isToday(r.startedAt));
-  // `runs` arrives newest-first from the feed, so its head is the newest run
-  // — the one card expanded by default, whichever day group it lands in.
-  const firstRunId = runs?.[0]?.id;
-
-  const hasAutomations = (automations?.length ?? 0) > 0;
-
-  const renderDayGroups = (list: RunFeedItem[]) => (
-    <div className="flex flex-col gap-8">
-      {[...groupByDay(list).entries()].map(([day, dayRuns]) => (
-        <div key={day} className="flex flex-col gap-3">
-          <GroupLabel>{day}</GroupLabel>
-          <div className="flex flex-col gap-3">
-            {dayRuns.map((run, i) => (
-              <ActivityRunCard
-                key={run.id}
-                run={run}
-                index={i}
-                colors={colors}
-                timeLabel={timeLabel}
-                defaultExpanded={!hasHero && run.id === firstRunId}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  return (
-    <section className="flex flex-col gap-3">
-      <SectionTitle
-        icon={Wrench}
-        title={t("home.activityTitle")}
-        expanded={expanded}
-        onToggle={() => setExpanded((v) => !v)}
-      />
-
-      {expanded &&
-        (!runs ? (
-          <LoadingRow />
-        ) : runs.length === 0 ? (
-          <EmptyState
-            icon={Newspaper}
-            title={t("home.activityEmptyTitle")}
-            description={
-              hasAutomations ? t("home.activityNoRunsBody") : t("home.activityEmptyBody")
-            }
-            action={
-              <Button size="sm" onClick={() => onNavigate("automations")}>
-                <CalendarClock />
-                {hasAutomations ? t("home.viewAutomations") : t("home.createAutomation")}
-              </Button>
-            }
-          />
-        ) : (
-          <div className="flex flex-col gap-4">
-            {todayRuns.length > 0 ? (
-              renderDayGroups(todayRuns)
-            ) : earlierRuns.length > 0 ? (
-              <p className="text-xs text-muted-foreground">{t("home.activityNothingToday")}</p>
-            ) : null}
-
-            {earlierRuns.length > 0 && (
-              <div className="flex flex-col gap-4">
-                {showEarlier && renderDayGroups(earlierRuns)}
-                <DisclosureToggle open={showEarlier} onToggle={() => setShowEarlier((v) => !v)}>
-                  {showEarlier
-                    ? t("home.activityShowLess")
-                    : t("home.activityShowEarlier", { count: earlierRuns.length })}
-                </DisclosureToggle>
-              </div>
-            )}
-          </div>
-        ))}
-    </section>
-  );
-}
-
-function ActivityRunCard({
-  run,
-  index,
-  colors,
-  timeLabel,
-  defaultExpanded = false,
-  onNavigate,
-}: {
-  run: RunFeedItem;
-  index: number;
-  colors: AccountColor[];
-  timeLabel: (iso: string) => string;
-  defaultExpanded?: boolean;
-  onNavigate: (view: View) => void;
-}) {
-  const { t } = useTranslation();
-  const [expanded, setExpanded] = React.useState(defaultExpanded);
-  // A run whose turn produced a briefing card is represented by that card
-  // alone — the same body the BriefingHero renders — since the prose result
-  // and the raw tool cards only restate what the briefing already carries.
-  const briefing = findBriefingCard(run);
-  const cards = run.cards ?? [];
-  const hasResult = !!run.result;
-  const expandable = !!briefing || hasResult || cards.length > 0;
-  const toggleExpanded = () => setExpanded(!expanded);
-
-  // Re-run a failed automation in place. Fire-and-forget on the server (202):
-  // the resulting "runs" server event reloads the feed, where the fresh run
-  // appears as its own running row. Hidden for a deleted automation (null
-  // automationName) — there is nothing left to run.
-  const [retrying, setRetrying] = React.useState(false);
-  const canRetry = run.status === "error" && run.automationName !== null;
-  const retry = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setRetrying(true);
-    try {
-      await api.runAutomation(run.automationId);
-    } catch (err) {
-      toast.error(err);
-    } finally {
-      setRetrying(false);
-    }
-  };
-
-  return (
-    <div className="animate-in-up flex flex-col gap-3" style={stagger(index)}>
-      <article className="surface flex flex-col gap-3 rounded-lg p-4">
-        <div
-          className={cn("flex items-center justify-between gap-3", expandable && "cursor-pointer")}
-          {...(expandable ? toggleRowProps(expanded, toggleExpanded) : {})}
-        >
-          <p className="flex min-w-0 items-center gap-2 text-sm font-medium">
-            <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="truncate">{run.automationName ?? t("home.deletedAutomation")}</span>
-            {expandable &&
-              (expanded ? (
-                <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-              ))}
-          </p>
-          <div className="flex shrink-0 items-center gap-2">
-            {canRetry && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("common.retry")}
-                data-tooltip={t("common.retry")}
-                disabled={retrying}
-                onClick={(e) => void retry(e)}
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", retrying && "animate-spin")} />
-              </Button>
-            )}
-            <OpenRunInChatButton runId={run.id} onNavigateToChat={() => onNavigate("chat")} />
-            <RunStatusBadge status={run.status} />
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {timeLabel(run.startedAt)}
-            </span>
-          </div>
-        </div>
-        {expanded && (briefing || hasResult) && (
-          <RunBody run={run} colors={colors} markdownClassName="text-sm text-foreground/90" />
-        )}
-      </article>
-      {/* Sibling blocks, never nested in the row's surface (DESIGN.md: no card-in-card). */}
-      {expanded &&
-        !briefing &&
-        cards.map(({ toolCallId, card }) => (
-          <AgentCardView key={toolCallId} card={card} colors={colors} />
-        ))}
-    </div>
   );
 }

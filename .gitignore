@@ -18,9 +18,10 @@ apps/desktop/build/
 *.db-wal
 *.db-shm
 *.db-journal
-CLAUDE.md
 CONTEXT.md
 
-# Local agent rules — deliberately unpublished
-AGENTS.md
+# Local refactor planning doc — deliberately unpublished
 REFACTOR.md
+
+# Per-customer install bundles (agent-home layout + setup skill) — private, not for the public repo
+setup-template/

@@ -1,4 +1,5 @@
-import type { AgentCard } from "@trailin/shared";
+import { useQuery } from "@tanstack/react-query";
+import { type AgentCard, OUTBOUND_CHANNEL_LABELS } from "@trailin/shared";
 import { MessageSquare } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -14,8 +15,6 @@ type MessageDraftData = Extract<AgentCard, { kind: "message_draft" }>;
 /** Same statuses as EmailDraftCard; `gone` is a 404 while sending/discarding. */
 type Status = "open" | "sent" | "discarded" | "gone";
 
-const CHANNEL_LABELS: Record<string, string> = { whatsapp: "WhatsApp" };
-
 /**
  * A pending outbound message (WhatsApp and future channels), approved with the
  * same Keep/Discard/Send machinery as an email draft. Sending dispatches
@@ -23,45 +22,40 @@ const CHANNEL_LABELS: Record<string, string> = { whatsapp: "WhatsApp" };
  */
 export function MessageDraftCard({ card }: { card: MessageDraftData }) {
   const { t } = useTranslation();
-  const [status, setStatus] = React.useState<Status>("open");
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void api
-      .outboundStatus(card.draftId)
-      .then((result) => {
-        if (!cancelled && result.status !== "open") setStatus(result.status);
-      })
-      .catch(() => {
-        // 404 or any failure: treat as unknown, keep live actions.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [card.draftId]);
+  // The action's own outcome; wins over the fetched status so the card flips
+  // immediately. The "outbound" topic keeps the query side fresh when the
+  // draft is actioned elsewhere (e.g. approved from Home).
+  const [localStatus, setLocalStatus] = React.useState<Status | null>(null);
+  const statusQuery = useQuery({
+    queryKey: ["outbound", "status", card.draftId],
+    queryFn: () => api.outboundStatus(card.draftId),
+    // 404 or any failure: treat as unknown, keep live actions.
+    retry: false,
+  });
+  const status: Status = localStatus ?? statusQuery.data?.status ?? "open";
 
   const actions = useDraftActions({
     send: async () => {
       try {
         await api.sendOutbound(card.draftId);
-        setStatus("sent");
+        setLocalStatus("sent");
       } catch (err) {
-        if (isNotFound(err)) setStatus("gone");
+        if (isNotFound(err)) setLocalStatus("gone");
         else toast.error(err);
       }
     },
     discard: async () => {
       try {
         await api.discardOutbound(card.draftId);
-        setStatus("discarded");
+        setLocalStatus("discarded");
       } catch (err) {
-        if (isNotFound(err)) setStatus("gone");
+        if (isNotFound(err)) setLocalStatus("gone");
         else toast.error(err);
       }
     },
   });
 
-  const channelLabel = CHANNEL_LABELS[card.channel] ?? card.channel;
+  const channelLabel = OUTBOUND_CHANNEL_LABELS[card.channel] ?? card.channel;
 
   return (
     <CardShell

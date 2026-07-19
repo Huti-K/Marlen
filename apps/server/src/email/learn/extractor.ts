@@ -1,6 +1,7 @@
 import type { ConnectedAccount } from "@trailin/shared";
 import { fetchAccountNameMap } from "../../agent/accounts.js";
 import { resolveCheapModel } from "../../agent/llm/registry.js";
+import { mergeStyleDirectives } from "../../agent/voiceLearn.js";
 import { moduleLogger } from "../../core/logger.js";
 import { errorMessage } from "../../core/utils/util.js";
 import {
@@ -10,7 +11,6 @@ import {
 } from "../../db/draftStore.js";
 import { listAccounts } from "../../integrations/pipedream/connect.js";
 import { collapseWhitespace } from "../../services/search/snippets.js";
-import { createMemory } from "../../storage/memories/store.js";
 import { getMailReadProvider, type MailReadProvider } from "../read/readProviders.js";
 import { extractLessons } from "./extractLLM.js";
 
@@ -51,7 +51,7 @@ export interface ExtractSweepResult {
   identical: number;
   /** Edited pairs consumed by extraction this sweep. */
   learned: number;
-  /** Style memories created from those pairs. */
+  /** Directives folded into account style memories this sweep. */
   lessons: number;
 }
 
@@ -60,9 +60,9 @@ export interface ExtractSweepResult {
  * (whitespace-normalized) against its own latest agent-authored version. An
  * identical pair needed no lesson and is stamped directly; the rest are batched
  * per account (at most MAX_PAIRS_PER_CALL) into one LLM call whose directives
- * become account memories. Unresolvable pairs and any account whose LLM call
- * fails stay unstamped for a later night: dropping a lesson is fine, learning
- * the wrong one is not.
+ * fold into that account's single style memory (mergeStyleDirectives).
+ * Unresolvable pairs and any account whose LLM call fails stay unstamped for a
+ * later night: dropping a lesson is fine, learning the wrong one is not.
  */
 export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<ExtractSweepResult> {
   const extract = deps.extract ?? defaultExtract;
@@ -126,17 +126,11 @@ export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<E
         pairs: pairs.map((pair) => ({ draftBody: pair.draftBody, sentBody: pair.sentBody })),
         accountName: names.get(accountId) ?? accountId,
       });
-      for (const directive of directives) {
-        try {
-          await createMemory(directive, "agent", accountId);
-          lessons++;
-        } catch (error) {
-          // Rejected by memory's own limits (over-length, "memory is full"); skip this directive, not the batch.
-          log.warn(
-            { err: errorMessage(error), accountId },
-            "style directive rejected by memory store",
-          );
-        }
+      try {
+        lessons += await mergeStyleDirectives(accountId, directives);
+      } catch (error) {
+        // Rejected by memory's own limits ("memory is full"); drop this batch's lessons, keep the stamps.
+        log.warn({ err: errorMessage(error), accountId }, "style lessons rejected by memory store");
       }
       for (const pair of pairs) {
         await markDraftLearned(accountId, pair.providerDraftId);

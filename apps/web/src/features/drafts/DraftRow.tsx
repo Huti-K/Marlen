@@ -1,5 +1,5 @@
 import type { EmailDraft } from "@trailin/shared";
-import { ChevronDown, ChevronRight, Send, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Mail, Send, Sparkles, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { DraftActionDialog, useDraftActions } from "@/components/draftActions";
@@ -7,6 +7,7 @@ import { ThreadHistory } from "@/components/ThreadHistory";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingRow } from "@/components/ui/feedback";
+import { IconChip } from "@/components/ui/icon-chip";
 import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
 import { OpenExternalButton } from "@/components/ui/open-external-button";
@@ -167,6 +168,9 @@ export function DraftRow({
           ) : (
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
+          <IconChip size="sm">
+            <Mail />
+          </IconChip>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{subjectDraft || t("drafts.noSubject")}</p>
             <p className="truncate text-xs text-muted-foreground">

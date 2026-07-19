@@ -1,5 +1,5 @@
-import { getWhatsAppSendAccess } from "../db/settings.js";
-import { dispatchWhatsApp } from "../integrations/whatsapp/session.js";
+import { getWhatsAppSendAccess } from "../../db/settings.js";
+import { dispatchWhatsApp } from "../../integrations/whatsapp/session.js";
 import { registerOutboundChannel } from "./registry.js";
 
 /**

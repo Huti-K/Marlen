@@ -25,6 +25,12 @@ export function ThreadHistory({ accountId, threadId }: { accountId: string; thre
 
   const load = React.useCallback(async () => {
     setError(null);
+    // No provider thread id (unlinked/legacy draft): same as a thread holding
+    // nothing beyond the draft — the server rejects an empty id.
+    if (!threadId) {
+      setMessages([]);
+      return;
+    }
     try {
       const detail = await api.threadDetail(accountId, threadId);
       setMessages(detail.messages);
