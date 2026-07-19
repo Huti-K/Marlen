@@ -1,6 +1,7 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { resolveActiveModel } from "../llm/registry.js";
+import { moduleLogger } from "../logger.js";
 import { loadOnOfficeTools } from "../onoffice/tools.js";
 import { buildWhatsAppTools } from "../whatsapp/tools.js";
 import { automationManageTools, automationReadTools } from "./automationTools.js";
@@ -12,6 +13,7 @@ import { buildDelegateTool } from "./delegate.js";
 import { listDraftsTool } from "./draftTools.js";
 import type { EmailToolset } from "./emailToolset.js";
 import { buildFileTools } from "./fileTools.js";
+import { recordCompactionMarker } from "./history.js";
 import { buildKnowledgeReadTools, buildKnowledgeTools } from "./knowledgeTools.js";
 import { leadDeleteTool, leadTools } from "./leadTools.js";
 import { streamViaModelRegistry } from "./oneShot.js";
@@ -28,6 +30,8 @@ import { webSearchTool } from "./webSearchTool.js";
  * (capabilities.ts), so the toolset and the system prompt's claims about it
  * derive from the same record.
  */
+
+const log = moduleLogger("assembly");
 
 /** Fixed at a balanced default, not user-configurable — "medium" wherever the model can reason at all. */
 function resolveThinkingLevel(model: { reasoning: boolean }): "off" | "low" | "medium" | "high" {
@@ -140,6 +144,11 @@ export async function buildAgent(
     );
     if (!compacted) return undefined;
     agent.state.messages = compacted;
+    if (sessionId) {
+      await recordCompactionMarker(sessionId, compacted).catch((err: unknown) => {
+        log.warn({ err, conversationId: sessionId }, "persisting the compaction marker failed");
+      });
+    }
     return { context: { ...context, messages: compacted } };
   };
   return agent;

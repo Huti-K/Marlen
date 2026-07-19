@@ -172,7 +172,10 @@ export async function recordCompactionMarker(
   conversationId: string,
   compacted: AgentMessage[],
 ): Promise<void> {
-  const summary = compacted[0];
+  // The summary is the user message compactedMessages prepends; pi's wider
+  // AgentMessage union (custom roles) doesn't guarantee `content`, so check
+  // structurally instead of assuming.
+  const summary = compacted[0] as { content?: unknown } | undefined;
   const content = typeof summary?.content === "string" ? summary.content : "";
   if (!content) return;
   await db.insert(schema.messages).values({

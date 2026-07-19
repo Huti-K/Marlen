@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
-import type { ChatStreamEvent, ChatToolCall } from "@trailin/shared";
-import { desc, eq, inArray, or, sql } from "drizzle-orm";
+import type { ChatStreamEvent } from "@trailin/shared";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
 import { parseStoredRefs } from "../agent/emailRefs.js";
 import { applyConversationFocus, clearConversationFocus } from "../agent/focus.js";
+import { parseStoredToolCalls } from "../agent/history.js";
 import { buildSystemPrompt } from "../agent/prompt.js";
 import { disposeSession } from "../agent/sessionCache.js";
 import { beginTurn, type Turn, TurnInFlightError } from "../agent/turnRecorder.js";
@@ -80,23 +81,6 @@ const messageMatchStmt = lazyStatement(`
   JOIN messages m ON m.rowid = messages_fts.rowid
   WHERE messages_fts MATCH ?
 `);
-
-function parseToolCalls(value: string | null): ChatToolCall[] | undefined {
-  if (!value) return undefined;
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return undefined;
-    return parsed.filter(
-      (call): call is ChatToolCall =>
-        typeof call === "object" &&
-        call !== null &&
-        typeof (call as ChatToolCall).id === "string" &&
-        typeof (call as ChatToolCall).name === "string",
-    );
-  } catch {
-    return undefined;
-  }
-}
 
 export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/conversations", { schema: { querystring: conversationsQuery } }, async (req) => {
@@ -213,17 +197,24 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/chat/system-prompt", async () => ({ prompt: await buildSystemPrompt() }));
 
   app.get("/api/conversations/:id/messages", { schema: { params: idParams } }, async (req) => {
+    // Compaction rows are model-history bookkeeping (agent/history.ts), not
+    // part of the visible transcript.
     const rows = await db
       .select()
       .from(schema.messages)
-      .where(eq(schema.messages.conversationId, req.params.id))
+      .where(
+        and(
+          eq(schema.messages.conversationId, req.params.id),
+          inArray(schema.messages.role, ["user", "assistant"]),
+        ),
+      )
       .orderBy(schema.messages.createdAt);
 
-    // The cards/refs columns are JSON blobs internally; the API ships parsed values.
-    return rows.map(({ cards, toolCalls, refs, ...row }) => ({
+    // The cards/refs/toolCalls columns are JSON blobs internally; the API ships parsed values.
+    return rows.map(({ cards, toolCalls, refs, compactionCutoff: _, ...row }) => ({
       ...row,
       cards: parseStoredCards(cards),
-      toolCalls: parseToolCalls(toolCalls),
+      toolCalls: parseStoredToolCalls(toolCalls),
       refs: parseStoredRefs(refs),
     }));
   });

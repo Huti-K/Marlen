@@ -1,5 +1,4 @@
 import {
-  type Agent,
   type AgentMessage,
   estimateTokens,
   serializeConversation,
@@ -68,7 +67,7 @@ function estimateStateTokens(systemPrompt: string, messages: AgentMessage[]): nu
  * transcript fits within KEEP_RECENT_TOKENS.
  *
  * Exported for direct unit testing — this walk is pure and LLM-free, unlike
- * the rest of maybeCompact.
+ * the rest of compactedMessages.
  */
 export function findCutIndex(messages: AgentMessage[]): number {
   let tokens = 0;
@@ -177,16 +176,4 @@ export async function compactedMessages(
     log.warn({ err: error }, "compaction failed, leaving messages untouched");
     return null;
   }
-}
-
-/** Compacts agent.state.messages in place when the estimated context nears the model's window. Returns true when a compaction happened. Never throws — see compactedMessages. */
-export async function maybeCompact(
-  agent: Agent,
-  log: TurnLogger = defaultLog,
-  options: CompactOptions = {},
-): Promise<boolean> {
-  const next = await compactedMessages(agent.state, log, options);
-  if (!next) return false;
-  agent.state.messages = next;
-  return true;
 }
