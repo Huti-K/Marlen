@@ -37,6 +37,21 @@ export async function createOutboundDraft(input: OutboundDraftInput): Promise<Ou
   return draft;
 }
 
+export interface OutboundDraftPatch {
+  target?: string;
+  targetLabel?: string;
+  body?: string;
+}
+
+/** Rewrites a draft in place; callers verify the draft is still open first. */
+export async function updateOutboundDraft(id: string, patch: OutboundDraftPatch): Promise<void> {
+  await db
+    .update(schema.outboundDrafts)
+    .set({ ...patch, updatedAt: new Date().toISOString() })
+    .where(eq(schema.outboundDrafts.id, id));
+  emitServerEvent("outbound");
+}
+
 export async function getOutboundDraft(id: string): Promise<OutboundDraft | null> {
   const [row] = await db
     .select()

@@ -29,15 +29,34 @@ const filterSchema = Type.Record(
 );
 
 const readParams = {
-  data: Type.Optional(Type.Array(Type.String(), { description: "Field names to return." })),
+  data: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        'Field names to return. Always include at least one real field (e.g. "Name") — ' +
+        'requesting only "id" is rejected with an Unknown field error.',
+    }),
+  ),
   filter: Type.Optional(filterSchema),
-  filterid: Type.Optional(Type.Integer({ description: "ID of a pre-created enterprise filter." })),
+  filterid: Type.Optional(
+    Type.Integer({
+      description:
+        "ID of a pre-created enterprise filter (list them via onoffice_get resourcetype " +
+        '"filter"). More reliable than field filters for categories/status, which the API ' +
+        "often rejects as Unknown field.",
+    }),
+  ),
   resourceid: Type.Optional(
     Type.Union([Type.String(), Type.Number()], {
       description: "Single record ID (overrides filter).",
     }),
   ),
-  listlimit: Type.Optional(Type.Integer({ description: "Max records (default 20, max 500)." })),
+  listlimit: Type.Optional(
+    Type.Integer({
+      description:
+        "Max records (default 20, max 500). To only count matches, use 1 — the response " +
+        "meta's cntabsolute carries the total.",
+    }),
+  ),
   listoffset: Type.Optional(Type.Integer({ description: "Pagination offset." })),
   sortby: Type.Optional(
     Type.Record(Type.String(), Type.Union([Type.Literal("ASC"), Type.Literal("DESC")]), {

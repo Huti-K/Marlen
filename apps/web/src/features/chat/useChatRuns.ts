@@ -8,6 +8,7 @@ import {
   toDisplayMessage,
 } from "@/features/chat/runState";
 import { api, streamChat } from "@/lib/api";
+import { subscribeServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { errorMessage } from "@/lib/utils";
 
@@ -78,12 +79,46 @@ export function useChatRuns({
       return;
     }
     let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
     let restored: { conversationId: string; messages: DisplayMessage[] } | null = null;
+
+    // A restored transcript ending in a user message means the reply is still
+    // being produced: turns survive page unloads (routes/chat.ts), so watch
+    // the "conversations" topic and re-pull until the outcome row lands.
+    const awaitReply = () => {
+      const refresh = () => {
+        void api
+          .conversationMessages(savedId)
+          .then((msgs) => {
+            if (cancelled || msgs[msgs.length - 1]?.role !== "assistant") return;
+            const current = stateRef.current;
+            // The user moved on to another conversation — its open flow owns
+            // the state now, and reopening this one fetches fresh anyway.
+            if (current.activeConversationId !== savedId) {
+              unsubscribe?.();
+              return;
+            }
+            // A live local run for this conversation streams its own state.
+            if (Object.values(current.runs).some((run) => run.conversationId === savedId)) return;
+            unsubscribe?.();
+            dispatch({
+              type: "restore",
+              result: { conversationId: savedId, messages: msgs.map(toDisplayMessage) },
+            });
+          })
+          .catch(() => {}); // Transient — the next topic event retries.
+      };
+      unsubscribe = subscribeServerEvents(["conversations"], refresh);
+      // The outcome may have landed between the restore fetch and subscribing.
+      refresh();
+    };
+
     api
       .conversationMessages(savedId)
       .then((msgs) => {
         if (cancelled || msgs.length === 0) return;
         restored = { conversationId: savedId, messages: msgs.map(toDisplayMessage) };
+        if (msgs[msgs.length - 1]?.role === "user") awaitReply();
       })
       .catch((err) => {
         // Unreachable or gone — start fresh, but don't make the failure silent.
@@ -94,6 +129,7 @@ export function useChatRuns({
       });
     return () => {
       cancelled = true;
+      unsubscribe?.();
     };
   }, [dispatch]);
 

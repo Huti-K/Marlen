@@ -1,6 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Automation, Todo } from "@trailin/shared";
 import { Check, ChevronRight, Menu, MessageSquareShare, Pencil, X, Zap } from "lucide-react";
 import * as React from "react";
@@ -18,32 +18,37 @@ type TodoMutation = {
   id: string;
   patch: Parameters<typeof api.updateTodo>[1];
   optimistic?: (todos: Todo[]) => Todo[];
+  /** Cache list the optimistic write targets: the open agenda by default, the done history passes its own key. */
+  key?: QueryKey;
 };
 
 export type PatchFn = (
   id: string,
   body: Parameters<typeof api.updateTodo>[1],
   optimistic?: (todos: Todo[]) => Todo[],
+  key?: QueryKey,
 ) => void;
 
 /**
  * The one todo mutation: optimistic cache write, rollback on error, and a
- * settle-time invalidate the "todos" server event would also trigger.
+ * settle-time invalidate the "todos" server event would also trigger. The
+ * invalidate is prefix-keyed on ["todos"], so both the open and done lists
+ * reconcile however the status changed.
  */
 export function useTodoPatch(): PatchFn {
   const queryClient = useQueryClient();
   const mutate = useMutation({
     mutationFn: ({ id, patch }: TodoMutation) => api.updateTodo(id, patch),
-    onMutate: async ({ optimistic }: TodoMutation) => {
-      await queryClient.cancelQueries({ queryKey: ["todos"] });
-      const prev = queryClient.getQueryData<Todo[]>(["todos"]);
-      if (optimistic) queryClient.setQueryData<Todo[]>(["todos"], (old) => optimistic(old ?? []));
-      return { prev };
+    onMutate: async ({ optimistic, key = ["todos"] }: TodoMutation) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<Todo[]>(key);
+      if (optimistic) queryClient.setQueryData<Todo[]>(key, (old) => optimistic(old ?? []));
+      return { prev, key };
     },
-    onError: (_e, _v, ctx) => ctx?.prev && queryClient.setQueryData(["todos"], ctx.prev),
+    onError: (_e, _v, ctx) => ctx?.prev && queryClient.setQueryData(ctx.key, ctx.prev),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["todos"] }),
   });
-  return (id, body, optimistic) => mutate.mutate({ id, patch: body, optimistic });
+  return (id, body, optimistic, key) => mutate.mutate({ id, patch: body, optimistic, key });
 }
 
 /**
@@ -73,6 +78,9 @@ export function TodoRow({
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
+  // Ticking done plays the strike-wipe, then the patch removes the row; reduced
+  // motion skips straight to completion.
+  const [completing, setCompleting] = React.useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: todo.id,
   });
@@ -87,6 +95,15 @@ export function TodoRow({
 
   const completeTodo = () =>
     onPatch(todo.id, { status: "done" }, (list) => list.filter((td) => td.id !== todo.id));
+  const startComplete = () => {
+    if (completing) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      completeTodo();
+      return;
+    }
+    setCompleting(true);
+    window.setTimeout(completeTodo, 450);
+  };
   const dismiss = () =>
     onPatch(todo.id, { status: "dismissed" }, (list) => list.filter((td) => td.id !== todo.id));
 
@@ -137,9 +154,14 @@ export function TodoRow({
       >
         <Menu className="h-4 w-4" />
       </button>
-      <article className="surface flex flex-col gap-2 rounded-lg px-2.5 py-2.5">
+      <article
+        className={cn(
+          "surface surface-hover flex flex-col gap-2 rounded-lg px-2.5 py-2.5 transition",
+          completing && "opacity-60",
+        )}
+      >
         <div className="flex items-center gap-2">
-          <Checkbox checked={false} onToggle={completeTodo} label={todo.title} />
+          <Checkbox checked={completing} onToggle={startComplete} label={todo.title} />
           {editing ? (
             <Input
               defaultValue={todo.title}
@@ -160,7 +182,14 @@ export function TodoRow({
               )}
               onClick={() => expandable && setOpen((v) => !v)}
             >
-              <span className="truncate text-sm font-medium">{todo.title}</span>
+              <span
+                className={cn(
+                  "truncate text-sm font-medium transition-colors",
+                  completing && "todo-strike text-muted-foreground",
+                )}
+              >
+                {todo.title}
+              </span>
               {chip?.text && (
                 <span
                   className={cn(
@@ -265,6 +294,20 @@ export function TodoRow({
   );
 }
 
+/** A completed todo in the collapsed history: a filled check to reopen it (back
+ *  onto the agenda), title struck through. */
+export function DoneTodoRow({ todo, onRestore }: { todo: Todo; onRestore: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <article className="surface surface-hover flex items-center gap-2 rounded-lg px-2.5 py-2">
+      <Checkbox checked onToggle={onRestore} label={t("home.todosRestore")} />
+      <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground line-through">
+        {todo.title}
+      </span>
+    </article>
+  );
+}
+
 function Checkbox({
   checked,
   onToggle,
@@ -289,7 +332,7 @@ function Checkbox({
           "peer-focus-visible:ring-2 peer-focus-visible:ring-ring",
           checked
             ? "bg-accent text-accent-foreground"
-            : "bg-surface-2 text-transparent group-hover:text-muted-foreground",
+            : "bg-surface-2 text-muted-foreground/35 group-hover:text-muted-foreground",
         )}
       >
         <Check className="h-3 w-3" strokeWidth={3} />

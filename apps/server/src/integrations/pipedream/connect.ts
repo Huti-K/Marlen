@@ -160,7 +160,7 @@ async function getClient(): Promise<{ pd: PipedreamClient; config: ConnectConfig
   const config = await getConnectConfig();
   if (!config) {
     throw new AppError(
-      "Pipedream is not set up. Add your Pipedream credentials in Settings → Email.",
+      "Pipedream is not set up. Add your Pipedream credentials in Settings → Accounts.",
       409,
       {
         code: "pipedream_not_configured",

@@ -214,10 +214,12 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
       throw error;
     }
 
-    // Abort the turn when the client disconnects, so an abandoned tab stops
-    // burning tool calls and tokens.
-    const controller = new AbortController();
-    const stream = openSse<ChatStreamEvent>(reply, () => controller.abort());
+    // The turn is deliberately NOT tied to the client's connection: a refresh
+    // or closed tab only ends the stream (sends become no-ops) while the turn
+    // runs on and records its outcome to the transcript. The reattaching
+    // client restores the finished reply from there; runningConversations
+    // covers the gap with the "responding…" badge.
+    const stream = openSse<ChatStreamEvent>(reply, () => {});
     const send = (event: ChatStreamEvent) => stream.send(event);
 
     let streamedText = "";
@@ -269,15 +271,13 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
             send({ type: "card", toolCallId, card });
           },
         },
-        signal: controller.signal,
         log: req.log.child({ conversationId }),
       });
 
       send({ type: "done", text });
     } catch (error) {
-      // turn.run() already closed out the transcript (including a client-
-      // disconnect abort, which surfaces here); this only notifies a still-
-      // connected client. stream.send is a no-op once the stream has ended.
+      // turn.run() already closed out the transcript; this only notifies a
+      // still-connected client. stream.send is a no-op once the stream has ended.
       req.log.error(error, "chat failed");
       send({ type: "error", message: errorMessage(error) });
     } finally {

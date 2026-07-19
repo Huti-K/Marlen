@@ -131,7 +131,7 @@ function generateTonalHex(index: number): string {
 
 /**
  * Connected accounts (any app, several per app) + the Connect-Link picker.
- * Shared between the first-run setup and Settings → Email.
+ * Shared between the first-run setup and Settings → Accounts.
  */
 export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const { t } = useTranslation();

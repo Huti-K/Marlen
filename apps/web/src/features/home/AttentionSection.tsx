@@ -23,20 +23,31 @@ import {
   type OutboundDraft,
   type Todo,
 } from "@trailin/shared";
-import { CircleCheck, Clock, ListTodo, Mail, MessageSquare, TriangleAlert } from "lucide-react";
+import {
+  ChevronRight,
+  CircleCheck,
+  Clock,
+  ListTodo,
+  Mail,
+  MessageSquare,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { AccountDot } from "@/components/ui/account-dot";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner, LoadingRow } from "@/components/ui/feedback";
 import { GroupLabel } from "@/components/ui/group-label";
+import { IconChip } from "@/components/ui/icon-chip";
 import { SectionTitle } from "@/components/ui/section-header";
 import { Select } from "@/components/ui/select";
 import { DraftRow } from "@/features/drafts/DraftRow";
 import { DAY_MS, dayIso, dueMs, startOfDayMs } from "@/features/home/agenda";
 import { OutboundRow } from "@/features/home/OutboundRow";
-import { TodoRow, useTodoPatch } from "@/features/home/TodoRow";
+import { DoneTodoRow, TodoRow, useTodoPatch } from "@/features/home/TodoRow";
 import { accountColor } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import { dateTimeLabel, dayLabel, timeLabel } from "@/lib/dates";
@@ -102,15 +113,22 @@ export function AttentionSection({
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [expanded, setExpanded] = React.useState(true);
+  const [showDone, setShowDone] = React.useState(false);
   /** Account id, or "all" — narrows the approvals block only. */
   const [accountFilter, setAccountFilter] = React.useState("all");
   const [rowError, setRowError] = React.useState<string | null>(null);
 
   const todosQuery = useQuery({ queryKey: ["todos"], queryFn: () => api.todos("open") });
+  const doneQuery = useQuery({ queryKey: ["todos", "done"], queryFn: () => api.todos("done") });
   const outboundQuery = useQuery({
     queryKey: ["outbound", "open"],
     queryFn: () => api.outbound("open"),
+  });
+  const suggestionsQuery = useQuery({
+    queryKey: ["automations", "suggestions"],
+    queryFn: () => api.automationSuggestions(),
   });
   const patch = useTodoPatch();
 
@@ -126,6 +144,10 @@ export function AttentionSection({
   }, [focusDraft]);
 
   const todos = todosQuery.data ?? [];
+  // Most-recently completed first; reopening returns a todo to the open agenda.
+  const done = [...(doneQuery.data ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const restoreTodo = (id: string) =>
+    patch(id, { status: "open" }, (list) => list.filter((td) => td.id !== id), ["todos", "done"]);
   const todayStart = startOfDayMs(new Date());
 
   // Partition todos into overdue / dated-by-day / anytime.
@@ -215,7 +237,8 @@ export function AttentionSection({
 
   const dateLabel = (iso: string) => dateTimeLabel(iso, lang);
 
-  const count = todos.length + approvalsCount;
+  const suggestions = suggestionsQuery.data ?? [];
+  const count = todos.length + approvalsCount + suggestions.length;
   const loaded = !!todosQuery.data && drafts !== null && !!outboundQuery.data;
   const allClear =
     loaded && count === 0 && upcomingAutos.length === 0 && !emailGroups.some((a) => a.error);
@@ -374,11 +397,43 @@ export function AttentionSection({
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <div className="flex flex-col gap-6">
               {groups.filter((g) => g.overdue).map(renderGroup)}
+              {suggestions.length > 0 && (
+                <button
+                  type="button"
+                  // Router state (not onNavigate) so the panel can flash the cards on arrival.
+                  onClick={() => navigate("/automations", { state: { focusSuggestions: true } })}
+                  className="surface surface-hover flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm"
+                >
+                  <IconChip size="sm">
+                    <Sparkles />
+                  </IconChip>
+                  <span className="min-w-0 truncate">
+                    {t("home.suggestionsWaiting", { count: suggestions.length })}
+                  </span>
+                  <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                </button>
+              )}
               {approvalsZone}
               {groups.filter((g) => !g.overdue).map(renderGroup)}
               {allClear && <EmptyState icon={CircleCheck} description={t("home.attentionEmpty")} />}
             </div>
           </DndContext>
+          {done.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <DisclosureToggle open={showDone} onToggle={() => setShowDone((v) => !v)}>
+                {t("home.todosDone", { count: done.length })}
+              </DisclosureToggle>
+              {showDone && (
+                <div className="flex flex-col gap-2">
+                  {done.map((td, i) => (
+                    <div key={td.id} className="animate-in-up" style={stagger(i)}>
+                      <DoneTodoRow todo={td} onRestore={() => restoreTodo(td.id)} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>
@@ -477,7 +532,7 @@ function AutomationRow({
   lang: string;
 }) {
   return (
-    <div className="surface flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground">
+    <div className="surface surface-hover flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground">
       <Clock className="h-3.5 w-3.5 shrink-0" />
       <span className="min-w-0 truncate text-foreground/80">{automation.name}</span>
       <span className="ml-auto shrink-0 text-xs tabular-nums">

@@ -3,6 +3,7 @@ import type { Automation, AutomationSuggestion } from "@trailin/shared";
 import { CalendarClock, Plus, Sparkles } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormField } from "@/components/ui/form-field";
+import { IconChip } from "@/components/ui/icon-chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LinkButton } from "@/components/ui/link-button";
@@ -51,6 +53,17 @@ function looksLikeCron(expr: string): boolean {
 export function AutomationsPanel() {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Captured once on mount: Home's "suggestions waiting" row navigates here
+  // with this router-state flag; the cards then play a one-shot arrival flash.
+  const [flashSuggestions] = React.useState(() =>
+    Boolean((location.state as { focusSuggestions?: boolean } | null)?.focusSuggestions),
+  );
+  React.useEffect(() => {
+    // Consume the flag so a refresh or back-navigation doesn't replay the flash.
+    if (flashSuggestions) navigate(location.pathname, { replace: true });
+  }, [flashSuggestions, navigate, location.pathname]);
   // Server-side changes (agent tools, scheduled runs, the suggestion sweep)
   // land via "automations" topic invalidation; refetches keep previous data,
   // so the cards never unmount and drop their state.
@@ -420,15 +433,17 @@ export function AutomationsPanel() {
       </Dialog>
 
       {suggestions.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <div>
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
-              <Sparkles className="h-4 w-4 text-muted-foreground" />
-              {t("automations.suggestions.title")}
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t("automations.suggestions.hint")}
-            </p>
+        <div className="mb-3 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <IconChip size="sm">
+              <Sparkles />
+            </IconChip>
+            <div>
+              <h2 className="text-sm font-semibold tracking-tight">
+                {t("automations.suggestions.title")}
+              </h2>
+              <p className="text-xs text-muted-foreground">{t("automations.suggestions.hint")}</p>
+            </div>
           </div>
           {suggestions.map((suggestion, i) => (
             <div
@@ -436,7 +451,11 @@ export function AutomationsPanel() {
               className="animate-in-up"
               style={{ animationDelay: `${i * 45}ms` }}
             >
-              <SuggestionCard suggestion={suggestion} onDecided={refreshAutomations} />
+              <SuggestionCard
+                suggestion={suggestion}
+                flash={flashSuggestions}
+                onDecided={refreshAutomations}
+              />
             </div>
           ))}
         </div>
@@ -531,9 +550,12 @@ function WeekdayToggle({
 /** One pending proposal from the suggestion sweep: rationale up front, instruction behind a disclosure, accept/dismiss to decide. */
 function SuggestionCard({
   suggestion,
+  flash,
   onDecided,
 }: {
   suggestion: AutomationSuggestion;
+  /** Play the arrival flash — set when Home's suggestions row navigated here. */
+  flash: boolean;
   onDecided: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
@@ -556,8 +578,11 @@ function SuggestionCard({
   };
 
   return (
-    <Card padding="lg">
+    <Card padding="lg" className={cn(flash && "flash-accent")}>
       <div className="flex flex-wrap items-center gap-2 text-base font-semibold tracking-tight">
+        <IconChip size="sm">
+          <Sparkles />
+        </IconChip>
         {suggestion.name}
         <Badge
           variant="muted"

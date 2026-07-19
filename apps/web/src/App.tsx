@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { SearchPalette } from "@/components/SearchPalette";
 import { Sidebar } from "@/components/Sidebar";
+import { UpdateButton } from "@/components/UpdateButton";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { CursorTooltip } from "@/components/ui/cursor-tooltip";
 import { Dialog } from "@/components/ui/dialog";
@@ -38,7 +39,7 @@ import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showca
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { NAV_VIEWS, openSearch, registerNavigate, SHOWCASE_NAV, type View } from "@/lib/nav";
-import { useDesktopUpdate } from "@/lib/useDesktopUpdate";
+import { useDesktopChrome } from "@/lib/useDesktopChrome";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useRunNotifications } from "@/lib/useRunNotifications";
 import { useTheme } from "@/lib/useTheme";
@@ -157,6 +158,7 @@ export default function App() {
   );
   const [historyQuery, setHistoryQuery] = React.useState("");
   const [, theme, setThemePref] = useTheme();
+  useDesktopChrome(theme);
   const toggleTheme = React.useCallback(() => {
     setThemePref(theme === "dark" ? "light" : "dark");
   }, [theme, setThemePref]);
@@ -172,7 +174,6 @@ export default function App() {
   });
   useServerLanguage();
   useServerTimezone();
-  useDesktopUpdate();
   useRunNotifications();
 
   const refreshStatus = React.useCallback(() => {
@@ -414,7 +415,7 @@ export default function App() {
             // bottom inset), so the scroller becomes a flex column the wrapper
             // can size against. Ternaries, not overrides: tailwind-merge can't
             // cancel the breakpoint/container-query variants of these classes.
-            currentPath === "knowledge" ? "flex flex-col pb-2 pl-3" : "px-5 pb-10 pt-1 sm:px-8",
+            currentPath === "knowledge" ? "flex flex-col pb-3 pl-3" : "px-5 pb-10 pt-1 sm:px-8",
           )}
         >
           <div
@@ -700,6 +701,7 @@ export default function App() {
       <CursorTooltip />
       <SearchPalette onofficeConfigured={Boolean(status?.onofficeConfigured)} />
       <AttachmentViewer />
+      <UpdateButton />
     </div>
   );
 }

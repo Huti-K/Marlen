@@ -1,5 +1,5 @@
 import { OUTBOUND_CHANNEL_LABELS, type OutboundDraft } from "@trailin/shared";
-import { ChevronDown, ChevronRight, MessageSquare, Send, Trash2 } from "lucide-react";
+import { ChevronRight, MessageSquare, Send, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { DraftActionDialog, useDraftActions } from "@/components/draftActions";
@@ -9,7 +9,7 @@ import { IconChip } from "@/components/ui/icon-chip";
 import { ListRow } from "@/components/ui/list-row";
 import { api, isNotFound } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { errorMessage } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
 /**
  * One outbound message awaiting approval (WhatsApp today) in the attention
@@ -77,18 +77,13 @@ export function OutboundRow({
   }
 
   return (
-    <div className="rounded-lg bg-surface-2">
-      <div className="flex w-full items-center justify-between gap-3 px-3.5 py-3">
+    <div className="surface surface-hover rounded-lg">
+      <div className="flex w-full items-center gap-2 px-2.5 py-2.5">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex flex-1 min-w-0 items-center gap-2.5 text-left"
+          className="flex flex-1 min-w-0 items-center gap-2 text-left"
         >
-          {open ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          )}
           <IconChip size="sm" tone="tint-success">
             <MessageSquare />
           </IconChip>
@@ -96,39 +91,49 @@ export function OutboundRow({
             <p className="truncate text-sm font-medium">{title}</p>
             <p className="truncate text-xs text-muted-foreground">
               {channelLabel} · {dateLabel(draft.createdAt)}
+              {!open && <span className="text-muted-foreground/70"> · {draft.body}</span>}
             </p>
-            {!open && <p className="truncate text-xs text-muted-foreground/70">{draft.body}</p>}
           </div>
         </button>
-        <div className="flex items-center shrink-0">
+        <div className="flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={() => actions.arm("send")}
             disabled={actions.busy}
             loading={actions.busy && actions.pending === "send"}
             title={t("chat.cards.draft.send")}
             aria-label={t("chat.cards.draft.send")}
           >
-            <Send className="h-4 w-4" />
+            <Send />
           </Button>
           <Button
             variant="ghost-danger"
-            size="icon-sm"
+            size="icon-xs"
             onClick={() => actions.arm("discard")}
             disabled={actions.busy}
             loading={actions.busy && actions.pending === "discard"}
             title={t("chat.cards.draft.discard")}
             aria-label={t("chat.cards.draft.discard")}
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-expanded={open}
+            title={t(open ? "common.collapse" : "common.expand")}
+            aria-label={t(open ? "common.collapse" : "common.expand")}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <ChevronRight className={cn("transition-transform", open && "rotate-90")} />
           </Button>
         </div>
       </div>
 
       {open && (
-        <div className="px-3.5 pb-3.5">
-          <p className="whitespace-pre-wrap pl-6.5 text-sm leading-relaxed text-foreground/90">
+        <div className="px-2.5 pb-3">
+          <p className="whitespace-pre-wrap pl-8 text-sm leading-relaxed text-foreground/90">
             {draft.body}
           </p>
         </div>

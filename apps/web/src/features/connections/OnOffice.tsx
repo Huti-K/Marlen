@@ -18,7 +18,7 @@ import { openExternal } from "@/lib/utils";
 /**
  * onOffice CRM connection — a native (non-Pipedream) integration authenticated
  * with an API user's token + secret. It lives alongside the Pipedream accounts
- * in Settings → Email: an entry in the "add account" picker opens the token
+ * in Settings → Accounts: an entry in the "add account" picker opens the token
  * form, and once configured it shows as a connected row in the accounts list.
  */
 

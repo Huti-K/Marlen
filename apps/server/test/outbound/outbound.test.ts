@@ -106,6 +106,25 @@ describe("outbound drafts", () => {
     expect(sends.length).toBe(sendsBefore);
   });
 
+  it("rewriting a draft updates it in place instead of adding a second one", async () => {
+    const { id } = await store.createOutboundDraft({
+      channel: "test-channel",
+      target: "491700000005@s.whatsapp.net",
+      targetLabel: "Testkontakt",
+      body: "Erster Wurf",
+    });
+    const openBefore = (await listOpen()).length;
+
+    const emitted = await outboundEvents(async () => {
+      await store.updateOutboundDraft(id, { body: "Zweiter Wurf" });
+    });
+    expect(emitted).toHaveLength(1);
+
+    const open = await listOpen();
+    expect(open).toHaveLength(openBefore);
+    expect(open.find((d) => d.id === id)?.body).toBe("Zweiter Wurf");
+  });
+
   it("discard removes the draft from the open list", async () => {
     const { id } = await store.createOutboundDraft({
       channel: "test-channel",

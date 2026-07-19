@@ -1,11 +1,18 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { TITLEBAR_HEIGHT, titleBarMode } from "./titlebar";
 import type { UpdateCheckStatus } from "./updater";
 
 /**
- * window.trailinDesktop — the web app's only view of the shell, kept to the
- * update flow. Mirrored by the DesktopBridge type in apps/web/src/lib/desktop.ts.
+ * window.trailinDesktop — the web app's only view of the shell: the update flow
+ * plus the title-bar contract (how the bar was drawn, so the web reserves the
+ * matching strip). Mirrored by the DesktopBridge type in apps/web/src/lib/desktop.ts.
  */
 contextBridge.exposeInMainWorld("trailinDesktop", {
+  titleBar: titleBarMode(),
+  titleBarHeight: TITLEBAR_HEIGHT,
+  setChromeTheme: (theme: "light" | "dark"): void => {
+    ipcRenderer.send("trailin:set-chrome-theme", theme);
+  },
   getAppInfo: (): Promise<{ version: string; platform: string; arch: string }> =>
     ipcRenderer.invoke("trailin:get-app-info") as Promise<{
       version: string;

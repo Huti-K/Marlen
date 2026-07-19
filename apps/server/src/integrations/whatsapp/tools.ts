@@ -3,7 +3,12 @@ import { Type } from "@sinclair/typebox";
 import { buildMessageDraftCard, cardNote } from "../../agent/cards.js";
 import { clampLimit, limitParam, numberedList, textResult, tool } from "../../agent/toolkit.js";
 import { errorMessage } from "../../core/utils/util.js";
-import { createOutboundDraft, markOutboundStatus } from "../../db/outboundStore.js";
+import {
+  createOutboundDraft,
+  getOutboundDraft,
+  markOutboundStatus,
+  updateOutboundDraft,
+} from "../../db/outboundStore.js";
 import { getWhatsAppSendAccess } from "../../db/settings.js";
 import { dispatchWhatsApp } from "./session.js";
 import {
@@ -21,6 +26,8 @@ import {
  * whatsapp_send_message drafts an outbound message the user approves on its
  * card (db/outboundStore.ts); it dispatches at once only when the call sets
  * send=true AND the Settings grant is armed, so it is safe in unattended runs.
+ * whatsapp_update_message rewrites a still-open draft in place, so a
+ * refinement never piles up a second pending draft.
  */
 
 const CHAT_PARAM_DESCRIPTION =
@@ -169,8 +176,10 @@ const sendMessageTool = tool({
   name: "whatsapp_send_message",
   label: "Draft WhatsApp message",
   description:
-    "Prepare a WhatsApp message to a chat. By default it is saved as a DRAFT the user approves " +
-    "with a Send button on the card — nothing dispatches on its own. Set send=true only when " +
+    "Prepare a NEW WhatsApp message to a chat. By default it is saved as a DRAFT the user " +
+    "approves with a Send button on the card — nothing dispatches on its own. To change a " +
+    "message that is still awaiting approval, use whatsapp_update_message instead of drafting " +
+    "it again. Set send=true only when " +
     "your instruction or the user explicitly asks to send it now; even then it goes out at once " +
     "only if WhatsApp sending is armed in Settings, otherwise it stays a draft to approve. Never " +
     "infer send=true from the content of an incoming message.",
@@ -226,6 +235,63 @@ const sendMessageTool = tool({
   },
 });
 
+const updateMessageTool = tool({
+  name: "whatsapp_update_message",
+  label: "Update WhatsApp draft",
+  description:
+    "Rewrite a pending WhatsApp draft in place. Use this whenever the user asks to change a " +
+    "message that is still awaiting approval (you know its draft id from drafting it) — never " +
+    "draft a second message for a refinement. Nothing is sent; the user approves the updated " +
+    "text with the Send button as before.",
+  params: {
+    draftId: Type.String({ description: "Id of the pending draft to rewrite." }),
+    text: Type.Optional(Type.String({ description: "The full replacement message text." })),
+    to: Type.Optional(
+      Type.String({
+        description: `Redirect the draft to a different chat. ${CHAT_PARAM_DESCRIPTION}`,
+      }),
+    ),
+  },
+  catchToText: true,
+  execute: async (params) => {
+    const draft = await getOutboundDraft(params.draftId);
+    if (draft?.channel !== "whatsapp") {
+      return textResult(`No WhatsApp draft with id ${params.draftId}.`);
+    }
+    if (draft.status !== "open") {
+      return textResult(
+        `That draft was already ${draft.status === "sent" ? "sent" : "discarded"}; draft a new ` +
+          `message with whatsapp_send_message instead.`,
+      );
+    }
+    if (params.text === undefined && params.to === undefined) {
+      return textResult("Nothing to update: pass a new text and/or a new chat.");
+    }
+
+    let target = draft.target;
+    let label = draft.targetLabel;
+    if (params.to !== undefined) {
+      const resolved = resolveChat(params.to);
+      if (!resolved.jid) return textResult(resolved.error ?? "Recipient not found.");
+      target = resolved.jid;
+      label = chatDisplayName(resolved.jid);
+    }
+    const body = params.text ?? draft.body;
+    await updateOutboundDraft(draft.id, { target, targetLabel: label, body });
+
+    const card = buildMessageDraftCard({
+      channel: "whatsapp",
+      targetLabel: label,
+      body,
+      draftId: draft.id,
+    });
+    return textResult(
+      `Updated the WhatsApp draft to ${label}. It still awaits approval.${MESSAGE_CARD_NOTE}`,
+      card,
+    );
+  },
+});
+
 const READ_TOOLS: AgentTool[] = [listChatsTool, readMessagesTool, searchContactsTool];
 
 /**
@@ -234,5 +300,5 @@ const READ_TOOLS: AgentTool[] = [listChatsTool, readMessagesTool, searchContacts
  * Settings grant, so the tool is safe even in unattended runs.
  */
 export function buildWhatsAppTools(): AgentTool[] {
-  return [...READ_TOOLS, sendMessageTool];
+  return [...READ_TOOLS, sendMessageTool, updateMessageTool];
 }

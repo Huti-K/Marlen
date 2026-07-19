@@ -6,8 +6,14 @@
     "closeChat": "Close chat",
     "expandChat": "Expand chat",
     "collapseChat": "Collapse chat",
-    "updateReady": "Trailin {{version}} is ready to install",
+    "updateAvailable": "Update ready",
     "updateRestart": "Restart now"
+  },
+  "changelog": {
+    "open": "Changelog",
+    "title": "What's new",
+    "subtitle": "Recent updates to Trailin",
+    "ready": "Ready"
   },
   "views": {
     "chat": {
@@ -32,7 +38,7 @@
     },
     "settings": {
       "title": "Settings",
-      "description": "Your AI, email accounts, permissions, and preferences."
+      "description": "Your AI, connected accounts, permissions, and preferences."
     }
   },
   "sidebar": {
@@ -315,7 +321,7 @@
         "rowOn": "Automations may create CRM records (contacts, appointments, tasks, links), never edit, delete or send.",
         "rowOff": "Automations only read the CRM; records are created in chat, with your confirmation.",
         "confirmTitle": "Let automations create onOffice records?",
-        "confirmBody": "Scheduled runs (e.g. lead intake) can then create contacts, appointments, tasks and links in your live CRM on their own, your colleagues will see those records. Editing, deleting and sending stay chat-only. You can turn this off anytime.",
+        "confirmBody": "Scheduled runs can then create contacts, appointments, tasks and links in your live CRM on their own, your colleagues will see those records. Editing, deleting and sending stay chat-only. You can turn this off anytime.",
         "confirmCta": "Allow creating records"
       },
       "onofficeWrites": {
@@ -364,6 +370,8 @@
     "attentionTitle": "To do",
     "attentionEmpty": "All clear. New tasks and approvals show up here.",
     "approvalsGroup": "To approve",
+    "suggestionsWaiting_one": "{{count}} suggested automation to review",
+    "suggestionsWaiting_other": "{{count}} suggested automations to review",
     "approvalsAllAccounts": "All accounts",
     "approvalsFilterAccount": "Filter by account",
     "approvalsShowMore_one": "Show 1 more",
@@ -391,6 +399,9 @@
     "todosLinkedLabel": "Run when completed",
     "todosLinkedNone": "No automation",
     "todosLinkedGeneric": "Automation",
+    "todosDone_one": "1 done",
+    "todosDone_other": "{{count}} done",
+    "todosRestore": "Reopen",
     "resultsTitle": "New results",
     "activityTitle": "Activity",
     "activityEmptyTitle": "Nothing here yet",
@@ -647,9 +658,9 @@
         "chipReady": "Ready",
         "chipSignIn": "Sign in required"
       },
-      "email": {
-        "title": "Email",
-        "description": "Connected accounts and how Trailin links to your mail.",
+      "accounts": {
+        "title": "Accounts",
+        "description": "Email, CRM, and messaging accounts, and what each one is allowed to do.",
         "chipSetup": "Setup needed",
         "chipConnected_one": "{{count}} connected",
         "chipConnected_other": "{{count}} connected",

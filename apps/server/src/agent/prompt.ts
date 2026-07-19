@@ -63,13 +63,13 @@ export async function buildSystemPrompt(caps?: SessionCapabilities): Promise<str
       prompt += `
 - Read-only mode: you only have tools that read, search or create drafts. You cannot send, delete
   or change anything. If the user asks for such an action, explain that permissions (create &
-  change, send, delete) are granted per account on its row under Settings → Email.`;
+  change, send, delete) are granted per account on its row under Settings → Accounts.`;
     } else {
       prompt += `
 - Permissions are granted per account and per category (create & change, send, delete), not
   globally — see what each connected account may do in the list below. Where a grant is missing
   you can only read, search and create drafts; if the user asks for more there, explain that
-  permissions are granted per account on its row under Settings → Email.`;
+  permissions are granted per account on its row under Settings → Accounts.`;
     }
 
     // Automation-management tools exist only in interactive sessions, so only
@@ -116,7 +116,7 @@ export async function buildSystemPrompt(caps?: SessionCapabilities): Promise<str
       prompt += `
   You can read the CRM and create new records; modifying, deleting or sending via onOffice is
   not armed. If the user asks for one of those, explain that CRM write access is granted on the
-  onOffice row under Settings → Email.`;
+  onOffice row under Settings → Accounts.`;
     } else if (onOffice.creates) {
       prompt += `
   In this run you can read the CRM and create new records (onoffice_create_address — always set

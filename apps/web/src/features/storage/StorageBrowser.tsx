@@ -423,6 +423,7 @@ export function StorageBrowser({
                 active={mode === "list"}
                 aria-label={t("storage.view.list")}
                 onClick={() => setMode("list")}
+                className="w-7 justify-center px-0"
               >
                 <ListIcon className="h-3.5 w-3.5" />
               </Chip>
@@ -430,6 +431,7 @@ export function StorageBrowser({
                 active={mode === "grid"}
                 aria-label={t("storage.view.grid")}
                 onClick={() => setMode("grid")}
+                className="w-7 justify-center px-0"
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
               </Chip>

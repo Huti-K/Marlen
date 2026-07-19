@@ -75,7 +75,10 @@ export function Sidebar({ status, onClose, isCollapsed, onCollapsedChange }: Sid
     >
       <div
         className={cn(
-          "flex items-center gap-2 pb-3 pt-4",
+          // titlebar-pad/drag are inert unless the desktop shell floats the
+          // window controls over this corner (macOS); then this row clears them
+          // and doubles as the window drag handle.
+          "titlebar-pad titlebar-drag flex items-center gap-2 pb-3 pt-4",
           isCollapsed ? "px-3 md:justify-center md:px-0" : "px-3",
         )}
       >

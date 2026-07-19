@@ -172,7 +172,7 @@ const GUIDE_STEPS = [
 
 /**
  * The one-time Pipedream project credentials form (guide links + three fields
- * + "Save & verify"). Rendered here under Settings → Email → Advanced, and by
+ * + "Save & verify"). Rendered here under Settings → Accounts → Advanced, and by
  * the first-run SetupGate when the build has no built-in bridge.
  */
 export function PipedreamWizard({

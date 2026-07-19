@@ -64,12 +64,12 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
 
   // Transient outages (Pipedream configured but the account count came back
   // unknown) show no chip at all — it's not a setup problem worth flagging.
-  const emailChip = (() => {
+  const accountsChip = (() => {
     if (!status) return null;
     if (!status.pipedreamConfigured) {
       return (
         <Badge variant="warning">
-          <TriangleAlert /> {t("settings.sections.email.chipSetup")}
+          <TriangleAlert /> {t("settings.sections.accounts.chipSetup")}
         </Badge>
       );
     }
@@ -77,11 +77,11 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
     if (status.emailAccounts > 0) {
       return (
         <Badge variant="success">
-          <Check /> {t("settings.sections.email.chipConnected", { count: status.emailAccounts })}
+          <Check /> {t("settings.sections.accounts.chipConnected", { count: status.emailAccounts })}
         </Badge>
       );
     }
-    return <Badge variant="muted">{t("settings.sections.email.chipNoAccounts")}</Badge>;
+    return <Badge variant="muted">{t("settings.sections.accounts.chipNoAccounts")}</Badge>;
   })();
 
   return (
@@ -115,9 +115,9 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
         index={1}
         className="animate-in-up"
         icon={<Mail />}
-        title={t("settings.sections.email.title")}
-        description={t("settings.sections.email.description")}
-        aside={emailChip}
+        title={t("settings.sections.accounts.title")}
+        description={t("settings.sections.accounts.description")}
+        aside={accountsChip}
       >
         <ConnectionsPanel onStatusChanged={() => void refresh()} />
       </Section>

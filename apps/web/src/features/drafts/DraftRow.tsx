@@ -1,5 +1,5 @@
 import type { EmailDraft } from "@trailin/shared";
-import { ChevronDown, ChevronRight, Mail, Send, Sparkles, Trash2 } from "lucide-react";
+import { ChevronRight, Mail, Send, Sparkles, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { DraftActionDialog, useDraftActions } from "@/components/draftActions";
@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { revealChat, sendChatCommand } from "@/features/chat/controller";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { errorMessage } from "@/lib/utils";
+import { cn, errorMessage } from "@/lib/utils";
 
 /** One draft — click to read the full content right here, edit its body in place. */
 export function DraftRow({
@@ -155,39 +155,36 @@ export function DraftRow({
     );
   }
 
+  const meta = [draft.to ? `${t("drafts.to")} ${draft.to}` : null, dateLabel(draft.date)]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div ref={rowRef} className="scroll-mt-4 rounded-lg bg-surface-2">
-      <div className="flex w-full items-center justify-between gap-3 px-3.5 py-3">
+    <div ref={rowRef} className="surface surface-hover scroll-mt-4 rounded-lg">
+      <div className="flex w-full items-center gap-2 px-2.5 py-2.5">
         <button
           type="button"
           onClick={() => void toggle()}
-          className="flex flex-1 min-w-0 items-center gap-2.5 text-left"
+          className="flex flex-1 min-w-0 items-center gap-2 text-left"
         >
-          {open ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          )}
           <IconChip size="sm">
             <Mail />
           </IconChip>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{subjectDraft || t("drafts.noSubject")}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {draft.to && `${t("drafts.to")} ${draft.to}`}
-              {draft.to && draft.date && " · "}
-              {dateLabel(draft.date)}
+              {meta}
+              {!open && draft.snippet && (
+                <span className="text-muted-foreground/70"> · {draft.snippet}</span>
+              )}
             </p>
-            {!open && draft.snippet && (
-              <p className="truncate text-xs text-muted-foreground/70">{draft.snippet}</p>
-            )}
           </div>
         </button>
-        <div className="flex items-center shrink-0">
-          <OpenExternalButton url={draft.webUrl} size="icon-sm" label={t("drafts.open")} />
+        <div className="flex shrink-0 items-center gap-1">
+          <OpenExternalButton url={draft.webUrl} label={t("drafts.open")} />
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             className="hover:bg-accent/10 hover:text-accent"
             onClick={(e) => {
               e.stopPropagation();
@@ -208,39 +205,49 @@ export function DraftRow({
             title={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
             aria-label={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
           >
-            <Sparkles className="h-4 w-4" />
+            <Sparkles />
           </Button>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={() => actions.arm("send")}
             disabled={actions.busy}
             loading={actions.busy && actions.pending === "send"}
             title={t("drafts.send")}
             aria-label={t("drafts.send")}
           >
-            <Send className="h-4 w-4" />
+            <Send />
           </Button>
           <Button
             variant="ghost-danger"
-            size="icon-sm"
+            size="icon-xs"
             onClick={() => actions.arm("discard")}
             disabled={actions.busy}
             loading={actions.busy && actions.pending === "discard"}
             title={t("drafts.discard")}
             aria-label={t("drafts.discard")}
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-expanded={open}
+            title={t(open ? "common.collapse" : "common.expand")}
+            aria-label={t(open ? "common.collapse" : "common.expand")}
+            onClick={() => void toggle()}
+          >
+            <ChevronRight className={cn("transition-transform", open && "rotate-90")} />
           </Button>
         </div>
       </div>
 
       {open && (
-        <div className="flex flex-col gap-3 px-3.5 pb-3.5 pt-1">
+        <div className="flex flex-col gap-3 px-2.5 pb-3">
           {!detail ? (
             <LoadingRow className="py-1 text-xs" />
           ) : (
-            <div className="flex flex-col gap-2.5 pt-2 text-sm">
+            <div className="flex flex-col gap-2.5 pl-8 pt-1 text-sm">
               <div className="flex flex-col gap-1 text-[13px] text-muted-foreground">
                 {draft.to && (
                   <div>

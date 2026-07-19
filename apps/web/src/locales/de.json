@@ -6,8 +6,14 @@
     "closeChat": "Chat schließen",
     "expandChat": "Chat ausklappen",
     "collapseChat": "Chat einklappen",
-    "updateReady": "Trailin {{version}} ist bereit zur Installation",
+    "updateAvailable": "Update bereit",
     "updateRestart": "Jetzt neu starten"
+  },
+  "changelog": {
+    "open": "Änderungen",
+    "title": "Neuigkeiten",
+    "subtitle": "Aktuelle Änderungen in Trailin",
+    "ready": "Bereit"
   },
   "views": {
     "chat": {
@@ -32,7 +38,7 @@
     },
     "settings": {
       "title": "Einstellungen",
-      "description": "Ihre KI, E-Mail-Konten, Berechtigungen und Einstellungen."
+      "description": "Ihre KI, verbundene Konten, Berechtigungen und Einstellungen."
     }
   },
   "sidebar": {
@@ -315,7 +321,7 @@
         "rowOn": "Automationen dürfen CRM-Datensätze anlegen (Kontakte, Termine, Aufgaben, Verknüpfungen), nie ändern, löschen oder senden.",
         "rowOff": "Automationen lesen das CRM nur; Datensätze werden im Chat angelegt, mit Ihrer Bestätigung.",
         "confirmTitle": "Automationen das Anlegen von onOffice-Datensätzen erlauben?",
-        "confirmBody": "Geplante Läufe (z. B. der Lead-Eingang) können dann selbstständig Kontakte, Termine, Aufgaben und Verknüpfungen in Ihrem Live-CRM anlegen, Ihre Kollegen sehen diese Datensätze. Ändern, Löschen und Senden bleiben dem Chat vorbehalten. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmBody": "Geplante Läufe können dann selbstständig Kontakte, Termine, Aufgaben und Verknüpfungen in Ihrem Live-CRM anlegen, Ihre Kollegen sehen diese Datensätze. Ändern, Löschen und Senden bleiben dem Chat vorbehalten. Sie können dies jederzeit wieder deaktivieren.",
         "confirmCta": "Anlegen erlauben"
       },
       "onofficeWrites": {
@@ -364,6 +370,8 @@
     "attentionTitle": "Zu erledigen",
     "attentionEmpty": "Alles erledigt. Neue Aufgaben und Freigaben erscheinen hier.",
     "approvalsGroup": "Zur Freigabe",
+    "suggestionsWaiting_one": "{{count}} neuer Automations-Vorschlag zum Prüfen",
+    "suggestionsWaiting_other": "{{count}} neue Automations-Vorschläge zum Prüfen",
     "approvalsAllAccounts": "Alle Konten",
     "approvalsFilterAccount": "Nach Konto filtern",
     "approvalsShowMore_one": "1 weitere anzeigen",
@@ -391,6 +399,9 @@
     "todosLinkedLabel": "Beim Erledigen starten",
     "todosLinkedNone": "Keine Automation",
     "todosLinkedGeneric": "Automation",
+    "todosDone_one": "1 erledigt",
+    "todosDone_other": "{{count}} erledigt",
+    "todosRestore": "Wieder öffnen",
     "resultsTitle": "Neue Ergebnisse",
     "activityTitle": "Aktivität",
     "activityEmptyTitle": "Noch nichts hier",
@@ -647,9 +658,9 @@
         "chipReady": "Bereit",
         "chipSignIn": "Anmeldung erforderlich"
       },
-      "email": {
-        "title": "E-Mail",
-        "description": "Verbundene Konten und wie Trailin mit Ihrer Post verbunden ist.",
+      "accounts": {
+        "title": "Konten",
+        "description": "E-Mail-, CRM- und Messaging-Konten, und was jedes Konto darf.",
         "chipSetup": "Einrichtung nötig",
         "chipConnected_one": "{{count}} verbunden",
         "chipConnected_other": "{{count}} verbunden",

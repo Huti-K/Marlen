@@ -27,6 +27,14 @@ export type DesktopAppInfo = {
 };
 
 type DesktopBridge = {
+  /** How the shell drew its title bar: "inset" = macOS floats the traffic
+   *  lights over the web chrome (the web reserves their strip); "native" = a
+   *  normal OS title bar the web ignores. */
+  titleBar: "inset" | "native";
+  /** Height in px the web reserves at the top for the "inset" title bar. */
+  titleBarHeight: number;
+  /** Report the resolved theme so the native window background tracks it. */
+  setChromeTheme: (theme: "light" | "dark") => void;
   getAppInfo: () => Promise<DesktopAppInfo>;
   /** Version of an update already downloaded and waiting for a restart, if any. */
   getPendingUpdate: () => Promise<string | null>;
@@ -40,4 +48,11 @@ type DesktopBridge = {
 
 export function desktopBridge(): DesktopBridge | undefined {
   return (window as Window & { trailinDesktop?: DesktopBridge }).trailinDesktop;
+}
+
+/** The inset (macOS) title-bar reservation, or null in a browser tab / on a
+ *  platform with a native bar — the only case the web reserves top space for. */
+export function insetTitleBar(): { height: number } | null {
+  const bridge = desktopBridge();
+  return bridge?.titleBar === "inset" ? { height: bridge.titleBarHeight } : null;
 }

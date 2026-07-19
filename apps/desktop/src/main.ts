@@ -13,6 +13,13 @@ import {
   type WebContents,
 } from "electron";
 import log from "electron-log/main";
+import {
+  chromeBackground,
+  initialBackground,
+  installAppMenu,
+  splashUrl,
+  windowChrome,
+} from "./chrome";
 import { startNotifications, stopNotifications } from "./notifications";
 import {
   checkForUpdatesNow,
@@ -29,7 +36,10 @@ import {
  */
 const BASE_PORT = 43117;
 const PORT_SCAN_RANGE = 20;
-const SERVER_READY_TIMEOUT_MS = 30_000;
+// Generous: the first launch after install (or an update) on Windows can spend
+// minutes in Defender's on-access scan of the unpacked node_modules before the
+// server even starts booting. The splash window keeps the wait visible.
+const SERVER_READY_TIMEOUT_MS = 180_000;
 
 let serverProcess: UtilityProcess | null = null;
 let serverPort: number | null = null;
@@ -151,14 +161,17 @@ function installLinkPolicy(contents: WebContents): void {
   });
 }
 
-function createWindow(port: number): void {
+/** With `booting`, the window opens on the inline splash spinner instead of the
+ *  app; the caller swaps in the real URL once the server answers. */
+function createWindow(port: number, booting = false): BrowserWindow {
   const origin = `http://127.0.0.1:${port}`;
   const window = new BrowserWindow({
     width: 1360,
     height: 860,
     minWidth: 720,
     minHeight: 480,
-    backgroundColor: "#f4f4f5",
+    backgroundColor: initialBackground(),
+    ...windowChrome(),
     webPreferences: { preload: path.join(__dirname, "preload.cjs") },
   });
   installLinkPolicy(window.webContents);
@@ -175,13 +188,17 @@ function createWindow(port: number): void {
     event.preventDefault();
     if (/^https?:/i.test(url)) void shell.openExternal(url);
   });
-  void window.loadURL(`${origin}/`);
+  void window.loadURL(booting ? splashUrl() : `${origin}/`);
   if (smokeMode) {
-    window.webContents.once("did-finish-load", () => {
+    // Only the app itself counts as loaded — the splash finishing must not
+    // end a smoke run early.
+    window.webContents.on("did-finish-load", () => {
+      if (!window.webContents.getURL().startsWith(origin)) return;
       log.info("desktop smoke: window loaded");
       app.quit();
     });
   }
+  return window;
 }
 
 function focusOrCreateWindow(): void {
@@ -222,6 +239,15 @@ if (!hasLock) {
     serverProcess?.kill();
   });
 
+  // The renderer owns the theme (localStorage; may differ from the OS), so it
+  // reports the resolved tone and the native window background follows.
+  ipcMain.on("trailin:set-chrome-theme", (event, theme: unknown) => {
+    if (theme !== "light" && theme !== "dark") return;
+    BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(
+      chromeBackground(theme === "dark"),
+    );
+  });
+
   ipcMain.handle("trailin:get-pending-update", () => pendingUpdateVersion());
   ipcMain.handle("trailin:get-app-info", () => ({
     version: app.getVersion(),
@@ -234,12 +260,16 @@ if (!hasLock) {
   ipcMain.on("trailin:install-update", () => installUpdate());
 
   void app.whenReady().then(async () => {
+    installAppMenu();
     try {
       const port = await findFreePort();
       serverPort = port;
       startServer(port);
+      // Window first, server-wait after: the user gets a spinner immediately
+      // instead of a silent gap while the server boots.
+      const window = createWindow(port, true);
       await waitForServer(port);
-      createWindow(port);
+      if (!window.isDestroyed()) void window.loadURL(`http://127.0.0.1:${port}/`);
       startNotifications(port, { onOpenRequest: focusOrCreateWindow });
       // Dev runs have no update feed baked in: app-update.yml only exists in a packaged build.
       if (app.isPackaged) {
@@ -250,6 +280,8 @@ if (!hasLock) {
         });
       }
     } catch (error) {
+      // quitting: the user closed the splash mid-boot — that's a quit, not a failure.
+      if (quitting) return;
       fatal(`Trailin failed to start: ${error instanceof Error ? error.message : String(error)}`);
     }
   });

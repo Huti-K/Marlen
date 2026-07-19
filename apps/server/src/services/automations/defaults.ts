@@ -1,11 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { moduleLogger } from "../../core/logger.js";
 import { db, schema } from "../../db/index.js";
-import { deleteSetting, getSetting, setSetting } from "../../db/settings.js";
-import { getOnOfficeConfig } from "../../integrations/onoffice/config.js";
-import { updateAutomation } from "./manage.js";
+import { getSetting, setSetting } from "../../db/settings.js";
 
 const log = moduleLogger("automations");
 
@@ -21,9 +19,6 @@ interface DefaultAutomation {
   pinned: boolean;
   runOnNewMail: boolean;
   notifyOnCompletion: boolean;
-  // Lead-workflow default: seeds only once onOffice is configured, pauses when
-  // credentials clear, resumes when they return (pause/resumeOnOfficeDefaults).
-  requiresOnOffice?: boolean;
   instruction: string;
 }
 
@@ -47,32 +42,6 @@ const DEFAULT_AUTOMATIONS: DefaultAutomation[] = [
     runOnNewMail: false,
     notifyOnCompletion: false,
     instruction: readInstruction("morgenbriefing"),
-  },
-  {
-    name: `Lead-Eingang`,
-    previousNames: ["Lead intake"],
-    // Cron is the safety net for accounts the mail probe can't watch.
-    schedule: "0 */2 * * *",
-    enabled: true,
-    // Most runs find nothing, so keep them out of the activity feed.
-    showInActivity: false,
-    pinned: false,
-    runOnNewMail: true,
-    notifyOnCompletion: true,
-    requiresOnOffice: true,
-    instruction: readInstruction("lead-eingang"),
-  },
-  {
-    name: `Lead-Kadenz`,
-    previousNames: ["Lead-Nachfass"],
-    schedule: "30 8 * * *",
-    enabled: true,
-    showInActivity: true,
-    pinned: false,
-    runOnNewMail: false,
-    notifyOnCompletion: false,
-    requiresOnOffice: true,
-    instruction: readInstruction("lead-kadenz"),
   },
 ];
 
@@ -105,14 +74,6 @@ const SUPERSEDED_INSTRUCTION_HASHES: Record<string, readonly string[]> = {
     "399fdc4a2c5fce9ee3cc95618ee56576158053d4a0ba2f482bea56cbdf5db773",
     "4c31b690979bff36728ab4a71ea1353a74853bb2cece4c05421d8fdfc5748c22",
   ],
-  "Lead-Eingang": [
-    "d0d02bdbae32cf3590768d7c148abd732b9e419971a38ee97280c62d5e408c90",
-    "635003cdedd081fd90df6a6a032c8e9d2cb54c6963238ace4bb71ce291f103aa",
-    "e57196f34ad6c1722790e4999720be18d4edf7c6d7eec3c8908c7ad6635940bc",
-    "ee2c54c0df32f500cb7afc43f77598ea77f5834d34efcd4c14ebb65a4e08ef9d",
-    "c68e3ed7b3ae2213a5525dedcabb9194fa87a83c5bd973beec402e5c4b152d58",
-  ],
-  "Lead-Kadenz": ["738dcb14790c079841739dfed3940bbbc96aa89654968036808d1096ab696edb"],
 };
 
 function instructionHash(text: string): string {
@@ -158,17 +119,13 @@ async function refreshUnmodifiedDefaults(): Promise<void> {
  * Seed the built-in automations: each seeds at most once ever (deleting one
  * never brings it back), and a default whose name already exists is adopted,
  * not duplicated. Also refreshes unedited defaults on every call. Call before
- * startScheduler(), and again after onOffice is configured so the
- * requiresOnOffice defaults reach an install that connected the CRM later.
+ * startScheduler().
  */
 export async function seedDefaultAutomations(): Promise<void> {
   await refreshUnmodifiedDefaults();
 
-  const onOfficeConfigured = (await getOnOfficeConfig()) !== null;
   const now = Date.now();
   for (const [i, preset] of DEFAULT_AUTOMATIONS.entries()) {
-    // Skipped without flagging, so it still seeds on the first call after onOffice connects.
-    if (preset.requiresOnOffice && !onOfficeConfigured) continue;
     // A previous name's flag still counts as seeded, so a rename can't resurrect
     // a default the user deleted under its old name.
     const key = `${DEFAULT_SEEDED_KEY_PREFIX}${preset.name}`;
@@ -199,45 +156,4 @@ export async function seedDefaultAutomations(): Promise<void> {
     }
     await setSetting(key, "true");
   }
-}
-
-// Ids pauseOnOfficeDefaults disabled, so resume re-enables exactly those,
-// never an automation the user paused themselves.
-const ONOFFICE_PAUSED_IDS_KEY = "automations.onofficePausedIds";
-
-function onOfficeDefaultNames(): string[] {
-  return DEFAULT_AUTOMATIONS.filter((preset) => preset.requiresOnOffice).flatMap((preset) => [
-    preset.name,
-    ...preset.previousNames,
-  ]);
-}
-
-/**
- * Disable the requiresOnOffice defaults when the CRM disconnects (their runs
- * need the onOffice tools). Matched by name, so a renamed copy is the user's
- * own and keeps running.
- */
-export async function pauseOnOfficeDefaults(): Promise<void> {
-  const rows = await db
-    .select({ id: schema.automations.id, enabled: schema.automations.enabled })
-    .from(schema.automations)
-    .where(inArray(schema.automations.name, onOfficeDefaultNames()));
-  const paused = rows.filter((row) => row.enabled).map((row) => row.id);
-  for (const id of paused) await updateAutomation(id, { enabled: false });
-  if (paused.length > 0) {
-    await setSetting(ONOFFICE_PAUSED_IDS_KEY, JSON.stringify(paused));
-    log.info({ count: paused.length }, "paused onOffice default automations");
-  }
-}
-
-export async function resumeOnOfficeDefaults(): Promise<void> {
-  const stored = await getSetting(ONOFFICE_PAUSED_IDS_KEY);
-  if (!stored) return;
-  const ids = JSON.parse(stored) as string[];
-  for (const id of ids) {
-    // The user may have deleted (or re-enabled) a paused automation meanwhile.
-    await updateAutomation(id, { enabled: true }).catch(() => {});
-  }
-  await deleteSetting(ONOFFICE_PAUSED_IDS_KEY);
-  log.info({ count: ids.length }, "resumed onOffice default automations");
 }

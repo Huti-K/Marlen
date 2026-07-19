@@ -222,6 +222,15 @@
     background: var(--surface);
     border-radius: var(--radius);
   }
+  /* A raised row that answers hover with a barely-there step toward the recessed
+     grey — darker in light, brighter in dark — no border. Kept well above the
+     canvas tone so the row lifts rather than sinks. Pair with `.surface`. */
+  .surface-hover {
+    transition: background-color 0.15s ease;
+  }
+  .surface-hover:hover {
+    background: color-mix(in oklch, var(--surface-2) 35%, var(--surface));
+  }
   /*
     Anchored floating panel: select menus, the color picker — floats over
     content with no scrim. In dark mode the panel steps one tone brighter
@@ -371,6 +380,35 @@
   .scroll-stable {
     scrollbar-gutter: stable;
   }
+
+  /* Desktop shell, macOS: the window controls float over the top-left corner
+     (set by useDesktopChrome via data-titlebar-inset + --titlebar-h). Inert in
+     a browser tab. .titlebar-pad clears the controls; .titlebar-drag makes an
+     otherwise-empty region move the window, minus its real controls. */
+  [data-titlebar-inset] .titlebar-pad {
+    padding-top: calc(var(--titlebar-h, 0px) + 0.25rem);
+  }
+  [data-titlebar-inset] .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+  [data-titlebar-inset] .titlebar-drag :where(a, button, input, [role="button"]) {
+    -webkit-app-region: no-drag;
+  }
+}
+
+/* One-shot arrival flash: a surface briefly tinted toward the accent, settling
+   back to plain surface — for cards a cross-panel link just navigated to. */
+@keyframes flash-accent {
+  0%,
+  30% {
+    background-color: color-mix(in oklab, var(--accent) 16%, var(--surface));
+  }
+  100% {
+    background-color: var(--surface);
+  }
+}
+.flash-accent {
+  animation: flash-accent 1.8s ease-out 0.2s backwards;
 }
 
 /* Staggered entry: content rises a few px and fades in, GPU-only. */
@@ -402,6 +440,30 @@
 }
 .animate-in-down {
   animation: enter-down 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* A todo being ticked done: a line wipes across the title before the row leaves. */
+@keyframes strike {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.todo-strike {
+  position: relative;
+}
+.todo-strike::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(50% - 0.75px);
+  width: 100%;
+  height: 1.5px;
+  background: currentColor;
+  transform-origin: left center;
+  animation: strike 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /*
@@ -607,6 +669,10 @@
   .animate-in-up,
   .animate-in-down {
     animation: none;
+  }
+  .todo-strike::after {
+    animation: none;
+    transform: scaleX(1);
   }
   .skeleton::after {
     animation: none;

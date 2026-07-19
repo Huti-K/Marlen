@@ -9,12 +9,6 @@ import {
   getOnOfficeStatus,
   saveOnOfficeConfig,
 } from "../integrations/onoffice/config.js";
-import {
-  pauseOnOfficeDefaults,
-  resumeOnOfficeDefaults,
-  seedDefaultAutomations,
-} from "../services/automations/defaults.js";
-import { rescheduleAll } from "../services/automations/scheduler.js";
 
 // The secret is never returned to the browser, so an edit may omit either field to keep the saved one.
 const onOfficeConfigBody = Type.Object({
@@ -33,19 +27,12 @@ export const onOfficeRoutes: FastifyPluginAsyncTypebox = async (app) => {
     }
     // Live agents hold an onOffice client built from the old credentials.
     await resetSessions();
-    // Seed the requiresOnOffice defaults (or resume ones a disconnect paused),
-    // then reschedule so freshly seeded rows run.
-    await seedDefaultAutomations();
-    await resumeOnOfficeDefaults();
-    await rescheduleAll();
     return getOnOfficeStatus();
   });
 
   app.delete("/api/onoffice", async () => {
     await clearOnOfficeConfig();
     await resetSessions();
-    // Without credentials these runs would fire without their lead/onOffice tools; pause until they return.
-    await pauseOnOfficeDefaults();
     return getOnOfficeStatus();
   });
 

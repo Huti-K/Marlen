@@ -186,7 +186,7 @@ function ActivityRunCard({
 
   return (
     <div className="animate-in-up flex flex-col gap-3" style={stagger(index)}>
-      <article className="surface flex flex-col gap-3 rounded-lg p-4">
+      <article className="surface surface-hover flex flex-col gap-3 rounded-lg p-4">
         <div
           className={cn("flex items-center justify-between gap-3", expandable && "cursor-pointer")}
           {...(expandable ? toggleRowProps(expanded, toggleExpanded) : {})}

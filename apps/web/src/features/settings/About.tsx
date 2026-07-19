@@ -1,6 +1,7 @@
 import { Check, RefreshCw } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { ChangelogDialog } from "@/components/ChangelogDialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { LinkButton } from "@/components/ui/link-button";
@@ -11,9 +12,17 @@ import { cn, openExternal } from "@/lib/utils";
 
 const REPO_SLUG = "Huti-K/Trailin";
 const REPO_URL = `https://github.com/${REPO_SLUG}`;
-const ISSUES_URL = `${REPO_URL}/issues`;
 /** Mirrors appId in apps/desktop/electron-builder.yml. */
 const BUNDLE_ID = "app.trailin.desktop";
+
+/** GitHub's prefilled new-issue form: an empty template with the build details
+ *  already filled in, so a report needs only the description. */
+function newIssueUrl(build: string | null): string {
+  const body = `### What happened\n\n\n### Steps to reproduce\n\n\n### Expected${
+    build ? `\n\n---\n${build}` : ""
+  }`;
+  return `${REPO_URL}/issues/new?body=${encodeURIComponent(body)}`;
+}
 
 const PLATFORM_LABELS: Record<string, string> = {
   darwin: "macOS",
@@ -39,6 +48,7 @@ export function AboutPanel() {
   const bridge = desktopBridge();
   const [info, setInfo] = React.useState<DesktopAppInfo | null>(null);
   const [check, setCheck] = React.useState<CheckState>({ phase: "idle" });
+  const [changelogOpen, setChangelogOpen] = React.useState(false);
 
   React.useEffect(() => {
     const shell = desktopBridge();
@@ -106,7 +116,14 @@ export function AboutPanel() {
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-end gap-2.5">
-          <LinkButton onClick={() => openExternal(ISSUES_URL)}>
+          <LinkButton onClick={() => setChangelogOpen(true)}>{t("changelog.open")}</LinkButton>
+          <LinkButton
+            onClick={() =>
+              openExternal(
+                newIssueUrl(info && `Trailin v${info.version} · ${platform} · ${info.arch}`),
+              )
+            }
+          >
             {t("settings.about.reportIssue")}
           </LinkButton>
           <Button variant="secondary" size="sm" onClick={() => openExternal(REPO_URL)}>
@@ -141,6 +158,12 @@ export function AboutPanel() {
           </div>
         )}
       </div>
+
+      <ChangelogDialog
+        open={changelogOpen}
+        onOpenChange={setChangelogOpen}
+        pendingVersion={readyVersion}
+      />
     </ListRow>
   );
 }

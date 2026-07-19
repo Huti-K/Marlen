@@ -308,7 +308,7 @@ export function FeedbackTab() {
             onClick={() =>
               toast.error(
                 new ApiError(
-                  "Pipedream is not set up. Add your Pipedream credentials in Settings → Email.",
+                  "Pipedream is not set up. Add your Pipedream credentials in Settings → Accounts.",
                   409,
                   "pipedream_not_configured",
                 ),
