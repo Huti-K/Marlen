@@ -20,6 +20,7 @@ import {
 } from "../db/settings.js";
 import { rescheduleNightlyLearn } from "../email/learn/service.js";
 import { badRequest } from "../errors.js";
+import { emitServerEvent } from "../events.js";
 
 const languageBody = Type.Object({ language: Type.String() });
 
@@ -99,6 +100,7 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
       await setAccountPermissions(permissions);
       // The per-account grants decide which tools get registered — rebuild agent toolsets.
       await resetSessions();
+      emitServerEvent("accounts");
       return { permissions };
     },
   );
@@ -126,6 +128,7 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
   app.put("/api/settings/account-colors", { schema: { body: accountColorsBody } }, async (req) => {
     await setAccountColors(req.body.colors);
+    emitServerEvent("accounts");
     return { colors: req.body.colors };
   });
 };

@@ -1,6 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import type { AccountColor, ConnectedAccount } from "@trailin/shared";
 import { EMAIL_APPS } from "@trailin/shared";
-import * as React from "react";
 import { api } from "@/lib/api";
 
 /** Whether a Pipedream app slug is one of the supported mail providers. */
@@ -20,32 +20,24 @@ export const accountName = (accounts: ConnectedAccount[] | undefined, accountId?
 
 /**
  * Connected accounts plus their color assignments — the pair every account
- * dot, chip, and scope picker resolves from. Fetched once per mount (or once
- * `enabled` first becomes true, for lazy consumers like the search palette).
- * Cosmetic data: failures resolve to empty lists, never an error state.
+ * dot, chip, and scope picker resolves from. One shared query per list, so
+ * every consumer sees the same data and an "accounts" event (connect,
+ * removal, recolor, regrant) refreshes them all. Cosmetic data: failures
+ * resolve to empty lists, never an error state.
  */
 export function useAccountColors({ withAccounts = true, enabled = true } = {}): {
   accounts: ConnectedAccount[];
   colors: AccountColor[];
 } {
-  const [accounts, setAccounts] = React.useState<ConnectedAccount[]>([]);
-  const [colors, setColors] = React.useState<AccountColor[]>([]);
-  const fetched = React.useRef(false);
-
-  React.useEffect(() => {
-    if (!enabled || fetched.current) return;
-    fetched.current = true;
-    void Promise.all([
-      withAccounts ? api.pipedreamAccounts().catch(() => []) : Promise.resolve([]),
-      api
-        .accountColors()
-        .then((r) => r.colors)
-        .catch(() => []),
-    ]).then(([accountList, colorList]) => {
-      setAccounts(accountList);
-      setColors(colorList);
-    });
-  }, [enabled, withAccounts]);
-
-  return { accounts, colors };
+  const { data: accounts } = useQuery({
+    queryKey: ["accounts", "list"],
+    queryFn: () => api.pipedreamAccounts().catch(() => []),
+    enabled: enabled && withAccounts,
+  });
+  const { data: colors } = useQuery({
+    queryKey: ["accounts", "colors"],
+    queryFn: () => api.accountColors().then((r) => r.colors),
+    enabled,
+  });
+  return { accounts: accounts ?? [], colors: colors ?? [] };
 }

@@ -607,6 +607,7 @@ export type ServerEventTopic =
   | "learn" // a learning sweep run was recorded
   | "leads" // a lead was recorded, updated or deleted
   | "whatsapp" // the WhatsApp link's connection state changed (pairing QR, open, unlinked)
+  | "accounts" // connected accounts, their colors, or their permission grants changed
   | "notification"; // a notify-flagged automation run finished (carries the payload)
 
 /** Payload of a "notification" event — one finished run of a notify-flagged automation. */

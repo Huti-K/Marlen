@@ -7,6 +7,7 @@ import { deleteVoiceLearnRun } from "../db/voiceRuns.js";
 import { invalidateDraftsCache } from "../email/draftsCache.js";
 import { env } from "../env.js";
 import { badRequest, notFound, upstreamError, upstreamStatusCode } from "../errors.js";
+import { emitServerEvent } from "../events.js";
 import {
   clearConnectSettings,
   createConnectToken,
@@ -79,6 +80,7 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
     await setUseCustom(true);
     // Live agents hold MCP sessions built with the old credentials.
     await resetSessions();
+    emitServerEvent("accounts");
     return getPipedreamStatus();
   });
 
@@ -86,12 +88,14 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.put("/api/pipedream/mode", { schema: { body: pipedreamModeBody } }, async (req) => {
     await setUseCustom(req.body.useCustom);
     await resetSessions();
+    emitServerEvent("accounts");
     return getPipedreamStatus();
   });
 
   app.delete("/api/pipedream", async () => {
     await clearConnectSettings();
     await resetSessions();
+    emitServerEvent("accounts");
     return getPipedreamStatus();
   });
 
@@ -152,6 +156,9 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
         throw badRequest("voice learning needs an email account");
       }
       startVoiceLearnOnConnect(account.id);
+      // The connect flow calls this right after linking a mailbox — the
+      // closest server-side moment to "an account was added".
+      emitServerEvent("accounts");
       return { ok: true };
     },
   );
@@ -173,6 +180,7 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
       invalidateDraftsCache(req.params.id);
       // The account list itself just changed.
       invalidateAccountsCache();
+      emitServerEvent("accounts");
       // Drop the account's voice-learn attempt state with it.
       await deleteVoiceLearnRun(req.params.id);
       return { ok: true };

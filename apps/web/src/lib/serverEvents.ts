@@ -137,7 +137,8 @@ function maybeDisconnect(): void {
   if (!hasSubscribers()) disconnect();
 }
 
-function subscribeServerEvents(topics: ServerEventTopic[], handler: () => void): () => void {
+/** Raw subscription (the query bridge and useServerEvents build on it): handler fires debounced per matching topic. */
+export function subscribeServerEvents(topics: ServerEventTopic[], handler: () => void): () => void {
   const sub: Subscription = { topics, handler };
   subscriptions.add(sub);
   if (!source) connect();
