@@ -26,6 +26,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { AutomationsPanel } from "@/features/automations/AutomationsPanel";
 import { AttachmentViewer } from "@/features/chat/AttachmentViewer";
 import { ChatPanel } from "@/features/chat/ChatPanel";
+import { onRevealChat, sendChatCommand } from "@/features/chat/controller";
 import { FocusChip } from "@/features/chat/FocusChip";
 import { HistoryList } from "@/features/chat/HistoryList";
 import { HomePanel } from "@/features/home/HomePanel";
@@ -36,8 +37,7 @@ import { SetupGate } from "@/features/setup/SetupGate";
 import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showcase — delete with its route
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
-import { NAV_VIEWS, SHOWCASE_NAV, type View } from "@/lib/nav";
-import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
+import { NAV_VIEWS, openSearch, registerNavigate, SHOWCASE_NAV, type View } from "@/lib/nav";
 import { useDesktopUpdate } from "@/lib/useDesktopUpdate";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useRunNotifications } from "@/lib/useRunNotifications";
@@ -196,18 +196,18 @@ export default function App() {
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
-    const unsubscribeShowChat = subscribeTrailin("show-chat", () => setChatOpen(true));
+    const unsubscribeReveal = onRevealChat(() => setChatOpen(true));
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
-      unsubscribeShowChat();
+      unsubscribeReveal();
     };
   }, [refreshStatus]);
 
   // Navigation requests from non-React code (e.g. a toast's click-through action).
   React.useEffect(() => {
-    return subscribeTrailin("navigate", (path) => {
-      if (typeof path === "string" && path.startsWith("/")) navigate(path);
+    return registerNavigate((path) => {
+      if (path.startsWith("/")) navigate(path);
     });
   }, [navigate]);
 
@@ -361,7 +361,7 @@ export default function App() {
             {/* Reads as a field on desktop so the shortcut is discoverable; an icon on mobile. */}
             <button
               type="button"
-              onClick={() => dispatchTrailin("open-search")}
+              onClick={() => openSearch()}
               className="hidden h-9 w-56 shrink-0 items-center gap-2 rounded-md bg-surface-2 px-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:flex"
             >
               <Search className="h-4 w-4 shrink-0" />
@@ -370,7 +370,7 @@ export default function App() {
             </button>
             <HeaderIconButton
               label={t("search.openButton")}
-              onClick={() => dispatchTrailin("open-search")}
+              onClick={() => openSearch()}
               className="shrink-0 sm:hidden"
             >
               <Search />
@@ -525,7 +525,7 @@ export default function App() {
                 <HeaderIconButton
                   label={t("chat.newConversation")}
                   onClick={() => {
-                    dispatchTrailin("new-chat");
+                    sendChatCommand({ kind: "new" });
                     setHistoryOpen(false);
                   }}
                   className="ml-auto"
@@ -559,7 +559,7 @@ export default function App() {
                   activeId={activeConversationId}
                   query={historyQuery}
                   onPick={(id) => {
-                    dispatchTrailin("open-chat", id);
+                    sendChatCommand({ kind: "open", conversationId: id });
                     setHistoryOpen(false);
                   }}
                 />
@@ -617,7 +617,7 @@ export default function App() {
               )}
               <HeaderIconButton
                 label={t("chat.newConversation")}
-                onClick={() => dispatchTrailin("new-chat")}
+                onClick={() => sendChatCommand({ kind: "new" })}
                 className={cn(!onChatRoute && "ml-auto", onChatRoute && "md:hidden")}
               >
                 <Plus />

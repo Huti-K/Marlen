@@ -1,5 +1,5 @@
 import * as React from "react";
-import { dispatchTrailin } from "@/lib/trailinEvents";
+import { revealChat, sendChatCommand } from "@/features/chat/controller";
 
 /**
  * What one-tap chat actions (the digest's "Draft reply" / "Ask about this"
@@ -17,9 +17,8 @@ function getQuickActionMode(): QuickActionMode {
 
 /** Hand a composed message to the chat panel, honoring the Settings preference. */
 export function dispatchQuickAction(text: string): void {
-  if (getQuickActionMode() === "prefill") dispatchTrailin("prefill-chat", { text });
-  else dispatchTrailin("send-chat", { text });
-  dispatchTrailin("show-chat");
+  sendChatCommand({ kind: getQuickActionMode() === "prefill" ? "prefill" : "send", text });
+  revealChat();
 }
 
 export function useQuickActionMode() {
@@ -33,15 +32,13 @@ export function useQuickActionMode() {
 }
 
 /**
- * Navigates to the Chat tab, then opens a specific run's conversation once
- * it has mounted. The short delay bridges the gap between the route
- * change/DOM commit and the chat panel's "open a conversation" listener
- * being ready — shared by every run card that offers a "go to chat" action
- * (Home's activity feed, its briefing hero, and the Automations run list).
+ * Navigates to the Chat tab and opens a specific run's conversation —
+ * shared by every run card that offers a "go to chat" action (Home's
+ * activity feed, its briefing hero, and the Automations run list). The
+ * command lands on the persistent ChatPanel instance directly, so there is
+ * no mount race to bridge.
  */
 export function openRunInChat(runId: string, goToChat: () => void): void {
   goToChat();
-  setTimeout(() => {
-    dispatchTrailin("open-chat", runId);
-  }, 100);
+  sendChatCommand({ kind: "open", conversationId: runId });
 }

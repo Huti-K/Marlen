@@ -10,11 +10,11 @@ import { GroupLabel } from "@/components/ui/group-label";
 import { HoverActions } from "@/components/ui/hover-actions";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { sendChatCommand } from "@/features/chat/controller";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
-import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 import { cn } from "@/lib/utils";
 
 /** First page size for the history rail; "Load more" fetches in the same increments. */
@@ -98,13 +98,6 @@ export function HistoryList({
   // correct behavior for an invalidation: refetch and reset to the first page.
   useServerEvents(["conversations"], load);
 
-  // Chat creation is reported on the request's stream as well as the global
-  // server-event stream. Listen to the local invalidation so a newly submitted
-  // chat appears even if EventSource had not connected when it was created.
-  React.useEffect(() => {
-    return subscribeTrailin("conversations-changed", load);
-  }, [load]);
-
   const loadMore = async () => {
     if (!items) return;
     setLoadingMore(true);
@@ -153,7 +146,7 @@ export function HistoryList({
       if (deleteId === activeId) {
         // Same reset the "New chat" button triggers: clears messages, the open
         // conversation id, and the last-open-conversation localStorage key.
-        dispatchTrailin("new-chat");
+        sendChatCommand({ kind: "new" });
       }
       setItems((prev) => prev?.filter((c) => c.id !== deleteId) ?? prev);
       setTotal((n) => Math.max(0, n - 1));
@@ -307,7 +300,7 @@ export function HistoryList({
           description={t("chat.noConversations")}
           className="py-8"
           action={
-            <Button variant="secondary" size="sm" onClick={() => dispatchTrailin("new-chat")}>
+            <Button variant="secondary" size="sm" onClick={() => sendChatCommand({ kind: "new" })}>
               <Plus />
               {t("chat.newConversation")}
             </Button>

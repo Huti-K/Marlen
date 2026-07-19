@@ -14,13 +14,13 @@ import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
 import { RefChips, RefChipsReadOnly } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
+import { onChatCommand } from "@/features/chat/controller";
 import { HistoryList } from "@/features/chat/HistoryList";
 import type { DisplayMessage } from "@/features/chat/runState";
 import { useChatRuns } from "@/features/chat/useChatRuns";
 import { useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { subscribeTrailin } from "@/lib/trailinEvents";
 import { useAutoGrow } from "@/lib/useAutoGrow";
 import { cn, errorMessage } from "@/lib/utils";
 
@@ -28,12 +28,12 @@ import { cn, errorMessage } from "@/lib/utils";
 const SHOWCASE_COMMAND = "/showcase";
 const SYSTEM_PROMPT_COMMAND = "/sys";
 
-/** A message queued by a window event, sent once the panel goes idle so it
+/** A message queued by a chat command, sent once the panel goes idle so it
  *  never races the reset (when requested) or a still-streaming turn. */
 interface PendingSend {
   text: string;
   refs?: EmailRef[];
-  /** trailin:send-chat resets the conversation first; trailin:answer-chat (a choices-card pick) continues the open one. */
+  /** A `send` command resets the conversation first; an `answer` (a choices-card pick) continues the open one. */
   newConversation: boolean;
 }
 
@@ -55,7 +55,7 @@ export function ChatPanel({
 }) {
   const { t } = useTranslation();
   const [input, setInput] = React.useState("");
-  // A message queued by a window event — sent by the effect below once the
+  // A message queued by a chat command — sent by the effect below once the
   // panel is idle, so it never races a conversation reset or a streaming turn.
   const [pendingSend, setPendingSend] = React.useState<PendingSend | null>(null);
   // Tints each card's account chip. Cosmetic, so a failed load is not surfaced.
@@ -195,52 +195,40 @@ export function ChatPanel({
   });
 
   React.useEffect(() => {
-    const handleOpenChat = (id: string) => {
-      void runs.openConversation(id);
-    };
-    // Starts a fresh conversation with the composer pre-filled (not sent) —
-    // how other panels hand a suggested question to the chat (dispatch
-    // together with "trailin:show-chat" so the panel is actually visible).
-    const handlePrefill = (detail: { text: string }) => {
-      const text = detail?.text;
-      if (!text) return;
-      runs.newConversation();
-      setInput(text);
-      textareaRef.current?.focus();
-    };
-    // Like prefill, but sends immediately — for actions where the composed
-    // message is complete as-is (e.g. the digest's "draft a reply" buttons).
-    const handleSendEvent = (detail: { text: string }) => {
-      const text = detail?.text;
-      if (!text) return;
-      setPendingSend({ text, newConversation: true });
-    };
-    // A choices-card option answering the agent's clarifying question — sent
-    // in the SAME conversation (never resets it) so it lands as the next
-    // turn of the exchange that asked the question.
-    const handleAnswerChat = (detail: { text: string; refs?: EmailRef[] }) => {
-      if (!detail?.text) return;
-      setPendingSend({ text: detail.text, refs: detail.refs, newConversation: false });
-    };
-    // A card's "add to chat" action pinning an email
-    // to the composer's next message — never resets the conversation.
-    const handleAddChatRef = (detail: { ref: EmailRef }) => {
-      const ref = detail?.ref;
-      if (!ref) return;
-      composerRefs.add(ref);
-      textareaRef.current?.focus();
-    };
-    const unsubscribers = [
-      subscribeTrailin("new-chat", runs.newConversation),
-      subscribeTrailin("open-chat", handleOpenChat),
-      subscribeTrailin("prefill-chat", handlePrefill),
-      subscribeTrailin("send-chat", handleSendEvent),
-      subscribeTrailin("answer-chat", handleAnswerChat),
-      subscribeTrailin("add-chat-ref", handleAddChatRef),
-    ];
-    return () => {
-      for (const unsubscribe of unsubscribers) unsubscribe();
-    };
+    return onChatCommand((command) => {
+      switch (command.kind) {
+        case "new":
+          runs.newConversation();
+          return;
+        case "open":
+          void runs.openConversation(command.conversationId);
+          return;
+        // Starts a fresh conversation with the composer pre-filled (not
+        // sent) — how other panels hand a suggested question to the chat.
+        case "prefill":
+          runs.newConversation();
+          setInput(command.text);
+          textareaRef.current?.focus();
+          return;
+        // Like prefill, but sends immediately — for actions where the
+        // composed message is complete as-is (the digest's reply buttons).
+        case "send":
+          setPendingSend({ text: command.text, newConversation: true });
+          return;
+        // A choices-card option answering the agent's clarifying question —
+        // sent in the SAME conversation (never resets it) so it lands as
+        // the next turn of the exchange that asked the question.
+        case "answer":
+          setPendingSend({ text: command.text, refs: command.refs, newConversation: false });
+          return;
+        // A card's "add to chat" action pinning an email to the composer's
+        // next message — never resets the conversation.
+        case "add-ref":
+          composerRefs.add(command.ref);
+          textareaRef.current?.focus();
+          return;
+      }
+    });
   }, [runs.newConversation, runs.openConversation, composerRefs.add]);
 
   const isPage = layout === "page";

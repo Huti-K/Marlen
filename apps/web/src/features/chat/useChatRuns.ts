@@ -9,7 +9,6 @@ import {
 } from "@/features/chat/runState";
 import { api, streamChat } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { dispatchTrailin } from "@/lib/trailinEvents";
 import { errorMessage } from "@/lib/utils";
 
 /** Same-device continuity: the conversation to restore on the next load. */
@@ -138,11 +137,10 @@ export function useChatRuns({
               const wasActive = stateRef.current.activeRunId === runId;
               dispatch({ type: "stream", runId, event });
               if (wasActive) localStorage.setItem(LAST_CONVERSATION_KEY, event.conversationId);
-              // The conversation row has already been committed when this stream
-              // event arrives. Invalidate same-tab history directly rather than
-              // relying only on the separate SSE connection, which may still be
-              // connecting. Fires for every run, active or backgrounded.
-              dispatchTrailin("conversations-changed");
+              // The conversation row is already committed when this stream event
+              // arrives; the history rail refetches via the "conversations" SSE
+              // topic, whose stream is held open for the app's whole lifetime by
+              // the query bridge (lib/query.ts).
               return;
             }
             if (event.type === "error") toast.error(event.message);

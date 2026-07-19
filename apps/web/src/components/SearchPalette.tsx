@@ -19,11 +19,12 @@ import { Highlight } from "@/components/ui/highlight";
 import { IconButton } from "@/components/ui/icon-button";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Kbd } from "@/components/ui/kbd";
+import { revealChat, sendChatCommand } from "@/features/chat/controller";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
-import { visibleNavItems } from "@/lib/nav";
-import { setPendingDraftFocus, setPendingKnowledgeFocus } from "@/lib/paletteFocus";
-import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
+import { registerOpenSearch, visibleNavItems } from "@/lib/nav";
+import { setPendingDraftFocus } from "@/lib/paletteFocus";
+import { dispatchTrailin } from "@/lib/trailinEvents";
 import { cn, MOD_LABEL } from "@/lib/utils";
 
 /**
@@ -100,7 +101,7 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
   // Results stay on screen while the next query is in flight; only the sweep line animates.
   const loading = trimmed !== "" && searched?.query !== trimmed;
 
-  // Global shortcut, plus the header search buttons dispatching this event.
+  // Global shortcut, plus the header search buttons calling openSearch().
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -109,7 +110,7 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
       }
     };
     window.addEventListener("keydown", onKeyDown);
-    const unsubscribeOpenSearch = subscribeTrailin("open-search", () => setOpen(true));
+    const unsubscribeOpenSearch = registerOpenSearch(() => setOpen(true));
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       unsubscribeOpenSearch();
@@ -197,8 +198,8 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
 
   const openHit = (hit: SearchResult) => {
     if (hit.type === "chat" || hit.type === "run") {
-      dispatchTrailin("open-chat", hit.id);
-      dispatchTrailin("show-chat");
+      sendChatCommand({ kind: "open", conversationId: hit.id });
+      revealChat();
     } else if (hit.type === "draft") {
       // Stashed before navigate: HomePanel may not be mounted yet to catch the
       // CustomEvent below (see lib/paletteFocus.ts).
@@ -209,9 +210,9 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
       // invariant the setPendingDraftFocus guard above relies on.
       dispatchTrailin("open-draft", { accountId: hit.accountId as string, draftId: hit.id });
     } else {
-      setPendingKnowledgeFocus({ type: hit.type, id: hit.id });
-      navigate("/knowledge");
-      dispatchTrailin("open-knowledge", { type: hit.type, id: hit.id });
+      // The Knowledge panel consumes ?focus= from the URL on mount — no
+      // mount race, and back/forward stays clean because it clears the param.
+      navigate({ pathname: "/knowledge", search: `?focus=${hit.type}:${hit.id}` });
     }
     setOpen(false);
   };

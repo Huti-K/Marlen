@@ -1,51 +1,14 @@
-import type { EmailRef } from "@trailin/shared";
-import type { ThemePref } from "@/lib/useTheme";
-
 /**
- * Every `trailin:*` window `CustomEvent`, keyed by its name (without the
- * `trailin:` wire prefix) to the type of its `detail`. `undefined` marks
- * events that carry no detail. This is the single source of truth for the
- * on-the-wire shape of each event — dispatch and listen only through
- * `dispatchTrailin` and `subscribeTrailin` below, never
- * `window.dispatchEvent`/`addEventListener` directly, so every site agrees
- * on these types.
+ * The last `trailin:*` window `CustomEvent` standing — chat commands moved
+ * to features/chat/controller.ts and navigation intents to router/URL state
+ * (lib/nav.ts, ?focus= params). `open-draft` follows once HomePanel's
+ * palette focus reads URL state too; then this module and lib/paletteFocus
+ * are deleted together. Dispatch and listen only through the helpers below,
+ * so every site agrees on the payload type.
  */
 export interface TrailinEventMap {
-  /** Push this route path (e.g. a toast's click-through action). */
-  navigate: string;
-  /** Show the chat panel/tab without changing what conversation it holds. */
-  "show-chat": undefined;
-  /** Open the Cmd+K / Ctrl+K search palette. */
-  "open-search": undefined;
-  /** Reset the chat panel to a fresh, empty conversation. */
-  "new-chat": undefined;
-  /** Open an existing conversation (or automation run) by id. */
-  "open-chat": string;
-  /** Start a fresh conversation with the composer pre-filled but not sent. */
-  "prefill-chat": { text: string };
-  /** Start a fresh conversation and send this text immediately. */
-  "send-chat": { text: string };
-  /** Answer a choices-card question in the conversation that asked it. */
-  "answer-chat": { text: string; refs?: EmailRef[] };
-  /** Pin an email to the composer's next message. */
-  "add-chat-ref": { ref: EmailRef };
-  /** The conversation list changed; the history rail should refetch. */
-  "conversations-changed": undefined;
   /** Focus a specific draft on the Home tab. */
   "open-draft": { accountId: string; draftId: string };
-  /** Focus a specific document or memory on the Knowledge tab. */
-  "open-knowledge": { type: "document" | "memory"; id: string };
-  /** Open an email attachment in the side-panel viewer. */
-  "open-attachment": {
-    accountId: string;
-    messageId: string;
-    filename: string;
-    mimeType?: string;
-    /** The document library accepts this format, so the viewer offers "Save to library". */
-    saveable: boolean;
-  };
-  /** The resolved theme preference changed; broadcast for cross-instance sync. */
-  "theme-changed": ThemePref;
 }
 
 /** Event names whose `detail` is `undefined` — these dispatch with no second argument. */

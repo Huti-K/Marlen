@@ -2,13 +2,13 @@ import type { ApiErrorCode } from "@trailin/shared";
 import { toast as sonnerToast } from "sonner";
 import { ApiError } from "@/lib/api";
 import i18n from "@/lib/i18n";
-import { dispatchTrailin } from "@/lib/trailinEvents";
+import { appNavigate } from "@/lib/nav";
 import { errorMessage } from "@/lib/utils";
 
 /**
  * Where each user-fixable ApiErrorCode is resolved in the app. An error toast
  * whose cause carries one of these codes gets a click-through action that
- * navigates there (via the trailin:navigate event App.tsx listens for).
+ * navigates there (via the navigate handle App registers, lib/nav.ts).
  */
 const ERROR_CODE_ACTIONS: Record<ApiErrorCode, { path: string; label: () => string }> = {
   pipedream_not_configured: { path: "/settings", label: () => i18n.t("errors.openSettings") },
@@ -19,7 +19,7 @@ function actionFor(error: unknown): { label: string; onClick: () => void } | und
   const target = ERROR_CODE_ACTIONS[error.code];
   return {
     label: target.label(),
-    onClick: () => dispatchTrailin("navigate", target.path),
+    onClick: () => appNavigate(target.path),
   };
 }
 

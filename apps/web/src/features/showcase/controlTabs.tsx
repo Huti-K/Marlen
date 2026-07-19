@@ -28,8 +28,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api";
+import { openSearch } from "@/lib/nav";
 import { toast } from "@/lib/toast";
-import { dispatchTrailin } from "@/lib/trailinEvents";
 import { cn, MOD_LABEL } from "@/lib/utils";
 import {
   ColorPickerDemo,
@@ -271,7 +271,7 @@ export function SurfacesTab() {
         <div className="flex flex-wrap items-center gap-3">
           <DialogDemo />
           <ConfirmDialogDemo />
-          <Button variant="secondary" onClick={() => dispatchTrailin("open-search")}>
+          <Button variant="secondary" onClick={() => openSearch()}>
             Search palette <Kbd className="px-1.5">{MOD_LABEL}K</Kbd>
           </Button>
         </div>

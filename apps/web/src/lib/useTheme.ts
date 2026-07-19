@@ -1,5 +1,4 @@
 import * as React from "react";
-import { dispatchTrailin, subscribeTrailin } from "@/lib/trailinEvents";
 
 export type ThemePref = "light" | "dark" | "system";
 
@@ -19,10 +18,14 @@ function resolve(pref: ThemePref): "light" | "dark" {
   return pref === "system" ? (systemPrefersDark() ? "dark" : "light") : pref;
 }
 
+// Cross-instance sync: every hook instance registers here and hears the
+// others' pref writes without lifting state.
+const prefListeners = new Set<(pref: ThemePref) => void>();
+
 /**
- * Three-way theme preference (light/dark/system). Uses a localStorage +
- * window-event pattern so every hook instance (header toggle, Settings row)
- * stays in sync without lifting state.
+ * Three-way theme preference (light/dark/system). Persists to localStorage
+ * and broadcasts through a module listener set so every hook instance
+ * (header toggle, Settings row) stays in sync without lifting state.
  */
 export function useTheme() {
   const [pref, setPref] = React.useState<ThemePref>(readPref);
@@ -34,7 +37,7 @@ export function useTheme() {
     setResolved(next);
     document.documentElement.classList.toggle("dark", next === "dark");
     localStorage.setItem(STORAGE_KEY, pref);
-    dispatchTrailin("theme-changed", pref);
+    for (const listener of prefListeners) listener(pref);
   }, [pref]);
 
   // While following the system, keep resolving live as the OS setting changes.
@@ -52,9 +55,13 @@ export function useTheme() {
 
   // Cross-instance sync — another hook instance changed the pref.
   React.useEffect(() => {
-    return subscribeTrailin("theme-changed", (detail) => {
-      if (detail !== pref) setPref(detail);
-    });
+    const listener = (next: ThemePref) => {
+      if (next !== pref) setPref(next);
+    };
+    prefListeners.add(listener);
+    return () => {
+      prefListeners.delete(listener);
+    };
   }, [pref]);
 
   return [pref, resolved, setPref] as const;

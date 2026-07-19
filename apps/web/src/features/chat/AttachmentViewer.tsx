@@ -3,12 +3,10 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { type AttachmentOpen, onOpenAttachment } from "@/features/chat/controller";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { subscribeTrailin, type TrailinEventMap } from "@/lib/trailinEvents";
 import { openExternal } from "@/lib/utils";
-
-type OpenAttachment = TrailinEventMap["open-attachment"];
 
 /** How the bytes render inline, derived from the filename (matches the server's by-extension MIME). */
 function renderKind(filename: string): "pdf" | "image" | "text" {
@@ -20,8 +18,8 @@ function renderKind(filename: string): "pdf" | "image" | "text" {
 
 /**
  * The centered email-attachment viewer. A single instance is mounted at the
- * app shell; it opens on the `open-attachment` event any attachments card
- * fires, streams the bytes from GET /api/mail/attachments/open, and renders
+ * app shell; it opens on the openAttachment command any attachments card
+ * sends, streams the bytes from GET /api/mail/attachments/open, and renders
  * them inline (PDF, image, or plain text) without ever saving. Its actions:
  * open the same bytes in a browser tab, and — for library formats — the
  * explicit "Save to library" write.
@@ -32,14 +30,14 @@ function renderKind(filename: string): "pdf" | "image" | "text" {
  */
 export function AttachmentViewer() {
   const { t } = useTranslation();
-  const [item, setItem] = React.useState<OpenAttachment | null>(null);
+  const [item, setItem] = React.useState<AttachmentOpen | null>(null);
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(
     () =>
-      subscribeTrailin("open-attachment", (detail) => {
+      onOpenAttachment((attachment) => {
         setSaving(false);
-        setItem(detail);
+        setItem(attachment);
       }),
     [],
   );

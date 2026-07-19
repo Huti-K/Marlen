@@ -3,8 +3,8 @@ import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";
 import { OptionRow } from "@/components/ui/option-row";
+import { sendChatCommand } from "@/features/chat/controller";
 import { accountColor } from "@/lib/accounts";
-import { dispatchTrailin } from "@/lib/trailinEvents";
 import { CardShell } from "./CardShell";
 
 type ChoicesData = Extract<AgentCard, { kind: "choices" }>;
@@ -12,7 +12,7 @@ type ChoicesData = Extract<AgentCard, { kind: "choices" }>;
 /**
  * The agent's clarifying question, answered with one click. Picking a row
  * sends its `reply` (falling back to `label`) as the next chat message via
- * `trailin:answer-chat`, carrying the option's `ref` when it names a
+ * an `answer` chat command, carrying the option's `ref` when it names a
  * specific email — ChatPanel sends it in the SAME conversation, never a new
  * one, since this is the answer to a question already asked there.
  */
@@ -21,7 +21,8 @@ export function ChoicesCard({ card, colors }: { card: ChoicesData; colors?: Acco
   const { question, options } = card;
 
   const pick = (option: ChoiceOption) => {
-    dispatchTrailin("answer-chat", {
+    sendChatCommand({
+      kind: "answer",
       text: option.reply ?? option.label,
       refs: option.ref ? [option.ref] : undefined,
     });

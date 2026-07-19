@@ -1,7 +1,6 @@
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import { isEmailAccount, useAccountColors } from "@/lib/accounts";
-import { takePendingKnowledgeFocus } from "@/lib/paletteFocus";
-import { subscribeTrailin } from "@/lib/trailinEvents";
 import { LibrarySection } from "./LibrarySection";
 import { MemoryStrip } from "./MemoryStrip";
 import { SkillsStrip } from "./SkillsStrip";
@@ -30,24 +29,21 @@ export function KnowledgePanel() {
   const { accounts, colors } = useAccountColors();
   const emailAccounts = React.useMemo(() => accounts.filter(isEmailAccount), [accounts]);
 
-  // The search palette navigates here, then dispatches this with the hit's
-  // id — but only once this effect's listener is attached, which loses the
-  // race when Knowledge wasn't already mounted. Catch that case by also
-  // reading the same payload stashed just before navigate (lib/paletteFocus.ts).
+  // The search palette lands here with ?focus=<type>:<id>. Consumed once —
+  // the param is cleared — so back/forward doesn't replay the highlight.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusParam = searchParams.get("focus");
   React.useEffect(() => {
-    const applyFocus = (detail: { type: "document" | "memory"; id: string }) => {
-      if (detail.type === "memory") setFocusMemoryId(detail.id);
-      else setFocusDocumentId(detail.id);
-    };
-    const pending = takePendingKnowledgeFocus();
-    if (pending) applyFocus(pending);
-    return subscribeTrailin("open-knowledge", (detail) => {
-      if (!detail) return;
-      applyFocus(detail);
-      // Already handled live — discard so a later remount doesn't replay it.
-      takePendingKnowledgeFocus();
-    });
-  }, []);
+    if (!focusParam) return;
+    const separator = focusParam.indexOf(":");
+    if (separator > 0) {
+      const type = focusParam.slice(0, separator);
+      const id = focusParam.slice(separator + 1);
+      if (type === "memory") setFocusMemoryId(id);
+      else if (type === "document") setFocusDocumentId(id);
+    }
+    setSearchParams({}, { replace: true });
+  }, [focusParam, setSearchParams]);
 
   // Let the highlight fade once it has done its job. Clearing it also means
   // re-opening the same hit registers as a change and scrolls to it again.

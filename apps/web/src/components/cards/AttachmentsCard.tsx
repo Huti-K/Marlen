@@ -3,8 +3,8 @@ import type { LucideIcon } from "lucide-react";
 import { Download, Eye, FileText, ImageIcon, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { openAttachment } from "@/features/chat/controller";
 import { api } from "@/lib/api";
-import { dispatchTrailin } from "@/lib/trailinEvents";
 import { openExternal } from "@/lib/utils";
 import { CardShell } from "./CardShell";
 
@@ -30,7 +30,7 @@ export function AttachmentsCard({ card, color }: { card: AttachmentsData; color?
 
   const open = (item: AttachmentItem) => {
     if (item.viewable) {
-      dispatchTrailin("open-attachment", {
+      openAttachment({
         accountId: item.accountId,
         messageId: item.messageId,
         filename: item.filename,

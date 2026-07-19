@@ -11,9 +11,9 @@ import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
 import { OpenExternalButton } from "@/components/ui/open-external-button";
 import { Textarea } from "@/components/ui/textarea";
+import { revealChat, sendChatCommand } from "@/features/chat/controller";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { dispatchTrailin } from "@/lib/trailinEvents";
 import { errorMessage } from "@/lib/utils";
 
 /** One draft — click to read the full content right here, edit its body in place. */
@@ -187,15 +187,16 @@ export function DraftRow({
             className="hover:bg-accent/10 hover:text-accent"
             onClick={(e) => {
               e.stopPropagation();
-              dispatchTrailin("show-chat");
+              revealChat();
               if (draft.conversationId) {
                 // The agent wrote this draft — reopen that conversation, with
                 // its context and draft card, instead of starting cold.
-                dispatchTrailin("open-chat", draft.conversationId);
+                sendChatCommand({ kind: "open", conversationId: draft.conversationId });
               } else {
                 // Draft from outside Trailin (or an unlinked older one): a
                 // fresh chat with a prefilled ask is the best we can do.
-                dispatchTrailin("prefill-chat", {
+                sendChatCommand({
+                  kind: "prefill",
                   text: t("drafts.refinePrompt", { subject: draft.subject }),
                 });
               }

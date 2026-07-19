@@ -57,3 +57,34 @@ export const SHOWCASE_NAV = {
   title: "UI Showcase",
   description: "Component gallery & theme lab (dev only)",
 } as const;
+
+/**
+ * Navigation from non-React code (e.g. a toast's click-through action). App
+ * registers its router navigate once; module-level code calls appNavigate.
+ */
+let navigateListener: ((path: string) => void) | null = null;
+
+export function registerNavigate(listener: (path: string) => void): () => void {
+  navigateListener = listener;
+  return () => {
+    if (navigateListener === listener) navigateListener = null;
+  };
+}
+
+export function appNavigate(path: string): void {
+  navigateListener?.(path);
+}
+
+/** Open the Cmd+K search palette; its single instance registers itself. */
+let openSearchListener: (() => void) | null = null;
+
+export function registerOpenSearch(listener: () => void): () => void {
+  openSearchListener = listener;
+  return () => {
+    if (openSearchListener === listener) openSearchListener = null;
+  };
+}
+
+export function openSearch(): void {
+  openSearchListener?.();
+}
