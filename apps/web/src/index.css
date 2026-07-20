@@ -3,6 +3,29 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+  Self-hosted from public/fonts (SIL OFL, license beside the files). A desktop
+  app that reads mail on-device must not fetch its typeface from a CDN on every
+  launch: it blocks first paint on the network, stalls behind a captive portal,
+  and tells a third party when the app opens. One variable file per family
+  covers every weight the UI uses.
+*/
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
   Trailin — borderless neutral minimalism. See DESIGN.md.
 
   Depth comes from three surface tones, never from lines:
