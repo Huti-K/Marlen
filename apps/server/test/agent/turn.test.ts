@@ -83,19 +83,24 @@ describe("an agent turn", () => {
           handlers?.onToolEnd?.("call-1", "create_draft", false, {
             content: [{ type: "text", text: "Draft created (draft id d-1)." }],
           });
+          handlers?.onTextDelta?.("Done — the ");
           return "Done — the draft is ready.";
         }),
     });
 
+    const deltas: string[] = [];
     const turn = turnRecorder.beginTurn("conv-1");
     const { text, cards } = await turn.run({
       prompt: "draft me a reply to Anna",
       session: "pooled",
       conversation: { type: "chat", title: "draft me a reply to Anna" },
+      handlers: { onTextDelta: (delta) => deltas.push(delta) },
       log: silentLog,
     });
 
-    expect(text).toBe("Done — the draft is ready.");
+    // Dashes reach neither the live stream nor the stored row.
+    expect(deltas.join("")).toBe("Done, the ");
+    expect(text).toBe("Done, the draft is ready.");
     expect(cards).toEqual([{ toolCallId: "call-1", card }]);
 
     const { db, schema } = dbModule;
@@ -114,7 +119,7 @@ describe("an agent turn", () => {
     const assistant = rows.find((row) => row.role === "assistant");
     // The persisted user row keeps the RAW prompt; decoration is model-only.
     expect(user?.content).toBe("draft me a reply to Anna");
-    expect(assistant?.content).toBe("Done — the draft is ready.");
+    expect(assistant?.content).toBe("Done, the draft is ready.");
     expect(JSON.parse(assistant?.cards ?? "[]")).toEqual([{ toolCallId: "call-1", card }]);
     // The turn's tool activity persists with the row: the UI's activity view
     // and the model-history rebuild both read it.

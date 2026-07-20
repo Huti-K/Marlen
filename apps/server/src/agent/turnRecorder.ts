@@ -19,6 +19,18 @@ import { type AgentSession, createEphemeralSession, getOrCreateSession } from ".
 
 const log = moduleLogger("turnRecorder");
 
+/**
+ * Em/en dashes never reach the user, whatever the model emits. Runs on both the
+ * streamed deltas and the final text, so it must stay idempotent. A dash between
+ * digits stays a range, a line-initial dash is a bullet, the rest become commas.
+ */
+function stripDashes(text: string): string {
+  return text
+    .replace(/(\d)[—–―](\d)/g, "$1-$2")
+    .replace(/^[ \t]*[—–―][ \t]*/gm, "- ")
+    .replace(/[ \t]*[—–―][ \t]*/g, ", ");
+}
+
 function collectTurnActivity(conversationId: string): {
   cards: MessageCard[];
   toolCalls: ChatToolCall[];
@@ -58,8 +70,9 @@ function collectTurnActivity(conversationId: string): {
   const wrap = (caller: RunHandlers = {}): RunHandlers => ({
     ...caller,
     onTextDelta: (delta) => {
-      textLength += delta.length;
-      caller.onTextDelta?.(delta);
+      const clean = stripDashes(delta);
+      textLength += clean.length;
+      caller.onTextDelta?.(clean);
     },
     onToolStart: (toolCallId, toolName, toolLabel, parameters) => {
       const call: ChatToolCall = {
@@ -240,7 +253,7 @@ export function beginTurn(conversationId: string): Turn {
             id: randomUUID(),
             conversationId,
             role: "assistant",
-            content,
+            content: stripDashes(content),
             cards: serializeTurnCards(collector.cards),
             toolCalls: collector.toolCalls.length > 0 ? JSON.stringify(collector.toolCalls) : null,
             createdAt: new Date().toISOString(),
@@ -255,11 +268,13 @@ export function beginTurn(conversationId: string): Turn {
           // a toolset out from under a turn that went through runTurn.
           // buildTurnPrompt decorates the raw prompt with its per-turn notes
           // right before it reaches the model.
-          text = await session.runTurn(
-            await buildTurnPrompt(opts.prompt, opts.refs, conversationId),
-            handlers,
-            opts.signal,
-            opts.log,
+          text = stripDashes(
+            await session.runTurn(
+              await buildTurnPrompt(opts.prompt, opts.refs, conversationId),
+              handlers,
+              opts.signal,
+              opts.log,
+            ),
           );
         } catch (error) {
           // Cancelled: the signal fired mid-turn (client disconnect, timeout).
