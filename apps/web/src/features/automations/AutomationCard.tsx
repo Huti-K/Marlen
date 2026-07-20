@@ -17,7 +17,7 @@ import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
-import { cn, toggleRowProps } from "@/lib/utils";
+import { cn, toggleRowProps, withViewTransition } from "@/lib/utils";
 
 /**
  * One automation on the Automations page: name, schedule badge, pause/pin
@@ -155,7 +155,10 @@ export function AutomationCard({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-4 pt-1">
-        <DisclosureToggle open={expanded} onToggle={() => setExpanded((v) => !v)}>
+        <DisclosureToggle
+          open={expanded}
+          onToggle={() => withViewTransition(() => setExpanded((v) => !v))}
+        >
           {t("automations.recentRuns")}
         </DisclosureToggle>
 
@@ -186,7 +189,7 @@ function RunItem({ run }: { run: AutomationRun }) {
   const [expanded, setExpanded] = React.useState(false);
   const hasResult = !!run.result;
 
-  const toggleExpanded = () => setExpanded(!expanded);
+  const toggleExpanded = () => withViewTransition(() => setExpanded(!expanded));
 
   return (
     <div className="rounded-lg bg-surface-2 p-3">

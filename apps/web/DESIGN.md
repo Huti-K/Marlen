@@ -42,6 +42,9 @@ clean call sites; when you add one, add it to this list.
 - **Account dots:** `AccountDot` (`ui/account-dot.tsx`) — every round dot marker.
   Never hand-mix a dot fill or repeat `UNASSIGNED_ACCOUNT_COLOR`.
 - **App logos:** `AppIcon` — provider logo with mail-glyph fallback.
+- **Agent avatar:** `AgentAvatar` (`features/chat/AgentAvatar.tsx`) — the
+  assistant's round mark chip fronting assistant turns and the empty chat;
+  `active` breathes its bloom while the turn is live.
 - **Icon tiles:** `IconChip` — the tinted square fronting section titles and
   palette rows; it sizes the icon.
 - **Section titles:** `SectionTitle` (`ui/section-header.tsx`) for every
@@ -100,7 +103,7 @@ Anchored floating panels (select menus, color picker) use `.surface-pop`, not
 
 - **Neutrals are true grey**, chroma 0, never tinted toward the accent.
 - **Slate-violet is the single accent.** The CTA and the user's chat bubble are
-  filled with it. Beyond that it marks only the logo, the nav rail's active item
+  filled with it (the bubble face is the `.bubble-accent` gradient). Beyond that it marks only the logo, the nav rail's active item
   and hover tint, links, the switch's on-state, matched search text, and the
   focus ring. Never wash a panel or page in it.
 - **Ink** (`--primary`) is the selected/pressed tone: the active `Chip`, the
@@ -147,6 +150,15 @@ badges, filter chips, and tiny marks.
   sent line carries the same `rowTransition(id)` as the live row, so sending
   morphs in place while discarding lets it go. The one outward, irreversible
   action must not read like a discard.
+- **Expanding in place is a morph.** A row's open/edit toggle is a synchronous
+  write wrapped in `withViewTransition`; the row (named via `rowTransition(id)`)
+  grows to its new height and its siblings slide, never snap.
+- **In-flight labels shimmer.** The thinking line and a running tool's name use
+  `.text-shimmer`, a sweeping text highlight — never `animate-pulse`.
+- **The agent's presence is ambient.** While a chat turn is live, the chat panel
+  sets `data-agent-busy` on `<html>` and the aurora breathes toward full
+  strength. Nothing else keys off this attribute, and no other surface gets a
+  busy tint.
 - **Route motion:** panel switches run through `withViewTransition` too (the
   sidebar `<Link>` and `select()` in `App.tsx`). `BrowserRouter` is not a data
   router, so react-router's `viewTransition` prop does nothing — drive it from

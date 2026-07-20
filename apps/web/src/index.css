@@ -592,6 +592,94 @@
   animation: stream-word 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* In-flight labels (the thinking line, a running tool's name): a soft
+   foreground highlight sweeps the text while the model works. The gradient is
+   clipped to the glyphs and built from the theme's own text tones, so it reads
+   in both themes; the travel overshoots the box so each sweep rests briefly
+   between passes instead of ping-ponging. Never a blink. */
+.text-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--muted-foreground) 42%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 58%
+  );
+  background-size: 200% 100%;
+  background-position: 200% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-shimmer 2.4s ease-in-out infinite;
+}
+@keyframes text-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* The assistant's avatar: the brand mark in white on a solid accent circle
+   (the fill comes from the component's `bg-accent`). While its turn is live
+   (`.agent-avatar-active`) an accent bloom breathes behind the chip —
+   gradient falloff as the blur, transform/opacity only, the aurora's recipe
+   at chip scale. The chip isolates its stacking so the bloom stays behind
+   the solid face. */
+.agent-avatar {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+/* The shipped brand asset as a mask over currentColor: the mark tracks
+   /logo.svg while rendering in the chip's foreground color. */
+.agent-avatar-mark {
+  background-color: currentColor;
+  -webkit-mask: url("/logo.svg") no-repeat center / contain;
+  mask: url("/logo.svg") no-repeat center / contain;
+}
+.agent-avatar::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  z-index: -1;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklch, var(--accent) 38%, transparent),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+}
+.agent-avatar-active::before {
+  animation: avatar-bloom 2.6s ease-in-out infinite;
+}
+@keyframes avatar-bloom {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+/* The user's bubble face: the update pill's lit accent gradient rather than a
+   flat fill, so the accent reads as light. */
+.bubble-accent {
+  background-image: linear-gradient(
+    135deg,
+    var(--accent-soft),
+    color-mix(in oklch, var(--accent) 88%, black)
+  );
+}
+
 /* Chart marks arrive as a draw, not a paste. Bars grow from the label edge;
    the line plot hides behind a surface-toned cover that slides aside left to
    right. Transform only, so a card full of marks never reflows. */
@@ -737,6 +825,27 @@
      to nothing where the centered content sits, so text never loses contrast. */
   -webkit-mask-image: radial-gradient(110% 110% at 50% 42%, transparent 34%, black 80%);
   mask-image: radial-gradient(110% 110% at 50% 42%, transparent 34%, black 80%);
+  /* The blob tints below are authored for full strength; this base opacity is
+     the resting state, leaving headroom for the busy breathe to rise into.
+     Container-level, so changing it never restarts the pseudo-elements' drift. */
+  opacity: 0.65;
+  transition: opacity 1.2s ease-in-out;
+}
+/* While the agent works (`<html data-agent-busy>`, set by the chat panel) the
+   aurora breathes toward full strength — the canvas itself reads as alive.
+   The cycle starts at the resting opacity, so arming it never jumps, and
+   removal eases back down through the transition above. */
+[data-agent-busy] .aurora {
+  animation: aurora-breathe 3.6s ease-in-out infinite;
+}
+@keyframes aurora-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .aurora::before,
 .aurora::after {
@@ -752,7 +861,7 @@
   left: -10rem;
   background: radial-gradient(
     closest-side,
-    color-mix(in oklch, var(--accent) 9%, transparent),
+    color-mix(in oklch, var(--accent) 14%, transparent),
     transparent 72%
   );
   animation: aurora-a 70s ease-in-out infinite alternate;
@@ -762,7 +871,7 @@
   right: -12rem;
   background: radial-gradient(
     closest-side,
-    color-mix(in oklch, var(--accent-soft) 7%, transparent),
+    color-mix(in oklch, var(--accent-soft) 11%, transparent),
     transparent 72%
   );
   animation: aurora-b 90s ease-in-out infinite alternate;
@@ -771,14 +880,14 @@
 .dark .aurora::before {
   background: radial-gradient(
     closest-side,
-    color-mix(in oklch, var(--accent) 13%, transparent),
+    color-mix(in oklch, var(--accent) 20%, transparent),
     transparent 72%
   );
 }
 .dark .aurora::after {
   background: radial-gradient(
     closest-side,
-    color-mix(in oklch, var(--accent-soft) 10%, transparent),
+    color-mix(in oklch, var(--accent-soft) 15%, transparent),
     transparent 72%
   );
 }
@@ -896,6 +1005,22 @@
   .aurora::before,
   .aurora::after {
     animation: none;
+  }
+  /* Busy still reads, as a steady lift instead of a breathe. */
+  [data-agent-busy] .aurora {
+    animation: none;
+    opacity: 0.85;
+  }
+  /* In-flight labels fall back to plain muted text. */
+  .text-shimmer {
+    animation: none;
+    background: none;
+    color: var(--muted-foreground);
+  }
+  /* The avatar bloom holds a steady lit state instead of breathing. */
+  .agent-avatar-active::before {
+    animation: none;
+    opacity: 0.7;
   }
   /* The sheen parks off-frame; the pill keeps its gradient face and glow. */
   .update-pill::after,

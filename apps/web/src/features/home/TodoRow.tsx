@@ -191,7 +191,7 @@ export function TodoRow({
                 "flex min-w-0 flex-1 items-center gap-2 text-left",
                 expandable && "cursor-pointer",
               )}
-              onClick={() => expandable && setOpen((v) => !v)}
+              onClick={() => expandable && withViewTransition(() => setOpen((v) => !v))}
             >
               {isNew && <NewDot />}
               <span
@@ -238,7 +238,7 @@ export function TodoRow({
               size="icon-xs"
               title={t(editing ? "home.todosEditDone" : "home.todosEdit")}
               aria-label={t(editing ? "home.todosEditDone" : "home.todosEdit")}
-              onClick={() => setEditing((v) => !v)}
+              onClick={() => withViewTransition(() => setEditing((v) => !v))}
             >
               {editing ? <Check /> : <Pencil />}
             </Button>
@@ -254,7 +254,10 @@ export function TodoRow({
               </Button>
             )}
             {expandable && !editing && (
-              <ExpandButton open={open} onToggle={() => setOpen((v) => !v)} />
+              <ExpandButton
+                open={open}
+                onToggle={() => withViewTransition(() => setOpen((v) => !v))}
+              />
             )}
           </div>
         </div>

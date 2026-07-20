@@ -1,17 +1,17 @@
 import type { ChatToolCall, EmailRef } from "@marlen/shared";
 import type { ParseKeys } from "i18next";
-import { Check, Copy, MessagesSquare, Send, X } from "lucide-react";
+import { Check, Copy, Send, X } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { AgentCardView } from "@/components/cards";
 import { Button } from "@/components/ui/button";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
-import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingRow } from "@/components/ui/feedback";
 import { Highlight } from "@/components/ui/highlight";
 import { Markdown } from "@/components/ui/markdown";
 import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
+import { AgentAvatar } from "@/features/chat/AgentAvatar";
 import { RefChips } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
 import { onChatCommand } from "@/features/chat/controller";
@@ -78,6 +78,14 @@ export function ChatPanel({
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [runs.messages]);
+
+  // The canvas answers the agent: while a turn is live, `data-agent-busy` on
+  // <html> makes the ambient aurora breathe (index.css). Set here because this
+  // is the one persistent chat instance, so no route change can strand it.
+  React.useEffect(() => {
+    document.documentElement.toggleAttribute("data-agent-busy", runs.busy);
+    return () => document.documentElement.removeAttribute("data-agent-busy");
+  }, [runs.busy]);
 
   // Keep the host in sync with the open conversation (Chat tab highlights it).
   React.useEffect(() => {
@@ -249,12 +257,17 @@ export function ChatPanel({
           <LoadingRow />
         ) : runs.messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <EmptyState
-              icon={MessagesSquare}
-              size="lg"
-              title={t("chat.emptyTitle")}
-              description={t("chat.emptyBody")}
-            />
+            {/* The assistant's presence, not a generic "nothing here": the
+                avatar sits lit and breathing, waiting to be spoken to. */}
+            <div className="flex flex-col items-center gap-3 text-center">
+              <AgentAvatar size="lg" active />
+              <div className="flex flex-col gap-1.5">
+                <p className="text-base font-semibold tracking-tight">{t("chat.emptyTitle")}</p>
+                <p className="max-w-sm text-pretty text-sm text-muted-foreground">
+                  {t("chat.emptyBody")}
+                </p>
+              </div>
+            </div>
           </div>
         ) : (
           <div
@@ -295,30 +308,40 @@ export function ChatPanel({
                   m.systemPrompt) && (
                   <div
                     className={cn(
-                      "text-sm",
-                      m.role === "user"
-                        ? "max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-accent-foreground"
-                        : "max-w-[85%] rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5 text-foreground",
+                      "flex w-full gap-2",
+                      m.role === "user" ? "justify-end" : "items-end",
                     )}
                   >
-                    {m.systemPrompt ? (
-                      <SystemPromptView prompt={m.systemPrompt} />
-                    ) : m.role === "assistant" ? (
-                      <AssistantSequence message={m} thinkingLabel={t("chat.thinking")} />
-                    ) : (
-                      <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
-                    )}
-                    {m.error && (
-                      <div
-                        role="alert"
-                        className={cn(
-                          "text-destructive",
-                          (m.content || m.toolCalls.length > 0) && "mt-2",
-                        )}
-                      >
-                        {m.error}
-                      </div>
-                    )}
+                    {/* The avatar anchors the bubble's tail corner; its bloom
+                        lights while this turn is still streaming. */}
+                    {m.role === "assistant" && <AgentAvatar active={m.streaming} />}
+                    <div
+                      className={cn(
+                        "text-sm",
+                        m.role === "user"
+                          ? "bubble-accent max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-accent-foreground"
+                          : "min-w-0 max-w-[85%] rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5 text-foreground",
+                      )}
+                    >
+                      {m.systemPrompt ? (
+                        <SystemPromptView prompt={m.systemPrompt} />
+                      ) : m.role === "assistant" ? (
+                        <AssistantSequence message={m} thinkingLabel={t("chat.thinking")} />
+                      ) : (
+                        <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                      )}
+                      {m.error && (
+                        <div
+                          role="alert"
+                          className={cn(
+                            "text-destructive",
+                            (m.content || m.toolCalls.length > 0) && "mt-2",
+                          )}
+                        >
+                          {m.error}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -417,7 +440,7 @@ function ToolActivity({ call }: { call: ChatToolCall }) {
         ) : (
           <Check className="check-pop h-3 w-3 shrink-0 text-success" strokeWidth={3} />
         )}
-        <span className="truncate" title={call.name}>
+        <span className={cn("truncate", !call.done && "text-shimmer")} title={call.name}>
           {call.label ?? call.name}
         </span>
         {call.detail && !call.done && <span className="truncate opacity-70">· {call.detail}</span>}
@@ -525,7 +548,7 @@ function AssistantSequence({
   if (tail) parts.push(<Markdown key="text-tail" content={tail} stream={message.streaming} />);
   if (message.streaming && (message.thinking || parts.length === 0)) {
     parts.push(
-      <div key="thinking" className="animate-pulse leading-relaxed text-muted-foreground">
+      <div key="thinking" className="text-shimmer leading-relaxed">
         {thinkingLabel}
       </div>,
     );

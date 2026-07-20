@@ -12,6 +12,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.3.7",
+    date: "2026-07-20",
+    notes: {
+      en: [
+        "The app is now called Marlen. Your accounts, drafts, and settings carry over exactly as they were.",
+      ],
+      de: [
+        "Die App heißt jetzt Marlen. Ihre Konten, Entwürfe und Einstellungen bleiben genau wie zuvor erhalten.",
+      ],
+    },
+  },
+  {
     version: "0.3.6",
     date: "2026-07-20",
     notes: {

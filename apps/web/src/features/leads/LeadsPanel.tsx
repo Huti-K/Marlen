@@ -21,7 +21,7 @@ import { LEAD_PRIORITIES, LEAD_PRIORITY_TONE, LEAD_STATUS_TONE } from "@/feature
 import { api } from "@/lib/api";
 import { relativeTime } from "@/lib/dates";
 import { toast } from "@/lib/toast";
-import { cn, stagger } from "@/lib/utils";
+import { cn, rowTransition, stagger, withViewTransition } from "@/lib/utils";
 
 /**
  * The leads directory: every prospect the agent (or the user) recorded, as a
@@ -249,7 +249,11 @@ export function LeadsPanel() {
       ) : (
         <div className="flex flex-col gap-2">
           {visible.map((lead, i) => (
-            <div key={lead.id} className="animate-in-up" style={stagger(i)}>
+            <div
+              key={lead.id}
+              className="animate-in-up"
+              style={{ ...stagger(i), ...rowTransition(lead.id) }}
+            >
               <LeadRow
                 lead={lead}
                 automations={automationsByLead.get(lead.id) ?? []}
@@ -324,7 +328,7 @@ function LeadRow({
             "flex min-w-0 flex-1 items-center gap-2 text-left",
             expandable && !editing && "cursor-pointer",
           )}
-          onClick={() => expandable && !editing && setOpen((v) => !v)}
+          onClick={() => expandable && !editing && withViewTransition(() => setOpen((v) => !v))}
         >
           <span className="truncate text-sm font-medium tracking-tight">
             {lead.name || lead.email}
@@ -348,7 +352,7 @@ function LeadRow({
             size="icon-xs"
             title={t("leads.editDone")}
             aria-label={t("leads.editDone")}
-            onClick={() => setEditing(false)}
+            onClick={() => withViewTransition(() => setEditing(false))}
           >
             <Check />
           </Button>
@@ -359,10 +363,12 @@ function LeadRow({
               size="icon-xs"
               title={t("leads.edit")}
               aria-label={t("leads.edit")}
-              onClick={() => {
-                setEditing(true);
-                setOpen(true);
-              }}
+              onClick={() =>
+                withViewTransition(() => {
+                  setEditing(true);
+                  setOpen(true);
+                })
+              }
             >
               <Pencil />
             </Button>
@@ -377,7 +383,9 @@ function LeadRow({
             </Button>
           </HoverActions>
         )}
-        {expandable && !editing && <ExpandButton open={open} onToggle={() => setOpen((v) => !v)} />}
+        {expandable && !editing && (
+          <ExpandButton open={open} onToggle={() => withViewTransition(() => setOpen((v) => !v))} />
+        )}
       </div>
 
       {editing ? (
