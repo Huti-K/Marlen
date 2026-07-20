@@ -1,4 +1,4 @@
-import type { SeenState } from "@trailin/shared";
+import type { SeenState } from "@marlen/shared";
 import { ne } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, schema } from "./index.js";

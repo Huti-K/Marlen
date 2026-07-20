@@ -15,7 +15,7 @@ const MAX_REDIRECTS = 5;
 /** Download cap; a body cut here is reported to the model as incomplete. */
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 30_000;
-const USER_AGENT = "Mozilla/5.0 (compatible; Trailin/1.0)";
+const USER_AGENT = "Mozilla/5.0 (compatible; Marlen/1.0)";
 
 /**
  * Page links stay navigable: html-to-text's default "text [url]" rendering lets

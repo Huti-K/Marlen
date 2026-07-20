@@ -1,5 +1,5 @@
+import { type AgentCard, OUTBOUND_CHANNEL_LABELS } from "@marlen/shared";
 import { useQuery } from "@tanstack/react-query";
-import { type AgentCard, OUTBOUND_CHANNEL_LABELS } from "@trailin/shared";
 import { MessageSquare } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

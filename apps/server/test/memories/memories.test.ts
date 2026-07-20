@@ -21,8 +21,8 @@ interface Entry {
 }
 
 beforeAll(async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "trailin-memories-test-"));
-  process.env.AGENT_HOME_PATH = join(scratch, "Trailin");
+  const scratch = await mkdtemp(join(tmpdir(), "marlen-memories-test-"));
+  process.env.AGENT_HOME_PATH = join(scratch, "Marlen");
   process.env.DATABASE_PATH = join(scratch, "test.db");
   home = await import("../../src/storage/home/agentHome.js");
   await home.ensureAgentHome();

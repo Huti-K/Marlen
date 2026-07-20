@@ -1,4 +1,4 @@
-import { formatFileSize } from "@trailin/shared";
+import { formatFileSize } from "@marlen/shared";
 import {
   Check,
   Download,

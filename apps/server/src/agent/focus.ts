@@ -1,4 +1,4 @@
-import type { AgentCard, EmailRef } from "@trailin/shared";
+import type { AgentCard, EmailRef } from "@marlen/shared";
 import { eq } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, schema } from "../db/index.js";
@@ -67,11 +67,15 @@ export function focusFromCard(card: AgentCard): FocusPatch | null {
     // An attachments listing is an aside, not a focus move. Choices and
     // briefing carry no top-level account (a briefing spans accounts, a choices
     // card is a question) and never move focus; a message draft is
-    // channel-scoped, not email-account-scoped.
+    // channel-scoped, not email-account-scoped. A lead or chart is a standalone
+    // readout, unrelated to the email focus.
     case "attachments":
     case "choices":
     case "briefing":
     case "message_draft":
+    case "delegation":
+    case "lead":
+    case "chart":
       return null;
     default:
       return card satisfies never;

@@ -1,11 +1,11 @@
-import type { PipedreamClient } from "@pipedream/sdk";
 import type {
   ConnectedAccount,
   ConnectTokenResponse,
   PipedreamApp,
   PipedreamStatus,
-} from "@trailin/shared";
-import { EMAIL_APPS, POPULAR_APPS } from "@trailin/shared";
+} from "@marlen/shared";
+import { EMAIL_APPS, POPULAR_APPS } from "@marlen/shared";
+import type { PipedreamClient } from "@pipedream/sdk";
 import { env } from "../../core/env.js";
 import { AppError } from "../../core/errors.js";
 import { createFetchCache } from "../../core/utils/fetchCache.js";

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { SearchResult } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { SearchResult } from "@trailin/shared";
 import { likeContains } from "../db/like.js";
 import {
   safeSource,

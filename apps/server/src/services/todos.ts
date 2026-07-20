@@ -1,4 +1,4 @@
-import type { Todo } from "@trailin/shared";
+import type { Todo } from "@marlen/shared";
 import { eq } from "drizzle-orm";
 import { badRequest } from "../core/errors.js";
 import { moduleLogger } from "../core/logger.js";

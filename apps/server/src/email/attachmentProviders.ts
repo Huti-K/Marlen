@@ -1,4 +1,4 @@
-import type { ConnectedAccount } from "@trailin/shared";
+import type { ConnectedAccount } from "@marlen/shared";
 import { createProviderRegistry } from "./registry.js";
 
 export interface EmailAttachment {

@@ -6,12 +6,21 @@ import {
   type BriefingPriority,
   type BriefingRollup,
   type CardAccount,
+  CHART_KINDS,
+  CHART_TONES,
+  type ChartPoint,
+  type ChartTone,
   type ChoiceOption,
   type ConnectedAccount,
+  DELEGATION_STATUSES,
+  type DelegationStatus,
+  type DelegationTask,
   type DraftPreview,
   type EmailRef,
+  type Lead,
+  type LeadCardData,
   type MessageCard,
-} from "@trailin/shared";
+} from "@marlen/shared";
 import { isNonEmptyString, isRecord } from "../core/utils/util.js";
 import { parseEmailRef } from "./emailRefs.js";
 
@@ -111,20 +120,44 @@ export function coerceDraftPreview(value: unknown): DraftPreview | undefined {
 export interface EmailDraftCardInput {
   account?: CardAccount;
   draft: unknown;
+  /** Raw style-directive values; malformed entries are dropped, never the card. */
+  voiceDirectives?: unknown;
+}
+
+/** Caps mirror voiceLearn's report narrowing, so a stored card can't outgrow what a learn produces. */
+const MAX_VOICE_DIRECTIVES = 6;
+const MAX_VOICE_DIRECTIVE_LENGTH = 300;
+
+function coerceVoiceDirectives(value: unknown): string[] | undefined {
+  const directives = toStringArray(value)
+    ?.map((entry) => entry.trim().slice(0, MAX_VOICE_DIRECTIVE_LENGTH))
+    .filter(Boolean)
+    .slice(0, MAX_VOICE_DIRECTIVES);
+  return directives && directives.length > 0 ? directives : undefined;
 }
 
 /** Builds the "email_draft" card, or undefined when `draft` is missing a required field. */
 export function buildEmailDraftCard(input: EmailDraftCardInput): CardOf<"email_draft"> | undefined {
   const draft = coerceDraftPreview(input.draft);
   if (!draft) return undefined;
-  return { kind: "email_draft", ...(input.account ? { account: input.account } : {}), draft };
+  const voiceDirectives = coerceVoiceDirectives(input.voiceDirectives);
+  return {
+    kind: "email_draft",
+    ...(input.account ? { account: input.account } : {}),
+    draft,
+    ...(voiceDirectives ? { voiceDirectives } : {}),
+  };
 }
 
 function parseEmailDraftCard(
   details: Record<string, unknown>,
   account: CardAccount | undefined,
 ): CardOf<"email_draft"> | undefined {
-  return buildEmailDraftCard({ account, draft: details.draft });
+  return buildEmailDraftCard({
+    account,
+    draft: details.draft,
+    voiceDirectives: details.voiceDirectives,
+  });
 }
 
 // message_draft — a pending outbound message (WhatsApp and future channels),
@@ -392,6 +425,146 @@ function parseBriefingCard(details: Record<string, unknown>): CardOf<"briefing">
   });
 }
 
+// lead — a leads-directory row surfaced in chat. present_lead loads the row
+// from the db (trusted) and hands it to buildLeadCard; the parse arm revalidates
+// a stored card's own fields, since it round-trips as unknown.
+
+const LEAD_STATUSES = ["new", "contacted", "engaged", "qualified", "won", "lost"] as const;
+const LEAD_PRIORITIES = ["A", "B", "C"] as const;
+
+export function buildLeadCard(lead: Lead): CardOf<"lead"> {
+  const data: LeadCardData = {
+    id: lead.id,
+    email: lead.email,
+    status: lead.status,
+    ...(lead.name ? { name: lead.name } : {}),
+    ...(lead.priority === "A" || lead.priority === "B" || lead.priority === "C"
+      ? { priority: lead.priority }
+      : {}),
+    ...(lead.language ? { language: lead.language } : {}),
+    ...(lead.interest ? { interest: lead.interest } : {}),
+    ...(lead.persona ? { persona: lead.persona } : {}),
+    ...(lead.phone ? { phone: lead.phone } : {}),
+    ...(lead.notes ? { notes: lead.notes } : {}),
+    ...(lead.lastInboundAt ? { lastInboundAt: lead.lastInboundAt } : {}),
+    ...(lead.lastOutboundAt ? { lastOutboundAt: lead.lastOutboundAt } : {}),
+  };
+  return { kind: "lead", lead: data };
+}
+
+function parseLeadCard(details: Record<string, unknown>): CardOf<"lead"> | undefined {
+  const lead = details.lead;
+  if (!isRecord(lead)) return undefined;
+  const { id, email, status, name, priority, language, interest, persona, phone, notes } = lead;
+  if (!isNonEmptyString(id) || !isNonEmptyString(email)) return undefined;
+  const data: LeadCardData = {
+    id,
+    email,
+    status:
+      isString(status) && (LEAD_STATUSES as readonly string[]).includes(status)
+        ? (status as LeadCardData["status"])
+        : "new",
+    ...(isNonEmptyString(name) ? { name } : {}),
+    ...(isString(priority) && (LEAD_PRIORITIES as readonly string[]).includes(priority)
+      ? { priority: priority as "A" | "B" | "C" }
+      : {}),
+    ...(isNonEmptyString(language) ? { language } : {}),
+    ...(isNonEmptyString(interest) ? { interest } : {}),
+    ...(isNonEmptyString(persona) ? { persona } : {}),
+    ...(isNonEmptyString(phone) ? { phone } : {}),
+    ...(isNonEmptyString(notes) ? { notes } : {}),
+    ...(isNonEmptyString(lead.lastInboundAt) ? { lastInboundAt: lead.lastInboundAt } : {}),
+    ...(isNonEmptyString(lead.lastOutboundAt) ? { lastOutboundAt: lead.lastOutboundAt } : {}),
+  };
+  return { kind: "lead", lead: data };
+}
+
+// chart — a small bar/line chart of the numbers the model is explaining.
+// present_chart supplies untrusted points; coerceChartPoint validates each and
+// buildChartCard drops the whole card when none survive. The parse arm reuses
+// the same builder on a stored payload.
+
+export function coerceChartPoint(value: unknown): ChartPoint | undefined {
+  if (!isRecord(value)) return undefined;
+  const { label, value: v, tone } = value;
+  if (!isNonEmptyString(label) || typeof v !== "number" || !Number.isFinite(v)) return undefined;
+  return {
+    label,
+    value: v,
+    ...(isString(tone) && (CHART_TONES as readonly string[]).includes(tone)
+      ? { tone: tone as ChartTone }
+      : {}),
+  };
+}
+
+export interface ChartCardInput {
+  chartType: string;
+  title?: string;
+  unit?: string;
+  points: unknown[];
+}
+
+export function buildChartCard(input: ChartCardInput): CardOf<"chart"> | undefined {
+  const points = input.points.map(coerceChartPoint).filter((p): p is ChartPoint => p !== undefined);
+  if (points.length === 0) return undefined;
+  return {
+    kind: "chart",
+    chartType: (CHART_KINDS as readonly string[]).includes(input.chartType)
+      ? (input.chartType as CardOf<"chart">["chartType"])
+      : "bar",
+    ...(input.title ? { title: input.title } : {}),
+    ...(input.unit ? { unit: input.unit } : {}),
+    points,
+  };
+}
+
+function parseChartCard(details: Record<string, unknown>): CardOf<"chart"> | undefined {
+  if (!Array.isArray(details.points)) return undefined;
+  return buildChartCard({
+    chartType: isString(details.chartType) ? details.chartType : "bar",
+    title: isString(details.title) ? details.title : undefined,
+    unit: isString(details.unit) ? details.unit : undefined,
+    points: details.points,
+  });
+}
+
+// delegation — the delegate tool's fan-out, one lane per background worker.
+// The tool builds it from its own trusted task state and re-publishes it on
+// every worker transition, so the card is live progress while the turn runs
+// and a durable record of what the answer drew on afterwards.
+
+export function coerceDelegationTask(value: unknown): DelegationTask | undefined {
+  if (!isRecord(value)) return undefined;
+  const { label, status, elapsedMs } = value;
+  if (!isNonEmptyString(label)) return undefined;
+  return {
+    label,
+    // An unrecognized status degrades to the settled tier rather than dropping
+    // the lane: a stored card never renders a spinner for a finished worker.
+    status:
+      isString(status) && (DELEGATION_STATUSES as readonly string[]).includes(status)
+        ? (status as DelegationStatus)
+        : "done",
+    ...(typeof elapsedMs === "number" && Number.isFinite(elapsedMs)
+      ? { elapsedMs: Math.max(0, Math.round(elapsedMs)) }
+      : {}),
+  };
+}
+
+/** Builds the "delegation" card, or undefined when no task survives coercion. */
+export function buildDelegationCard(tasks: unknown[]): CardOf<"delegation"> | undefined {
+  const coerced = tasks
+    .map(coerceDelegationTask)
+    .filter((t): t is DelegationTask => t !== undefined);
+  if (coerced.length === 0) return undefined;
+  return { kind: "delegation", tasks: coerced };
+}
+
+function parseDelegationCard(details: Record<string, unknown>): CardOf<"delegation"> | undefined {
+  if (!Array.isArray(details.tasks)) return undefined;
+  return buildDelegationCard(details.tasks);
+}
+
 /**
  * One parse arm per kind. The mapped type keeps this record exhaustive: adding
  * a kind to the AgentCard union fails compilation here until it supplies its
@@ -404,6 +577,9 @@ const CARD_PARSERS: {
   ) => CardOf<K> | undefined;
 } = {
   email_draft: parseEmailDraftCard,
+  delegation: (details) => parseDelegationCard(details),
+  lead: (details) => parseLeadCard(details),
+  chart: (details) => parseChartCard(details),
   message_draft: (details) => parseMessageDraftCard(details),
   attachments: parseAttachmentsCard,
   choices: parseChoicesCard,

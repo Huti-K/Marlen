@@ -111,7 +111,7 @@ export function monthName(month: number, locale: string): string {
 }
 
 /** Localized "Mar 5"-style label for a month/day pair. */
-export function monthDayLabel(month: number, day: number, locale: string): string {
+function monthDayLabel(month: number, day: number, locale: string): string {
   const date = new Date(Date.UTC(2023, month - 1, day));
   return new Intl.DateTimeFormat(locale, {
     month: "short",

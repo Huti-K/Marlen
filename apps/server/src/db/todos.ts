@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Todo, TodoStatus } from "@trailin/shared";
+import type { Todo, TodoStatus } from "@marlen/shared";
 import { and, asc, eq } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, schema } from "./index.js";

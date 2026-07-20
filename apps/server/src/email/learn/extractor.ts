@@ -1,4 +1,4 @@
-import type { ConnectedAccount } from "@trailin/shared";
+import type { ConnectedAccount } from "@marlen/shared";
 import { fetchAccountNameMap } from "../../agent/accounts.js";
 import { resolveCheapModel } from "../../agent/llm/registry.js";
 import { mergeStyleDirectives } from "../../agent/voiceLearn.js";
@@ -9,9 +9,11 @@ import {
   listUnlearnedSentDrafts,
   markDraftLearned,
 } from "../../db/draftStore.js";
+import { getAccountSignatures } from "../../db/settings.js";
 import { listAccounts } from "../../integrations/pipedream/connect.js";
 import { collapseWhitespace } from "../../services/search/snippets.js";
 import { getMailReadProvider, type MailReadProvider } from "../read/readProviders.js";
+import { stripHtml } from "../textUtils.js";
 import { extractLessons } from "./extractLLM.js";
 
 const log = moduleLogger("learn-extract");
@@ -74,6 +76,13 @@ export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<E
   const accounts = await (deps.listAccounts ?? listAccounts)();
   const accountById = new Map(accounts.map((account) => [account.id, account]));
 
+  // The account signature is appended outside the agent's snapshot, so it is
+  // dropped from the sent side before diffing — otherwise every signed send
+  // would read as "the user added this block" and pollute the style lessons.
+  const signatureTextById = new Map(
+    (await getAccountSignatures()).map((s) => [s.accountId, collapseWhitespace(stripHtml(s.html))]),
+  );
+
   const pendingByAccount = new Map<string, PendingPair[]>();
   let identical = 0;
 
@@ -99,7 +108,11 @@ export async function runExtractionSweep(deps: ExtractSweepDeps = {}): Promise<E
     if (draftBody === null) continue; // snapshot vanished or has no agent-authored version
 
     const strippedDraft = collapseWhitespace(draftBody);
-    const strippedSent = collapseWhitespace(sentBody);
+    let strippedSent = collapseWhitespace(sentBody);
+    const signatureText = signatureTextById.get(draft.accountId);
+    if (signatureText) {
+      strippedSent = collapseWhitespace(strippedSent.replace(signatureText, " "));
+    }
     if (strippedDraft === strippedSent) {
       await markDraftLearned(draft.accountId, draft.providerDraftId);
       identical++;

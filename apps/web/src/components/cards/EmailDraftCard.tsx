@@ -1,7 +1,7 @@
+import type { AgentCard } from "@marlen/shared";
+import { formatFileSize } from "@marlen/shared";
 import { useQuery } from "@tanstack/react-query";
-import type { AgentCard } from "@trailin/shared";
-import { formatFileSize } from "@trailin/shared";
-import { BookmarkCheck, Paperclip, PenLine } from "lucide-react";
+import { AudioLines, BookmarkCheck, Paperclip, PenLine } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { DraftActionDialog, useDraftActions } from "@/components/draftActions";
@@ -25,7 +25,7 @@ type DraftCardStatus = "open" | "sent" | "discarded" | "gone";
 /** localStorage flag for a card manually collapsed via Keep — cleared by
  *  clicking the collapsed line back open. */
 function keepStorageKey(draftId: string): string {
-  return `trailin-draft-keep:${draftId}`;
+  return `marlen-draft-keep:${draftId}`;
 }
 
 /** The create-draft preview — the card most worth getting right, since it's what actually gets sent. */
@@ -101,16 +101,31 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
       account={account}
       color={color}
       action={
-        // The open-in-provider link stays meaningful for an open or
-        // just-sent draft (the message still exists there); a
-        // discarded/gone one has nothing left to open.
-        webUrl && status !== "discarded" && status !== "gone" ? (
-          <OpenExternalButton
-            url={webUrl}
-            label={t("chat.cards.draft.open")}
-            className="shrink-0"
-          />
-        ) : undefined
+        <>
+          {/* Provenance: the learned style directives this draft was written
+              under; the tooltip lists them, the memory itself lives on the
+              Knowledge page. */}
+          {card.voiceDirectives && card.voiceDirectives.length > 0 && (
+            <Badge
+              variant="muted"
+              className="shrink-0"
+              data-tooltip={card.voiceDirectives.join("\n")}
+            >
+              <AudioLines aria-hidden />
+              {t("chat.cards.draft.voice")}
+            </Badge>
+          )}
+          {/* The open-in-provider link stays meaningful for an open or
+              just-sent draft (the message still exists there); a
+              discarded/gone one has nothing left to open. */}
+          {webUrl && status !== "discarded" && status !== "gone" && (
+            <OpenExternalButton
+              url={webUrl}
+              label={t("chat.cards.draft.open")}
+              className="shrink-0"
+            />
+          )}
+        </>
       }
     >
       {kept ? (

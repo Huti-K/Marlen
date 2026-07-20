@@ -1,3 +1,5 @@
+import type { LeadStatus } from "./index.js";
+
 export interface EmailRef {
   threadId: string;
   accountId: string;
@@ -73,6 +75,19 @@ export interface ChoiceOption {
   ref?: EmailRef;
 }
 
+/** A real enum the UI renders marks from, never a state parsed out of prose. */
+export const DELEGATION_STATUSES = ["pending", "running", "done", "failed"] as const;
+export type DelegationStatus = (typeof DELEGATION_STATUSES)[number];
+
+/** One background worker's lane in a delegation card. */
+export interface DelegationTask {
+  /** Display label derived from the worker's task instruction. */
+  label: string;
+  status: DelegationStatus;
+  /** Worker runtime, present once the task has finished. */
+  elapsedMs?: number;
+}
+
 export interface AttachmentItem {
   accountId: string;
   messageId: string;
@@ -84,8 +99,54 @@ export interface AttachmentItem {
   saveable: boolean;
 }
 
+/** A leads-directory row the agent surfaces in chat: the row's display fields. */
+export interface LeadCardData {
+  id: string;
+  email: string;
+  status: LeadStatus;
+  name?: string;
+  /** Tier A/B/C; omitted when unassessed. */
+  priority?: "A" | "B" | "C";
+  language?: string;
+  interest?: string;
+  persona?: string;
+  phone?: string;
+  notes?: string;
+  lastInboundAt?: string;
+  lastOutboundAt?: string;
+}
+
+export const CHART_KINDS = ["bar", "line"] as const;
+export type ChartKind = (typeof CHART_KINDS)[number];
+
+/** A bar's color by meaning, reusing the app's semantic tones; default is the accent. */
+export const CHART_TONES = ["accent", "success", "warning", "danger", "neutral"] as const;
+export type ChartTone = (typeof CHART_TONES)[number];
+
+export interface ChartPoint {
+  label: string;
+  value: number;
+  tone?: ChartTone;
+}
+
 export type AgentCard =
-  | { kind: "email_draft"; account?: CardAccount; draft: DraftPreview }
+  | {
+      kind: "email_draft";
+      account?: CardAccount;
+      draft: DraftPreview;
+      /** Learned style directives this draft was written under; absent when the account has no learned voice. */
+      voiceDirectives?: string[];
+    }
+  | { kind: "delegation"; tasks: DelegationTask[] }
+  | { kind: "lead"; lead: LeadCardData }
+  | {
+      kind: "chart";
+      chartType: ChartKind;
+      title?: string;
+      /** Unit suffix for values, e.g. "€", "%", "emails". */
+      unit?: string;
+      points: ChartPoint[];
+    }
   | { kind: "message_draft"; channel: string; targetLabel: string; body: string; draftId: string }
   | {
       kind: "attachments";

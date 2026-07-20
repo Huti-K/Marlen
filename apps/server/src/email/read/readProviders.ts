@@ -1,4 +1,4 @@
-import type { ConnectedAccount, EmailThreadMessage } from "@trailin/shared";
+import type { ConnectedAccount, EmailThreadMessage } from "@marlen/shared";
 import { createProviderRegistry } from "../registry.js";
 
 /** Live mail-read drivers, one per app slug; mail is read straight from the provider and never stored locally. */

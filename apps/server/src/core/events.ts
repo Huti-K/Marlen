@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { RunNotification, ServerEvent, ServerEventTopic } from "@trailin/shared";
+import type { RunNotification, ServerEvent, ServerEventTopic } from "@marlen/shared";
 
 /**
  * In-process bus for "data changed" notifications, fanned out to the web UI

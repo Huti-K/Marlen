@@ -15,8 +15,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { Automation, AutomationSuggestion } from "@marlen/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Automation, AutomationSuggestion } from "@trailin/shared";
 import { CalendarClock, Menu, Plus, Sparkles } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -54,7 +54,7 @@ import {
 import { api } from "@/lib/api";
 import { desktopBridge } from "@/lib/desktop";
 import { toast } from "@/lib/toast";
-import { cn, midpoint, rowTransition, withViewTransition } from "@/lib/utils";
+import { cn, midpoint, rowTransition, stagger, withViewTransition } from "@/lib/utils";
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
@@ -505,11 +505,7 @@ export function AutomationsPanel() {
             </div>
           </div>
           {suggestions.map((suggestion, i) => (
-            <div
-              key={suggestion.id}
-              className="animate-in-up"
-              style={{ animationDelay: `${i * 45}ms` }}
-            >
+            <div key={suggestion.id} className="animate-in-up" style={stagger(i)}>
               <SuggestionCard
                 suggestion={suggestion}
                 flash={flashSuggestions}
@@ -552,7 +548,7 @@ export function AutomationsPanel() {
                   key={automation.id}
                   ref={automation.id === focusAutomation ? focusRef : undefined}
                   className="animate-in-up"
-                  style={{ animationDelay: `${i * 45}ms`, ...rowTransition(automation.id) }}
+                  style={{ ...stagger(i), ...rowTransition(automation.id) }}
                 >
                   <SortableAutomationRow id={automation.id}>
                     <AutomationCard

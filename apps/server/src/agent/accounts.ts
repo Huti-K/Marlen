@@ -1,4 +1,4 @@
-import type { ConnectedAccount } from "@trailin/shared";
+import type { ConnectedAccount } from "@marlen/shared";
 import { getAccountPermissions } from "../db/settings.js";
 import { listAccounts } from "../integrations/pipedream/connect.js";
 

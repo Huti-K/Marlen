@@ -1,5 +1,5 @@
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { type BetterSQLite3Database, drizzle } from "drizzle-orm/better-sqlite3";
 import { env } from "../core/env.js";
@@ -44,11 +44,22 @@ function applySchema(sqlite: Database.Database): void {
   }
 }
 
+// Rebrand carry-over: adopt a pre-rename trailin.db (with its WAL sidecars) as
+// the current db, so an existing install keeps its data instead of opening empty.
+function adoptLegacyDbFile(dbPath: string): void {
+  if (existsSync(dbPath)) return;
+  const legacy = join(dirname(dbPath), "trailin.db");
+  for (const suffix of ["", "-wal", "-shm"]) {
+    if (existsSync(legacy + suffix)) renameSync(legacy + suffix, dbPath + suffix);
+  }
+}
+
 function openHandle(): DbHandle {
   if (handle) return handle;
 
   const dbPath = resolve(process.cwd(), env.databasePath);
   mkdirSync(dirname(dbPath), { recursive: true });
+  adoptLegacyDbFile(dbPath);
 
   const sqlite = new Database(dbPath);
   sqlite.pragma("journal_mode = WAL");

@@ -1,4 +1,4 @@
-import type { SearchResult } from "@trailin/shared";
+import type { SearchResult } from "@marlen/shared";
 import { and, desc, eq, ne, or } from "drizzle-orm";
 import { moduleLogger } from "../../core/logger.js";
 import { db, lazyStatement, schema } from "../../db/index.js";

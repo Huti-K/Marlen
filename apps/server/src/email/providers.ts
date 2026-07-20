@@ -1,4 +1,4 @@
-import type { ConnectedAccount, CreatedDraft, EmailDraft } from "@trailin/shared";
+import type { ConnectedAccount, CreatedDraft, EmailDraft } from "@marlen/shared";
 import { createProviderRegistry } from "./registry.js";
 
 /**
@@ -16,14 +16,18 @@ export interface CreateDraftInput {
   cc?: string[];
   bcc?: string[];
   subject: string;
-  /** Plain-text body; providers save it as text/plain. */
+  /** Plain-text body unless bodyFormat is "html"; providers save it accordingly. */
   body: string;
+  /** "html" when body is an HTML fragment (agent prose with the account signature appended). */
+  bodyFormat?: "text" | "html";
   threadId?: string;
   attachments?: DraftAttachment[];
 }
 
 export interface UpdateDraftPatch {
   body?: string;
+  /** Format of `body`; meaningless without it. */
+  bodyFormat?: "text" | "html";
   subject?: string;
 }
 

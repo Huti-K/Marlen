@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { formatFileSize, MEMORY_MAX_COUNT, type MemoryEntry } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import { formatFileSize, MEMORY_MAX_COUNT, type MemoryEntry } from "@trailin/shared";
 import { groupBy } from "../core/utils/util.js";
 import { getLibraryDir, SUPPORTED_FORMATS } from "../storage/library/ingest.js";
 import {

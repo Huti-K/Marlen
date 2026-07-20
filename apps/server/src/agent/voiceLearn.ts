@@ -1,11 +1,12 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { Type } from "@sinclair/typebox";
 import {
   type AccountVoice,
+  type AccountVoiceInfo,
   type ConnectedAccount,
   EMAIL_APPS,
   MEMORY_MAX_LENGTH,
-} from "@trailin/shared";
+} from "@marlen/shared";
+import { Type } from "@sinclair/typebox";
 import { moduleLogger } from "../core/logger.js";
 import { errorMessage } from "../core/utils/util.js";
 import { getAccountVoices, patchAccountVoice } from "../db/settings.js";
@@ -90,7 +91,7 @@ async function recordedLearn<T>(accountId: string, learn: () => Promise<T>): Pro
 }
 
 function systemPromptFor(accountName: string, languageName: string): string {
-  return `You are a writing-style analyst for Trailin, a personal email assistant. Your only job is
+  return `You are a writing-style analyst for Marlen, a personal email assistant. Your only job is
 to study the user's OWN sent messages from the connected account ${accountName} — provided below in
 the prompt — and report back their writing style, nothing else. Study how the user writes: greeting,
 sign-off, tone, length, language(s). Write every directive in ${languageName}. When you are done,
@@ -342,6 +343,34 @@ export async function mergeStyleDirectives(
     }));
   }
   return added;
+}
+
+/**
+ * Learned voices with their style directives resolved from the backing
+ * memories, one bullet-stripped line per directive. Accounts whose memories
+ * yield no lines (deleted, emptied) are omitted: no directives, no voice to
+ * show. Serves the Settings badge and the draft card's provenance.
+ */
+export async function listAccountVoiceInfos(): Promise<AccountVoiceInfo[]> {
+  const [voices, memories] = await Promise.all([getAccountVoices(), listMemories()]);
+  const byId = new Map(memories.map((m) => [m.id, m.content]));
+  return voices.flatMap((voice) => {
+    const ids = voice.styleMemoryIds ?? [];
+    const directives = ids
+      .flatMap((id) => (byId.get(id) ?? "").split("\n"))
+      .map((line) => line.replace(/^[-*]\s*/, "").trim())
+      .filter(Boolean);
+    if (directives.length === 0) return [];
+    const memoryId = ids.find((id) => byId.has(id));
+    return [
+      {
+        accountId: voice.accountId,
+        ...(voice.learnedAt ? { learnedAt: voice.learnedAt } : {}),
+        ...(memoryId ? { memoryId } : {}),
+        directives,
+      },
+    ];
+  });
 }
 
 export const voiceLearnTool: AgentTool = tool({

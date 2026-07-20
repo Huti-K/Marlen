@@ -3,8 +3,8 @@
 # lands in dist/. `publish` doubles as the electron-updater feed baked into
 # the app: releases live on the GitHub repo, and a published release is what
 # running apps offer as an update.
-appId: app.trailin.desktop
-productName: Trailin
+appId: email.marlen.desktop
+productName: Marlen
 directories:
   app: build/app
   output: dist
@@ -40,7 +40,7 @@ files:
 publish:
   provider: github
   owner: Huti-K
-  repo: Trailin
+  repo: Marlen
 
 mac:
   category: public.app-category.productivity

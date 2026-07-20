@@ -1,6 +1,6 @@
+import type { AccountColor, ConnectedAccount } from "@marlen/shared";
+import { EMAIL_APPS } from "@marlen/shared";
 import { useQuery } from "@tanstack/react-query";
-import type { AccountColor, ConnectedAccount } from "@trailin/shared";
-import { EMAIL_APPS } from "@trailin/shared";
 import { api } from "@/lib/api";
 
 /** Whether a Pipedream app slug is one of the supported mail providers. */

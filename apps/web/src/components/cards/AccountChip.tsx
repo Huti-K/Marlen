@@ -1,4 +1,4 @@
-import type { CardAccount } from "@trailin/shared";
+import type { CardAccount } from "@marlen/shared";
 import { AccountDot } from "@/components/ui/account-dot";
 import { AppIcon } from "@/components/ui/app-icon";
 

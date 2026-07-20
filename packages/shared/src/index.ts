@@ -85,6 +85,13 @@ export interface AccountColor {
   hex: string;
 }
 
+/** One account's outgoing-mail signature; appended below every agent-drafted body. */
+export interface AccountSignature {
+  accountId: string;
+  /** Sanitized HTML fragment, as pasted or written in Settings. */
+  html: string;
+}
+
 /** Reading is always allowed; an account with no record is read-only. */
 export interface AccountPermissions {
   accountId: string;
@@ -111,6 +118,15 @@ export interface AccountVoice {
   accountId: string;
   learnedAt?: string;
   styleMemoryIds?: string[];
+}
+
+/** A learned voice with its style directives resolved for display; only accounts with directives are listed. */
+export interface AccountVoiceInfo {
+  accountId: string;
+  learnedAt?: string;
+  /** First style memory backing the voice, for a "view on Knowledge" link. */
+  memoryId?: string;
+  directives: string[];
 }
 
 export interface SearchResult {

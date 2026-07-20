@@ -9,9 +9,9 @@ import { join } from "node:path";
 // would destroy real data. Tests
 // that need their own locations still set these themselves before importing
 // src modules (env.ts reads them at import); these defaults catch the rest.
-const scratch = mkdtempSync(join(tmpdir(), "trailin-test-"));
+const scratch = mkdtempSync(join(tmpdir(), "marlen-test-"));
 process.env.AGENT_HOME_PATH ??= join(scratch, "home");
 process.env.LEGACY_AGENT_HOME_PATH ??= join(scratch, "legacy-home");
-process.env.DATABASE_PATH ??= join(scratch, "trailin.db");
+process.env.DATABASE_PATH ??= join(scratch, "marlen.db");
 process.env.SKILLS_PATH ??= join(scratch, "legacy-skills");
 process.env.LIBRARY_PATH ??= join(scratch, "legacy-library");

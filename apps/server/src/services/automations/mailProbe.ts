@@ -1,4 +1,4 @@
-import type { ConnectedAccount, RunTrigger } from "@trailin/shared";
+import type { ConnectedAccount, RunTrigger } from "@marlen/shared";
 import { and, eq } from "drizzle-orm";
 import { moduleLogger } from "../../core/logger.js";
 import { JobLoop } from "../../core/utils/jobs.js";

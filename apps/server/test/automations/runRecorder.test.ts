@@ -16,8 +16,8 @@ let runRecorder: typeof import("../../src/services/automations/runRecorder.js");
 const prompts: string[] = [];
 
 beforeAll(async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "trailin-runrecorder-test-"));
-  process.env.AGENT_HOME_PATH = join(scratch, "Trailin");
+  const scratch = await mkdtemp(join(tmpdir(), "marlen-runrecorder-test-"));
+  process.env.AGENT_HOME_PATH = join(scratch, "Marlen");
   process.env.DATABASE_PATH = join(scratch, "test.db");
   dbModule = await import("../../src/db/index.js");
   runRecorder = await import("../../src/services/automations/runRecorder.js");

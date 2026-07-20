@@ -1,4 +1,4 @@
-import type { Conversation } from "@trailin/shared";
+import type { Conversation } from "@marlen/shared";
 import { MessagesSquare, Pencil, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

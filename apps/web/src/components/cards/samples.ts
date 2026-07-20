@@ -1,4 +1,4 @@
-import type { AgentCard, CardAccount } from "@trailin/shared";
+import type { AgentCard, CardAccount } from "@marlen/shared";
 
 /**
  * Sample data for the `/showcase` chat command: one turn per kind of thing the
@@ -40,6 +40,11 @@ const PERSONAL_ACCOUNT: CardAccount = {
 const DRAFT_CARD: AgentCard = {
   kind: "email_draft",
   account: WORK_ACCOUNT,
+  voiceDirectives: [
+    "Grüßt Kunden mit 'Hallo Herr/Frau <Nachname>', das Team nur mit 'Hi'.",
+    "Hält Mails kurz, selten mehr als vier Sätze.",
+    "Schließt mit 'Beste Grüße' und der Studio-Signatur.",
+  ],
   draft: {
     draftId: "draft-acme-2291-reply",
     threadId: "thread-acme-2291",
@@ -250,6 +255,78 @@ const CHOICES_CARD: AgentCard = {
   ],
 };
 
+/** A lead the agent surfaced, reusing the Elif Aydın rebranding thread from the
+ *  briefing so the demo reads as one story. */
+const LEAD_CARD: AgentCard = {
+  kind: "lead",
+  lead: {
+    id: "lead-demo-elif",
+    email: "elif.aydin@brandcraft.de",
+    name: "Elif Aydın",
+    status: "engaged",
+    priority: "A",
+    language: "de",
+    interest: "Rebranding für eine Kaffeerösterei, Budget ~12.000 €, Start im September.",
+    persona: "Gründerin, zweite Marke",
+    phone: "+49 151 2345678",
+    lastInboundAt: "2026-07-19T08:40:00.000Z",
+    lastOutboundAt: "2026-07-18T16:10:00.000Z",
+  },
+};
+
+/** Two charts of the demo data: a toned bar breakdown and a plain line trend, so
+ *  both chart shapes render. */
+const CHART_BAR_CARD: AgentCard = {
+  kind: "chart",
+  chartType: "bar",
+  title: "Leads nach Status",
+  points: [
+    { label: "Neu", value: 8, tone: "warning" },
+    { label: "Kontaktiert", value: 5, tone: "neutral" },
+    { label: "Im Gespräch", value: 3, tone: "success" },
+    { label: "Qualifiziert", value: 2, tone: "accent" },
+    { label: "Gewonnen", value: 1, tone: "success" },
+  ],
+};
+
+const CHART_LINE_CARD: AgentCard = {
+  kind: "chart",
+  chartType: "line",
+  title: "Ungelesene E-Mails pro Tag",
+  points: [
+    { label: "Mo", value: 12 },
+    { label: "Di", value: 9 },
+    { label: "Mi", value: 15 },
+    { label: "Do", value: 7 },
+    { label: "Fr", value: 4 },
+  ],
+};
+
+/** The delegate fan-out mid-flight: settled, failed, running and queued lanes,
+ *  so every mark renders — including the live spinner. */
+const DELEGATION_CARD: AgentCard = {
+  kind: "delegation",
+  tasks: [
+    {
+      label: "Acme-Thread zu Rechnung #A-2291 zusammenfassen (Konto Arbeit)",
+      status: "done",
+      elapsedMs: 9_000,
+    },
+    {
+      label: "Zahlungsziele in den Angebots-PDFs der Bibliothek nachschlagen",
+      status: "done",
+      elapsedMs: 14_000,
+    },
+    {
+      label: "Aktuelle Verzugszinsen für Geschäftskunden im Web prüfen",
+      status: "failed",
+      elapsedMs: 6_000,
+    },
+    { label: "Letzte Mails von Elif Aydın zum Rebranding durchsehen", status: "running" },
+    { label: "Offene Entwürfe im Arbeitskonto auflisten", status: "pending" },
+  ],
+};
+
 /** A digest-style reply exercising the markdown vocabulary: heading, bold, mailto, list, table, link. */
 const MARKDOWN_SAMPLE = `### Was heute wichtig ist
 
@@ -276,10 +353,23 @@ export const SHOWCASE_TURNS: ShowcaseTurn[] = [
       { name: "notion-search-pages", isError: true, done: true },
     ],
   },
+  {
+    contentKey: "chat.showcase.toolsDone",
+    toolCalls: [
+      { name: "gmail-find-email", isError: false, done: true },
+      { name: "gmail-get-thread", isError: false, done: true },
+      { name: "outlook-list-drafts", isError: false, done: true },
+      { name: "notion-search-pages", isError: true, done: true },
+      { name: "gmail-create-draft", isError: false, done: true },
+    ],
+  },
   { cards: [DRAFT_CARD] },
+  { cards: [DELEGATION_CARD] },
   { cards: [ATTACHMENTS_CARD] },
   { cards: [BRIEFING_CARD] },
   { cards: [CHOICES_CARD] },
+  { cards: [LEAD_CARD] },
+  { cards: [CHART_BAR_CARD, CHART_LINE_CARD] },
   { content: MARKDOWN_SAMPLE },
   { thinking: true },
 ];

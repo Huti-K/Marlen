@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Todo } from "@trailin/shared";
+import type { Todo } from "@marlen/shared";
 import Database from "better-sqlite3";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -17,8 +17,8 @@ let manage: typeof import("../../src/services/automations/manage.js");
 let app: Awaited<ReturnType<typeof import("../../src/app.js").buildApp>>;
 
 beforeAll(async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "trailin-todos-test-"));
-  process.env.AGENT_HOME_PATH = join(scratch, "Trailin");
+  const scratch = await mkdtemp(join(tmpdir(), "marlen-todos-test-"));
+  process.env.AGENT_HOME_PATH = join(scratch, "Marlen");
   process.env.DATABASE_PATH = join(scratch, "test.db");
   store = await import("../../src/db/todos.js");
   manage = await import("../../src/services/automations/manage.js");

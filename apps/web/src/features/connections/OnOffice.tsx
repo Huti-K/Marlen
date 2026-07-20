@@ -1,4 +1,4 @@
-import type { OnOfficeStatus } from "@trailin/shared";
+import type { OnOfficeStatus } from "@marlen/shared";
 import { Building2, Check, ExternalLink, LogOut, Pencil, Plus, Settings, X } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

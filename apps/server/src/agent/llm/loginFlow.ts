@@ -1,5 +1,5 @@
 import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
-import type { LoginFlowStatus } from "@trailin/shared";
+import type { LoginFlowStatus } from "@marlen/shared";
 import { errorMessage } from "../../core/utils/util.js";
 import { credentialStore } from "./credentialStore.js";
 import { modelRegistry } from "./registry.js";

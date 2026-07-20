@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { Todo } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { Todo } from "@trailin/shared";
 import { createTodo, listTodos } from "../db/todos.js";
 import { applyTodoUpdate, automationExists } from "../services/todos.js";
 import { textResult, tool } from "./toolkit.js";

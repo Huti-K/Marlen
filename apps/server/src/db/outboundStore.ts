@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { OutboundDraft, OutboundStatus } from "@trailin/shared";
+import type { OutboundDraft, OutboundStatus } from "@marlen/shared";
 import { desc, eq } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, schema } from "./index.js";

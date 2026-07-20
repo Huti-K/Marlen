@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { ChoiceOption, ConnectedAccount, EmailRef } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { ChoiceOption, ConnectedAccount, EmailRef } from "@trailin/shared";
 import { isNonEmptyString } from "../core/utils/util.js";
 import { listAccounts } from "../integrations/pipedream/connect.js";
 import { findAccount } from "./accounts.js";

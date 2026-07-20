@@ -1,4 +1,4 @@
-import type { CardAccount } from "@trailin/shared";
+import type { CardAccount } from "@marlen/shared";
 import type { LucideIcon } from "lucide-react";
 import type * as React from "react";
 import { useTranslation } from "react-i18next";

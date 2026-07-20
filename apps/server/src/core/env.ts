@@ -38,7 +38,7 @@ export const env = {
   logFile: optional("LOG_FILE"),
   // Hard deadline for one automation run, so a stuck model/MCP call can't wedge a schedule forever.
   automationRunTimeoutMs: num("AUTOMATION_RUN_TIMEOUT_MS", 300_000),
-  databasePath: optional("DATABASE_PATH") ?? "./data/trailin.db",
+  databasePath: optional("DATABASE_PATH") ?? "./data/marlen.db",
   /**
    * The agent's home folder: memory/, skills/ and knowledge/ live under it as
    * plain browsable files (see home/agentHome.ts). Project-relative by default;

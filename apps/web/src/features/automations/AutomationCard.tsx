@@ -1,4 +1,4 @@
-import type { Automation, AutomationRun } from "@trailin/shared";
+import type { Automation, AutomationRun } from "@marlen/shared";
 import { ChevronDown, ChevronUp, Pin, Play } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

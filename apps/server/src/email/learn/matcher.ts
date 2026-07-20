@@ -1,4 +1,4 @@
-import type { ConnectedAccount } from "@trailin/shared";
+import type { ConnectedAccount } from "@marlen/shared";
 import { resolveCheapModel } from "../../agent/llm/registry.js";
 import { emitServerEvent } from "../../core/events.js";
 import { moduleLogger } from "../../core/logger.js";

@@ -1,4 +1,4 @@
-import type { EmailRef } from "@trailin/shared";
+import type { EmailRef } from "@marlen/shared";
 import * as React from "react";
 
 /** Matches the server's cap on ChatMessage.refs — additional picks past this are ignored. */

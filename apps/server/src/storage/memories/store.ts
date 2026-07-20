@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { MEMORY_MAX_COUNT, MEMORY_MAX_LENGTH, type MemoryEntry } from "@trailin/shared";
+import { MEMORY_MAX_COUNT, MEMORY_MAX_LENGTH, type MemoryEntry } from "@marlen/shared";
 import { emitServerEvent } from "../../core/events.js";
 import { moduleLogger } from "../../core/logger.js";
 import { writeFileAtomic } from "../../core/utils/atomicFile.js";

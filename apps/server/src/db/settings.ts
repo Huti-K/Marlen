@@ -1,10 +1,11 @@
 import type {
   AccountColor,
   AccountPermissions,
+  AccountSignature,
   AccountVoice,
   FileAccessSettings,
-} from "@trailin/shared";
-import { isLanguage, type Language } from "@trailin/shared";
+} from "@marlen/shared";
+import { isLanguage, type Language } from "@marlen/shared";
 import { eq } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, dbGeneration, schema } from "./index.js";
@@ -101,6 +102,13 @@ const accountColorsSetting = jsonArraySetting<AccountColor>(ACCOUNT_COLORS_SETTI
 
 export const getAccountColors = accountColorsSetting.get;
 export const setAccountColors = accountColorsSetting.set;
+
+const ACCOUNT_SIGNATURES_SETTING_KEY = "account.signatures";
+const accountSignaturesSetting = jsonArraySetting<AccountSignature>(ACCOUNT_SIGNATURES_SETTING_KEY);
+
+/** Per-account signature HTML, appended to agent-drafted outgoing email. */
+export const getAccountSignatures = accountSignaturesSetting.get;
+export const setAccountSignatures = accountSignaturesSetting.set;
 
 const ACCOUNT_VOICES_SETTING_KEY = "account.voices";
 const accountVoicesSetting = jsonArraySetting<AccountVoice>(ACCOUNT_VOICES_SETTING_KEY);

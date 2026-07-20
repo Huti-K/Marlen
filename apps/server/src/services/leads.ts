@@ -1,4 +1,4 @@
-import type { Lead } from "@trailin/shared";
+import type { Lead } from "@marlen/shared";
 import { eq } from "drizzle-orm";
 import { badRequest } from "../core/errors.js";
 import { db, schema } from "../db/index.js";

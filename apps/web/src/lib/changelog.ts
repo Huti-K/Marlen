@@ -36,16 +36,16 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-07-20",
     notes: {
       en: [
-        "Trailin starts faster, most of all on the first launch after an update on Windows. The app now ships as a single archive instead of tens of thousands of separate files, which is what the virus scanner spends its time on.",
+        "Marlen starts faster, most of all on the first launch after an update on Windows. The app now ships as a single archive instead of tens of thousands of separate files, which is what the virus scanner spends its time on.",
         "The window opens as soon as the app can answer. Loading the schedule, the document index and the message channels no longer holds up the start.",
         "The startup screen shows a progress bar instead of a spinner, and explains what is happening if the wait gets long.",
-        "The app no longer fetches its typeface from the internet. It starts the same offline or behind a hotel network, and opening Trailin is no longer visible to an outside service.",
+        "The app no longer fetches its typeface from the internet. It starts the same offline or behind a hotel network, and opening Marlen is no longer visible to an outside service.",
       ],
       de: [
-        "Trailin startet schneller, vor allem beim ersten Start nach einem Update unter Windows. Die App wird jetzt als ein einziges Archiv ausgeliefert statt als zehntausende einzelne Dateien, die der Virenscanner alle prüft.",
+        "Marlen startet schneller, vor allem beim ersten Start nach einem Update unter Windows. Die App wird jetzt als ein einziges Archiv ausgeliefert statt als zehntausende einzelne Dateien, die der Virenscanner alle prüft.",
         "Das Fenster öffnet sich, sobald die App antworten kann. Zeitplan, Dokumentenindex und Nachrichtenkanäle halten den Start nicht mehr auf.",
         "Der Startbildschirm zeigt einen Fortschrittsbalken statt eines Kreisels und erklärt, woran es liegt, wenn es länger dauert.",
-        "Die App lädt ihre Schrift nicht mehr aus dem Internet. Sie startet ohne Netz genauso wie im Hotel-WLAN, und der Start von Trailin ist für einen fremden Dienst nicht mehr sichtbar.",
+        "Die App lädt ihre Schrift nicht mehr aus dem Internet. Sie startet ohne Netz genauso wie im Hotel-WLAN, und der Start von Marlen ist für einen fremden Dienst nicht mehr sichtbar.",
       ],
     },
   },
@@ -125,13 +125,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: {
       en: [
         "Release notes now show up in the app after an update, and any time under Settings, About.",
-        "The window opens right away with a spinner while Trailin starts, instead of a silent wait.",
+        "The window opens right away with a spinner while Marlen starts, instead of a silent wait.",
         "A cleaner window on the Mac: the app draws its own chrome edge to edge.",
         "WhatsApp drafts awaiting your approval can be revised in place instead of piling up copies.",
       ],
       de: [
         "Versionshinweise erscheinen nach einem Update direkt in der App und jederzeit unter Einstellungen, Über.",
-        "Das Fenster öffnet sofort mit einem Ladeindikator, während Trailin startet, statt still zu warten.",
+        "Das Fenster öffnet sofort mit einem Ladeindikator, während Marlen startet, statt still zu warten.",
         "Aufgeräumtes Fenster auf dem Mac: Die App zeichnet ihre Oberfläche randlos selbst.",
         "WhatsApp-Entwürfe in der Freigabe lassen sich direkt überarbeiten, statt sich zu stapeln.",
       ],

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { OutboundDraft } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { OutboundDraft } from "@trailin/shared";
 import { badRequest, notFound } from "../core/errors.js";
 import {
   getOutboundDraft,

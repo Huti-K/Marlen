@@ -10,10 +10,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { type DesktopAppInfo, desktopBridge, type UpdateCheckStatus } from "@/lib/desktop";
 import { cn, openExternal } from "@/lib/utils";
 
-const REPO_SLUG = "Huti-K/Trailin";
+const REPO_SLUG = "Huti-K/Marlen";
 const REPO_URL = `https://github.com/${REPO_SLUG}`;
 /** Mirrors appId in apps/desktop/electron-builder.yml. */
-const BUNDLE_ID = "app.trailin.desktop";
+const BUNDLE_ID = "email.marlen.desktop";
 
 /** GitHub's prefilled new-issue form: an empty template with the build details
  *  already filled in, so a report needs only the description. */
@@ -82,7 +82,7 @@ export function AboutPanel() {
         <div className="flex min-w-0 items-center gap-3">
           <img src="/logo.svg" alt="" className="h-9 w-9 shrink-0 object-contain" />
           <div className="min-w-0">
-            <Label className="text-sm font-medium">Trailin</Label>
+            <Label className="text-sm font-medium">Marlen</Label>
             <p className="text-xs text-muted-foreground">{t("settings.about.tagline")}</p>
           </div>
         </div>
@@ -120,7 +120,7 @@ export function AboutPanel() {
           <LinkButton
             onClick={() =>
               openExternal(
-                newIssueUrl(info && `Trailin v${info.version} · ${platform} · ${info.arch}`),
+                newIssueUrl(info && `Marlen v${info.version} · ${platform} · ${info.arch}`),
               )
             }
           >

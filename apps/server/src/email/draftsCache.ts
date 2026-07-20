@@ -1,4 +1,4 @@
-import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import type { ConnectedAccount, EmailDraft } from "@marlen/shared";
 import { emitServerEvent } from "../core/events.js";
 import { moduleLogger } from "../core/logger.js";
 import { createFetchCache } from "../core/utils/fetchCache.js";

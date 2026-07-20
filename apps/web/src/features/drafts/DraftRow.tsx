@@ -1,22 +1,26 @@
-import type { EmailDraft } from "@trailin/shared";
-import { ChevronRight, Mail, Send, Sparkles, Trash2 } from "lucide-react";
+import type { EmailDraft } from "@marlen/shared";
+import { Mail, Send, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { DraftActionDialog, useDraftActions } from "@/components/draftActions";
+import {
+  DraftActionDialog,
+  EditSaveActions,
+  RefineInChatButton,
+  useDraftActions,
+} from "@/components/draftActions";
 import { ThreadHistory } from "@/components/ThreadHistory";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ExpandButton } from "@/components/ui/disclosure-toggle";
 import { LoadingRow } from "@/components/ui/feedback";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Input } from "@/components/ui/input";
-import { ListRow } from "@/components/ui/list-row";
+import { SentRow } from "@/components/ui/list-row";
 import { OpenExternalButton } from "@/components/ui/open-external-button";
 import { Textarea } from "@/components/ui/textarea";
-import { revealChat, sendChatCommand } from "@/features/chat/controller";
 import { NewDot } from "@/features/home/seen";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage, rowTransition, withViewTransition } from "@/lib/utils";
+import { errorMessage, rowTransition, withViewTransition } from "@/lib/utils";
 
 /** One draft — click to read the full content right here, edit its body in place. */
 export function DraftRow({
@@ -153,18 +157,14 @@ export function DraftRow({
   // quiet terminal line instead of live controls.
   if (discarded) return null;
 
-  // Carries the live row's transition name, so sending morphs the row in place
-  // into its terminal line rather than reading as a leave plus an arrival —
-  // the one outward, irreversible action should not look like a discard.
   if (sent) {
     return (
-      <ListRow style={rowTransition(draft.id)}>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{subjectDraft || t("drafts.noSubject")}</p>
-          {draft.to && <p className="truncate text-xs text-muted-foreground">{draft.to}</p>}
-        </div>
-        <Badge variant="success">{t("drafts.sent")}</Badge>
-      </ListRow>
+      <SentRow
+        id={draft.id}
+        title={subjectDraft || t("drafts.noSubject")}
+        subtitle={draft.to}
+        label={t("drafts.sent")}
+      />
     );
   }
 
@@ -202,31 +202,7 @@ export function DraftRow({
         </button>
         <div className="flex shrink-0 items-center gap-1">
           <OpenExternalButton url={draft.webUrl} label={t("drafts.open")} />
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="icon-refine hover:bg-accent/10 hover:text-accent"
-            onClick={(e) => {
-              e.stopPropagation();
-              revealChat();
-              if (draft.conversationId) {
-                // The agent wrote this draft — reopen that conversation, with
-                // its context and draft card, instead of starting cold.
-                sendChatCommand({ kind: "open", conversationId: draft.conversationId });
-              } else {
-                // Draft from outside Trailin (or an unlinked older one): a
-                // fresh chat with a prefilled ask is the best we can do.
-                sendChatCommand({
-                  kind: "prefill",
-                  text: t("drafts.refinePrompt", { subject: draft.subject }),
-                });
-              }
-            }}
-            title={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
-            aria-label={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
-          >
-            <Sparkles />
-          </Button>
+          <RefineInChatButton conversationId={draft.conversationId} subject={draft.subject} />
           <Button
             variant="ghost"
             size="icon-xs"
@@ -251,16 +227,7 @@ export function DraftRow({
           >
             <Trash2 />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-expanded={open}
-            title={t(open ? "common.collapse" : "common.expand")}
-            aria-label={t(open ? "common.collapse" : "common.expand")}
-            onClick={() => void toggle()}
-          >
-            <ChevronRight className={cn("transition-transform", open && "rotate-90")} />
-          </Button>
+          <ExpandButton open={open} onToggle={() => void toggle()} />
         </div>
       </div>
 
@@ -270,7 +237,7 @@ export function DraftRow({
             <LoadingRow className="py-1 text-xs" />
           ) : (
             <div className="flex flex-col gap-2.5 pl-8 pt-1 text-sm">
-              <div className="flex flex-col gap-1 text-[13px] text-muted-foreground">
+              <div className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {draft.to && (
                   <div>
                     <span className="font-medium mr-1.5">{t("drafts.to")}:</span>
@@ -290,7 +257,7 @@ export function DraftRow({
                     onChange={(e) => setSubjectDraft(e.target.value)}
                     placeholder={t("drafts.noSubject")}
                     disabled={actions.busy}
-                    className="h-7 flex-1 px-2 py-0 text-[13px] text-foreground/90"
+                    className="h-7 flex-1 px-2 py-0 text-sm text-foreground/90"
                   />
                 </div>
               </div>
@@ -304,24 +271,12 @@ export function DraftRow({
                   className="field-sizing-content min-h-32 resize-none text-sm leading-relaxed text-foreground/90"
                 />
                 {dirty && (
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={cancelEdit}
-                      disabled={saving || actions.busy}
-                    >
-                      {t("common.cancel")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => void save()}
-                      disabled={actions.busy}
-                      loading={saving}
-                    >
-                      {saving ? t("common.saving") : t("drafts.save")}
-                    </Button>
-                  </div>
+                  <EditSaveActions
+                    saving={saving}
+                    busy={actions.busy}
+                    onCancel={cancelEdit}
+                    onSave={() => void save()}
+                  />
                 )}
               </div>
 

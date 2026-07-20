@@ -3,8 +3,8 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { LibraryDocumentContent, LibrarySearchHit, LibraryStatus } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { LibraryDocumentContent, LibrarySearchHit, LibraryStatus } from "@trailin/shared";
 import { badRequest, notFound } from "../core/errors.js";
 import { moduleLogger } from "../core/logger.js";
 import { contentDisposition, inlineForMime, mimeForExt } from "../core/utils/fileResponse.js";
@@ -207,7 +207,7 @@ export const libraryRoutes: FastifyPluginAsyncTypebox = async (app) => {
   // share a machine.
   app.post("/api/library/reveal", { schema: { body: folderBody } }, async (req) => {
     const absPath = resolveWithin(getAgentHomeDir(), req.body.path.trim() || ".");
-    if (!absPath) throw badRequest("path escapes the Trailin folder");
+    if (!absPath) throw badRequest("path escapes the Marlen folder");
     let stats: Awaited<ReturnType<typeof stat>>;
     try {
       stats = await stat(absPath);

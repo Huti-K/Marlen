@@ -1,4 +1,4 @@
-import { type EmailRef, LANGUAGE_ENGLISH_NAMES, type Language } from "@trailin/shared";
+import { type EmailRef, LANGUAGE_ENGLISH_NAMES, type Language } from "@marlen/shared";
 import { getAccountPermissions, getLanguageSetting, getTimezoneSetting } from "../db/settings.js";
 import { buildAccountsContext } from "./accounts.js";
 import { type SessionCapabilities, sessionCapabilities } from "./capabilities.js";
@@ -87,7 +87,7 @@ export async function buildSystemPrompt(caps?: SessionCapabilities): Promise<str
   // credentials, so the leads/CRM tools and their guidance disappear together.
   if (onOffice.configured) {
     prompt += `
-- Trailin keeps a leads directory (lead_record / lead_list / lead_update): every prospect who
+- Marlen keeps a leads directory (lead_record / lead_list / lead_update): every prospect who
   shows interest — in a property, a viewing, the user's services — belongs in it. When handling
   such an email, record the sender with lead_record (email, name, what they're interested in, the
   message date as inboundAt); it merges by address, so recording twice is safe. As correspondence

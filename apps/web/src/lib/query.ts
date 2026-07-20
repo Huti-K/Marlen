@@ -1,5 +1,5 @@
+import type { ServerEventTopic } from "@marlen/shared";
 import { QueryClient } from "@tanstack/react-query";
-import type { ServerEventTopic } from "@trailin/shared";
 import { subscribeServerEvents } from "@/lib/serverEvents";
 
 /**

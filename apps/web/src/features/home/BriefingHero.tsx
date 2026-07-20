@@ -1,4 +1,4 @@
-import type { AccountColor, AgentCard, RunFeedItem } from "@trailin/shared";
+import type { AccountColor, AgentCard, RunFeedItem } from "@marlen/shared";
 import { ChevronDown, ChevronUp, MessageSquareShare, RefreshCw, Sunrise } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -14,7 +14,7 @@ import { api } from "@/lib/api";
 import { dayTimeLabel, isToday } from "@/lib/dates";
 import type { View } from "@/lib/nav";
 import { openRunInChat } from "@/lib/quickActions";
-import { cn, errorMessage, toggleRowProps } from "@/lib/utils";
+import { errorMessage, toggleRowProps } from "@/lib/utils";
 
 type BriefingCardData = Extract<AgentCard, { kind: "briefing" }>;
 
@@ -180,10 +180,10 @@ export function BriefingHero({
             variant="ghost"
             size="icon-sm"
             aria-label={t("home.briefingRefresh")}
-            disabled={isRefreshing}
+            loading={isRefreshing}
             onClick={(e) => void refresh(e)}
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+            <RefreshCw className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="ghost"

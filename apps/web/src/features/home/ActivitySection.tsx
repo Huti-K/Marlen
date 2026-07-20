@@ -1,4 +1,4 @@
-import type { AccountColor, Automation, RunFeedItem } from "@trailin/shared";
+import type { AccountColor, Automation, RunFeedItem } from "@marlen/shared";
 import { CalendarClock, ChevronDown, ChevronUp, History, Newspaper, RefreshCw } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -209,10 +209,10 @@ function ActivityRunCard({
                 size="icon-sm"
                 aria-label={t("common.retry")}
                 data-tooltip={t("common.retry")}
-                disabled={retrying}
+                loading={retrying}
                 onClick={(e) => void retry(e)}
               >
-                <RefreshCw className={cn("h-3.5 w-3.5", retrying && "animate-spin")} />
+                <RefreshCw className="h-3.5 w-3.5" />
               </Button>
             )}
             <OpenRunInChatButton runId={run.id} onNavigateToChat={() => onNavigate("chat")} />

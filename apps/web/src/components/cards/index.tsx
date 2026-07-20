@@ -1,9 +1,12 @@
-import type { AccountColor, AgentCard, CardAccount } from "@trailin/shared";
+import type { AccountColor, AgentCard, CardAccount } from "@marlen/shared";
 import { accountColor } from "@/lib/accounts";
 import { AttachmentsCard } from "./AttachmentsCard";
 import { BriefingCard } from "./BriefingCard";
+import { ChartCard } from "./ChartCard";
 import { ChoicesCard } from "./ChoicesCard";
+import { DelegationCard } from "./DelegationCard";
 import { EmailDraftCard } from "./EmailDraftCard";
+import { LeadCard } from "./LeadCard";
 import { MessageDraftCard } from "./MessageDraftCard";
 
 /**
@@ -19,6 +22,12 @@ export function AgentCardView({ card, colors }: { card: AgentCard; colors?: Acco
   switch (card.kind) {
     case "email_draft":
       return <EmailDraftCard card={card} color={hex(card.account)} />;
+    case "delegation":
+      return <DelegationCard card={card} />;
+    case "lead":
+      return <LeadCard card={card} />;
+    case "chart":
+      return <ChartCard card={card} />;
     case "message_draft":
       return <MessageDraftCard card={card} />;
     case "attachments":

@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
@@ -45,7 +45,7 @@ let serverProcess: UtilityProcess | null = null;
 let serverPort: number | null = null;
 let quitting = false;
 
-const smokeMode = Boolean(process.env.TRAILIN_DESKTOP_SMOKE);
+const smokeMode = Boolean(process.env.MARLEN_DESKTOP_SMOKE);
 
 /** Report a fatal error and leave; non-zero exit in smoke mode so a scripted run fails instead of hanging on a dialog. */
 function fatal(message: string): void {
@@ -54,7 +54,7 @@ function fatal(message: string): void {
     app.exit(1);
     return;
   }
-  dialog.showErrorBox("Trailin", message);
+  dialog.showErrorBox("Marlen", message);
   app.quit();
 }
 
@@ -87,7 +87,7 @@ function serverEnv(port: number): Record<string, string> {
     NODE_ENV: "production",
     HOST: "127.0.0.1",
     PORT: String(port),
-    DATABASE_PATH: path.join(dataRoot, "data", "trailin.db"),
+    DATABASE_PATH: path.join(dataRoot, "data", "marlen.db"),
     // The agent home lives under userData like the DB, so it survives updates
     // (electron-updater replaces the app bundle, not userData). The old ~/Trailin
     // location migrates in via the default LEGACY_AGENT_HOME_PATH.
@@ -97,7 +97,7 @@ function serverEnv(port: number): Record<string, string> {
     LIBRARY_PATH: path.join(dataRoot, "library"),
     SKILLS_PATH: path.join(dataRoot, "skills"),
     WHATSAPP_AUTH_PATH: path.join(dataRoot, "data", "whatsapp-auth"),
-    LOG_FILE: path.join(dataRoot, "logs", "trailin.log"),
+    LOG_FILE: path.join(dataRoot, "logs", "marlen.log"),
     WEB_DIST_PATH: path.join(__dirname, "web"),
   };
 }
@@ -107,13 +107,13 @@ function startServer(port: number): void {
   const child = utilityProcess.fork(entry, [], {
     env: serverEnv(port),
     stdio: "inherit",
-    serviceName: "trailin-server",
+    serviceName: "marlen-server",
   });
   child.once("exit", (code) => {
     serverProcess = null;
     if (quitting) return;
     fatal(
-      `The local Trailin server stopped unexpectedly (code ${code}). Check the logs and reopen the app.`,
+      `The local Marlen server stopped unexpectedly (code ${code}). Check the logs and reopen the app.`,
     );
   });
   serverProcess = child;
@@ -205,6 +205,25 @@ function focusOrCreateWindow(): void {
   }
 }
 
+// One-shot rebrand carry-over: Electron derives the userData folder from the app
+// name, so renaming Trailin -> Marlen would point a rebranded install at an empty
+// folder. Move the existing data (db, agent home, library, skills) across once,
+// before anything (the single-instance lock included) touches userData. renameSync
+// is atomic on one volume; on failure keep using the legacy folder so nothing is lost.
+function migrateUserData(): void {
+  const current = app.getPath("userData");
+  const legacy = path.join(app.getPath("appData"), "Trailin");
+  if (legacy === current || existsSync(current) || !existsSync(legacy)) return;
+  try {
+    renameSync(legacy, current);
+    log.info(`migrated userData from ${legacy}`);
+  } catch (error) {
+    log.warn(`userData rename failed, using legacy folder: ${String(error)}`);
+    app.setPath("userData", legacy);
+  }
+}
+migrateUserData();
+
 const hasLock = app.requestSingleInstanceLock();
 if (!hasLock) {
   // A second launch would race the first for the port and the SQLite file;
@@ -235,23 +254,23 @@ if (!hasLock) {
 
   // The renderer owns the theme (localStorage; may differ from the OS), so it
   // reports the resolved tone and the native window background follows.
-  ipcMain.on("trailin:set-chrome-theme", (event, theme: unknown) => {
+  ipcMain.on("marlen:set-chrome-theme", (event, theme: unknown) => {
     if (theme !== "light" && theme !== "dark") return;
     BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(
       chromeBackground(theme === "dark"),
     );
   });
 
-  ipcMain.handle("trailin:get-pending-update", () => pendingUpdateVersion());
-  ipcMain.handle("trailin:get-app-info", () => ({
+  ipcMain.handle("marlen:get-pending-update", () => pendingUpdateVersion());
+  ipcMain.handle("marlen:get-app-info", () => ({
     version: app.getVersion(),
     platform: process.platform,
     arch: process.arch,
   }));
-  ipcMain.handle("trailin:check-for-updates", (): Promise<UpdateCheckStatus> | UpdateCheckStatus =>
+  ipcMain.handle("marlen:check-for-updates", (): Promise<UpdateCheckStatus> | UpdateCheckStatus =>
     app.isPackaged ? checkForUpdatesNow() : { status: "unsupported" },
   );
-  ipcMain.on("trailin:install-update", () => installUpdate());
+  ipcMain.on("marlen:install-update", () => installUpdate());
 
   void app.whenReady().then(async () => {
     installAppMenu();
@@ -269,14 +288,14 @@ if (!hasLock) {
       if (app.isPackaged) {
         startUpdater((version) => {
           for (const window of BrowserWindow.getAllWindows()) {
-            window.webContents.send("trailin:update-ready", version);
+            window.webContents.send("marlen:update-ready", version);
           }
         });
       }
     } catch (error) {
       // quitting: the user closed the splash mid-boot — that's a quit, not a failure.
       if (quitting) return;
-      fatal(`Trailin failed to start: ${error instanceof Error ? error.message : String(error)}`);
+      fatal(`Marlen failed to start: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 }

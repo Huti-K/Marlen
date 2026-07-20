@@ -3,13 +3,13 @@
  * Assembles the runnable desktop app in build/app:
  *
  *   main.cjs / preload.cjs  – the Electron shell (src/, bundled)
- *   server/index.mjs        – the @trailin/server bundle: first-party code
- *                             (including @trailin/shared) only — every npm
+ *   server/index.mjs        – the @marlen/server bundle: first-party code
+ *                             (including @marlen/shared) only — every npm
  *                             dependency stays external and is installed as a
  *                             real package, so native modules (better-sqlite3)
  *                             and worker-thread loaders (pino transports) work
  *                             exactly as in a plain Node install
- *   web/                    – the built @trailin/web app, copied verbatim
+ *   web/                    – the built @marlen/web app, copied verbatim
  *   package.json            – generated: exact-pinned runtime deps for
  *                             `npm install` + electron-builder's native rebuild
  *
@@ -29,7 +29,7 @@ const outDir = path.join(desktopRoot, "build", "app");
 const webDist = path.join(repoRoot, "apps", "web", "dist");
 
 if (!existsSync(path.join(webDist, "index.html"))) {
-  console.error("apps/web/dist is missing — run `pnpm --filter @trailin/web build` first.");
+  console.error("apps/web/dist is missing — run `pnpm --filter @marlen/web build` first.");
   process.exit(1);
 }
 
@@ -45,12 +45,12 @@ function installedDependencies(filter) {
   );
 }
 
-const serverDeps = installedDependencies("@trailin/server");
-const desktopDeps = installedDependencies("@trailin/desktop");
+const serverDeps = installedDependencies("@marlen/server");
+const desktopDeps = installedDependencies("@marlen/desktop");
 
-// Not shipped: @trailin/shared is bundled into server/index.mjs, tsx only
+// Not shipped: @marlen/shared is bundled into server/index.mjs, tsx only
 // runs the TypeScript sources in dev.
-const EXCLUDED = new Set(["@trailin/shared", "tsx"]);
+const EXCLUDED = new Set(["@marlen/shared", "tsx"]);
 
 const runtimeDeps = Object.fromEntries(
   [
@@ -68,12 +68,12 @@ mkdirSync(outDir, { recursive: true });
 
 const desktopPkg = JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8"));
 const appPkg = {
-  name: "trailin",
-  productName: "Trailin",
+  name: "marlen",
+  productName: "Marlen",
   version: desktopPkg.version,
   private: true,
   description: "Local-first AI email agent",
-  author: "Trailin",
+  author: "Marlen",
   main: "main.cjs",
   dependencies: runtimeDeps,
 };
@@ -105,7 +105,7 @@ await build({
   platform: "node",
   format: "esm",
   target: "node22",
-  external: Object.keys(serverDeps).filter((name) => name !== "@trailin/shared"),
+  external: Object.keys(serverDeps).filter((name) => name !== "@marlen/shared"),
   logLevel: "warning",
 });
 

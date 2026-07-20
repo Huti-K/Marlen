@@ -1,6 +1,6 @@
 import type { Agent } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, isRetryableAssistantError } from "@earendil-works/pi-ai";
-import type { AgentCard } from "@trailin/shared";
+import type { AgentCard } from "@marlen/shared";
 import { moduleLogger, type TurnLogger } from "../core/logger.js";
 import { parseAgentCard } from "./cards.js";
 
@@ -153,13 +153,17 @@ export async function runPrompt(
       }
       case "tool_execution_update": {
         // partialResult is a tool's streamed AgentToolResult, typed `any` by
-        // pi; extract the first text block defensively.
-        const partial = event.partialResult as { content?: unknown } | undefined;
+        // pi; extract the first text block defensively. A card in the partial
+        // details updates the tool call's card live (same replace-by-toolCallId
+        // as the final card at tool end).
+        const partial = event.partialResult as { content?: unknown; details?: unknown } | undefined;
         const blocks = Array.isArray(partial?.content) ? partial.content : [];
         const first = blocks[0] as { type?: string; text?: unknown } | undefined;
         if (first?.type === "text" && typeof first.text === "string" && first.text) {
           handlers.onToolUpdate?.(event.toolCallId, event.toolName, first.text);
         }
+        const card = parseAgentCard(partial?.details);
+        if (card) handlers.onCard?.(event.toolCallId, card);
         break;
       }
       case "tool_execution_end": {

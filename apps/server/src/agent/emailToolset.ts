@@ -1,7 +1,12 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import {
+  type AccountPermissions,
+  type AccountSignature,
+  type ConnectedAccount,
+  formatFileSize,
+} from "@marlen/shared";
 import type { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { Type } from "@sinclair/typebox";
-import { type AccountPermissions, type ConnectedAccount, formatFileSize } from "@trailin/shared";
 import { moduleLogger } from "../core/logger.js";
 import { errorMessage } from "../core/utils/util.js";
 import {
@@ -11,10 +16,11 @@ import {
   getDraftCardDetails,
   markDraftStatus,
 } from "../db/draftStore.js";
-import { getAccountPermissions } from "../db/settings.js";
+import { getAccountPermissions, getAccountSignatures } from "../db/settings.js";
 import { getAttachmentProvider } from "../email/attachmentProviders.js";
 import { listDraftsCached } from "../email/draftsCache.js";
 import { type DraftAttachment, type DraftProvider, getDraftProvider } from "../email/providers.js";
+import { htmlBodyWithSignature, stripDuplicateSignoff, stripHtml } from "../email/textUtils.js";
 import {
   type ConnectConfig,
   getConnectConfig,
@@ -32,10 +38,41 @@ import { buildListAttachmentsTool, buildSaveAttachmentTool } from "./attachmentT
 import { buildEmailDraftCard, cardNote, toCardAccount } from "./cards.js";
 import { composeDraftBody } from "./composition.js";
 import { textResult, tool } from "./toolkit.js";
+import { listAccountVoiceInfos } from "./voiceLearn.js";
 
 const log = moduleLogger("emailToolset");
 
 const DRAFT_CARD_NOTE = cardNote("the draft", "Don't repeat its subject or body in your reply.");
+
+/**
+ * The account's learned style directives, for the draft card's provenance
+ * chip. Honest by construction: directives live as account-scoped memories
+ * riding the session's system prompt, so a draft from a voiced account was
+ * written under them. Best-effort — a lookup failure never blocks the draft.
+ */
+async function draftVoiceDirectives(accountId: string): Promise<string[] | undefined> {
+  try {
+    const infos = await listAccountVoiceInfos();
+    return infos.find((info) => info.accountId === accountId)?.directives;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The account's configured signature HTML at call time (settings are cached in
+ * memory), or undefined. The signature is appended at the provider boundary
+ * only: snapshots, cards, and the learning loop all keep the clean body.
+ */
+async function accountSignatureHtml(accountId: string): Promise<string | undefined> {
+  const signatures = await getAccountSignatures();
+  return signatures.find((s) => s.accountId === accountId)?.html;
+}
+
+const SIGNATURE_TOOL_NOTE =
+  `\n\nThe user's stored signature for this account is appended below the body ` +
+  `automatically — write the body without a signature block or contact details; ` +
+  `a short closing phrase is fine.`;
 
 /** Tool names satisfy the LLM providers' [a-zA-Z0-9_-]{1,128} constraint. */
 function sanitizeToolName(name: string): string {
@@ -168,7 +205,7 @@ function buildAccountTools(
 
   for (const mcpTool of mcpTools) {
     // Pipedream's create-draft is gated behind a paid workspace on some apps
-    // (Gmail needs File Stash); Trailin substitutes its own proxy-based tool
+    // (Gmail needs File Stash); Marlen substitutes its own proxy-based tool
     // under the same slug for every app with a DraftProvider, so skip
     // Pipedream's version wherever ours takes over.
     if (getDraftProvider(account.app) && mcpTool.name === `${account.app}-create-draft`) continue;
@@ -228,7 +265,7 @@ function buildAccountTools(
 }
 
 /**
- * Trailin's own create-draft tool for one connected account, generalized over
+ * Marlen's own create-draft tool for one connected account, generalized over
  * any app with a DraftProvider. Drafts never send anything, so it's allowed
  * even on a read-only account.
  */
@@ -237,6 +274,7 @@ function buildDraftTool(
   name: string,
   provider: DraftProvider,
   sendArmed: boolean,
+  hasSignature: boolean,
 ): AgentTool {
   return tool({
     name,
@@ -249,7 +287,8 @@ function buildDraftTool(
       `AI-sounding phrasing; the tool result reports the final saved text when it was adjusted. ` +
       `Documents from the user's library can be ` +
       `attached as files via attachLibraryDocumentIds.\n\n` +
-      `Acts as the connected account: ${account.name}.`,
+      `Acts as the connected account: ${account.name}.` +
+      (hasSignature ? SIGNATURE_TOOL_NOTE : ""),
     params: {
       to: Type.Array(Type.String(), { description: "Recipient email addresses." }),
       cc: Type.Optional(Type.Array(Type.String(), { description: "Cc addresses." })),
@@ -321,11 +360,18 @@ function buildDraftTool(
         body: input.body,
         subject: input.subject,
       });
-      const finalBody = composed.body;
+      // A sign-off the signature already carries is dropped from the body
+      // itself (not just the provider copy), so the snapshot, the card, and
+      // the learning loop all see the draft as it truly ends.
+      const signatureHtml = await accountSignatureHtml(account.id);
+      const finalBody = signatureHtml
+        ? stripDuplicateSignoff(composed.body, stripHtml(signatureHtml))
+        : composed.body;
 
       const result = await provider.createDraft(account, {
         ...input,
-        body: finalBody,
+        body: signatureHtml ? htmlBodyWithSignature(finalBody, signatureHtml) : finalBody,
+        ...(signatureHtml ? { bodyFormat: "html" as const } : {}),
         ...(attachments.length > 0 ? { attachments } : {}),
       });
 
@@ -391,6 +437,7 @@ function buildDraftTool(
 
       const card = buildEmailDraftCard({
         account: toCardAccount(account),
+        voiceDirectives: await draftVoiceDirectives(account.id),
         draft: {
           draftId: result.draftId,
           threadId: result.threadId,
@@ -426,6 +473,7 @@ function buildUpdateDraftTool(
   account: ConnectedAccount,
   name: string,
   updateDraft: NonNullable<DraftProvider["updateDraft"]>,
+  hasSignature: boolean,
 ): AgentTool {
   return tool({
     name,
@@ -437,7 +485,8 @@ function buildUpdateDraftTool(
       `draft for a refinement. Nothing is sent. The new body goes through the same humanizer ` +
       `pass as draft creation. Recipients cannot be changed; if the user ` +
       `wants different recipients, discard and create a new draft instead.\n\n` +
-      `Acts as the connected account: ${account.name}.`,
+      `Acts as the connected account: ${account.name}.` +
+      (hasSignature ? SIGNATURE_TOOL_NOTE : ""),
     params: {
       draftId: Type.String({ description: "Id of the existing draft to rewrite." }),
       body: Type.Optional(Type.String({ description: "The full replacement plain-text body." })),
@@ -451,13 +500,22 @@ function buildUpdateDraftTool(
       }
 
       let finalBody = body;
+      const signatureHtml = body !== undefined ? await accountSignatureHtml(account.id) : undefined;
       if (body !== undefined) {
         const composed = await composeDraftBody({ body, subject });
-        finalBody = composed.body;
+        // Same as create: a sign-off the signature already carries leaves the
+        // body before it is saved anywhere.
+        finalBody = signatureHtml
+          ? stripDuplicateSignoff(composed.body, stripHtml(signatureHtml))
+          : composed.body;
       }
-
       await updateDraft(account, draftId, {
-        ...(finalBody !== undefined ? { body: finalBody } : {}),
+        ...(finalBody !== undefined
+          ? {
+              body: signatureHtml ? htmlBodyWithSignature(finalBody, signatureHtml) : finalBody,
+              ...(signatureHtml ? { bodyFormat: "html" as const } : {}),
+            }
+          : {}),
         ...(subject !== undefined ? { subject } : {}),
       });
 
@@ -477,6 +535,7 @@ function buildUpdateDraftTool(
       if (details) {
         const card = buildEmailDraftCard({
           account: toCardAccount(account),
+          voiceDirectives: await draftVoiceDirectives(account.id),
           draft: {
             draftId,
             ...(details.threadId ? { threadId: details.threadId } : {}),
@@ -538,8 +597,9 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
 
   let accounts: ConnectedAccount[];
   let permissions: AccountPermissions[];
+  let signatures: AccountSignature[];
   try {
-    [accounts, , permissions] = await Promise.all([
+    [accounts, , permissions, signatures] = await Promise.all([
       listAccounts(),
       // Warm/validate the token cache before opening N MCP sessions: bad
       // credentials fail here once instead of as N identical connect failures.
@@ -547,6 +607,7 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
       // rather than reusing this snapshot.
       getPipedreamAccessToken(),
       getAccountPermissions(),
+      getAccountSignatures(),
     ]);
   } catch (error) {
     log.warn({ err: error }, "listing Pipedream accounts failed");
@@ -565,6 +626,10 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
   // autosend a create-draft even from an unattended run, gated by the tool's
   // explicit send=true. providerWrites only governs the MCP verb tools.
   const sendArmedById = new Map(permissions.map((p) => [p.accountId, p.send] as const));
+
+  // Signature presence only steers the tool descriptions; the html itself is
+  // re-read at call time. Signature edits reset sessions, keeping these fresh.
+  const signedIds = new Set(signatures.map((s) => s.accountId));
 
   const perApp = new Map<string, number>();
   for (const account of accounts) perApp.set(account.app, (perApp.get(account.app) ?? 0) + 1);
@@ -643,7 +708,13 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
       const name = claimLocalToolName(`${account.app}-create-draft`, suffix, account, seenNames);
       if (name)
         tools.push(
-          buildDraftTool(account, name, draftProvider, sendArmedById.get(account.id) ?? false),
+          buildDraftTool(
+            account,
+            name,
+            draftProvider,
+            sendArmedById.get(account.id) ?? false,
+            signedIds.has(account.id),
+          ),
         );
       if (draftProvider.updateDraft) {
         // Same footing as create-draft: rewrites an unsent draft, never
@@ -655,7 +726,14 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
           seenNames,
         );
         if (updateName)
-          tools.push(buildUpdateDraftTool(account, updateName, draftProvider.updateDraft));
+          tools.push(
+            buildUpdateDraftTool(
+              account,
+              updateName,
+              draftProvider.updateDraft,
+              signedIds.has(account.id),
+            ),
+          );
       }
     }
     const attachmentProvider = getAttachmentProvider(account.app);

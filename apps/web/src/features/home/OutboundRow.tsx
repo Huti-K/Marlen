@@ -1,18 +1,22 @@
-import { OUTBOUND_CHANNEL_LABELS, type OutboundDraft } from "@trailin/shared";
-import { ChevronRight, MessageSquare, Send, Sparkles, Trash2 } from "lucide-react";
+import { OUTBOUND_CHANNEL_LABELS, type OutboundDraft } from "@marlen/shared";
+import { MessageSquare, Send, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { DraftActionDialog, useDraftActions } from "@/components/draftActions";
-import { Badge } from "@/components/ui/badge";
+import {
+  DraftActionDialog,
+  EditSaveActions,
+  RefineInChatButton,
+  useDraftActions,
+} from "@/components/draftActions";
 import { Button } from "@/components/ui/button";
+import { ExpandButton } from "@/components/ui/disclosure-toggle";
 import { IconChip } from "@/components/ui/icon-chip";
-import { ListRow } from "@/components/ui/list-row";
+import { SentRow } from "@/components/ui/list-row";
 import { Textarea } from "@/components/ui/textarea";
-import { revealChat, sendChatCommand } from "@/features/chat/controller";
 import { NewDot } from "@/features/home/seen";
 import { api, isNotFound } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage, rowTransition, withViewTransition } from "@/lib/utils";
+import { errorMessage, rowTransition, withViewTransition } from "@/lib/utils";
 
 /**
  * One outbound message awaiting approval (WhatsApp today) in the attention
@@ -104,18 +108,14 @@ export function OutboundRow({
 
   if (discarded) return null;
 
-  // Carries the live row's transition name, so sending morphs the row in place
-  // into its terminal line rather than reading as a leave plus an arrival —
-  // the one outward, irreversible action should not look like a discard.
   if (sent) {
     return (
-      <ListRow style={rowTransition(draft.id)}>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{title}</p>
-          <p className="truncate text-xs text-muted-foreground">{channelLabel}</p>
-        </div>
-        <Badge variant="success">{t("chat.cards.messageDraft.sentLabel")}</Badge>
-      </ListRow>
+      <SentRow
+        id={draft.id}
+        title={title}
+        subtitle={channelLabel}
+        label={t("chat.cards.messageDraft.sentLabel")}
+      />
     );
   }
 
@@ -142,31 +142,7 @@ export function OutboundRow({
           </div>
         </button>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="icon-refine hover:bg-accent/10 hover:text-accent"
-            onClick={(e) => {
-              e.stopPropagation();
-              revealChat();
-              if (draft.conversationId) {
-                // The agent wrote this draft — reopen that conversation, with
-                // its context and draft card, instead of starting cold.
-                sendChatCommand({ kind: "open", conversationId: draft.conversationId });
-              } else {
-                // Drafted before the conversation link existed: a fresh chat
-                // with a prefilled ask is the best we can do.
-                sendChatCommand({
-                  kind: "prefill",
-                  text: t("drafts.refinePrompt", { subject: title }),
-                });
-              }
-            }}
-            title={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
-            aria-label={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
-          >
-            <Sparkles />
-          </Button>
+          <RefineInChatButton conversationId={draft.conversationId} subject={title} />
           <Button
             variant="ghost"
             size="icon-xs"
@@ -191,16 +167,7 @@ export function OutboundRow({
           >
             <Trash2 />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-expanded={open}
-            title={t(open ? "common.collapse" : "common.expand")}
-            aria-label={t(open ? "common.collapse" : "common.expand")}
-            onClick={() => setOpen((v) => !v)}
-          >
-            <ChevronRight className={cn("transition-transform", open && "rotate-90")} />
-          </Button>
+          <ExpandButton open={open} onToggle={() => setOpen((v) => !v)} />
         </div>
       </div>
 
@@ -214,24 +181,12 @@ export function OutboundRow({
               className="field-sizing-content min-h-[4.5rem] resize-none text-sm leading-relaxed text-foreground/90"
             />
             {dirty && (
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setBodyDraft(savedBody)}
-                  disabled={saving || actions.busy}
-                >
-                  {t("common.cancel")}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => void save()}
-                  disabled={actions.busy}
-                  loading={saving}
-                >
-                  {saving ? t("common.saving") : t("drafts.save")}
-                </Button>
-              </div>
+              <EditSaveActions
+                saving={saving}
+                busy={actions.busy}
+                onCancel={() => setBodyDraft(savedBody)}
+                onSave={() => void save()}
+              />
             )}
           </div>
         </div>

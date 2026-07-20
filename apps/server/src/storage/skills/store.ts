@@ -1,6 +1,6 @@
 import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { SKILL_MAX_LENGTH, type Skill } from "@trailin/shared";
+import { SKILL_MAX_LENGTH, type Skill } from "@marlen/shared";
 import { emitServerEvent } from "../../core/events.js";
 import { writeFileAtomic } from "../../core/utils/atomicFile.js";
 import { slugify } from "../../core/utils/util.js";

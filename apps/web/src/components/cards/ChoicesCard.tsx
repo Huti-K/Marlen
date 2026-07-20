@@ -1,4 +1,4 @@
-import type { AccountColor, AgentCard, ChoiceOption } from "@trailin/shared";
+import type { AccountColor, AgentCard, ChoiceOption } from "@marlen/shared";
 import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";

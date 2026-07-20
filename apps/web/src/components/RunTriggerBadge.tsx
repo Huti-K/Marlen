@@ -1,4 +1,4 @@
-import type { RunTrigger } from "@trailin/shared";
+import type { RunTrigger } from "@marlen/shared";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { dateTimeLabel } from "@/lib/dates";

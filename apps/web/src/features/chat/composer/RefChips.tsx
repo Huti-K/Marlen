@@ -1,11 +1,9 @@
-import type { AccountColor, EmailRef } from "@trailin/shared";
+import type { AccountColor, EmailRef } from "@marlen/shared";
 import { X } from "lucide-react";
-import type * as React from "react";
 import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";
 import { IconButton } from "@/components/ui/icon-button";
 import { accountColor } from "@/lib/accounts";
-import { cn } from "@/lib/utils";
 
 /** Best available label for a pinned email: subject, then sender, then the bare thread id — always something. */
 function refLabel(ref: EmailRef): string {
@@ -16,59 +14,38 @@ function refKey(ref: EmailRef): string {
   return `${ref.threadId}:${ref.messageId ?? ""}`;
 }
 
-/** The chip itself — dot + truncated label; tone and the optional trailing affordance vary per variant. */
-function RefChip({
-  item,
-  colors,
-  toneClass,
-  trailing,
-}: {
-  item: EmailRef;
-  colors?: AccountColor[];
-  toneClass: string;
-  trailing?: React.ReactNode;
-}) {
-  return (
-    <span
-      className={cn("flex max-w-56 items-center gap-1.5 rounded-md px-2 py-1 text-xs", toneClass)}
-    >
-      <AccountDot color={accountColor(colors, item.accountId)} className="shrink-0" />
-      <span className="min-w-0 truncate">{refLabel(item)}</span>
-      {trailing}
-    </span>
-  );
-}
-
 /**
- * Removable chips for the composer's pinned emails (an @-mention pick or a
- * card's "add to chat" action) — a recessed tonal fill on the composer's own
- * `bg-surface-2`, per DESIGN.md's rule that fills recess against what they
- * sit on (`bg-secondary` here routes through the derived fill variables).
+ * Chips for pinned emails (an @-mention pick or a card's "add to chat" action).
+ * A recessed tonal fill on the composer's own `bg-surface-2`, per DESIGN.md's
+ * rule that fills recess against what they sit on (`bg-secondary` routes
+ * through the derived fill variables). A sent message renders the same chips
+ * without `onRemove`, on the canvas beside the bubble rather than inside the
+ * accent fill, so a selected email reads the same before and after sending.
  */
 export function RefChips({
   refs,
   colors,
   onRemove,
-  className,
 }: {
   refs: EmailRef[];
   colors?: AccountColor[];
-  onRemove: (ref: EmailRef) => void;
-  className?: string;
+  /** Omitted for a sent message, where the pick is no longer editable. */
+  onRemove?: (ref: EmailRef) => void;
 }) {
   const { t } = useTranslation();
   if (refs.length === 0) return null;
   return (
-    <div className={cn("flex flex-wrap gap-1.5", className)}>
+    <div className="flex flex-wrap gap-1.5">
       {refs.map((ref) => {
         const label = refLabel(ref);
         return (
-          <RefChip
+          <span
             key={refKey(ref)}
-            item={ref}
-            colors={colors}
-            toneClass="bg-secondary text-secondary-foreground"
-            trailing={
+            className="flex max-w-56 items-center gap-1.5 rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground"
+          >
+            <AccountDot color={accountColor(colors, ref.accountId)} className="shrink-0" />
+            <span className="min-w-0 truncate">{label}</span>
+            {onRemove && (
               <IconButton
                 onClick={() => onRemove(ref)}
                 aria-label={t("chat.refs.remove", { label })}
@@ -76,40 +53,10 @@ export function RefChips({
               >
                 <X className="h-3 w-3" />
               </IconButton>
-            }
-          />
+            )}
+          </span>
         );
       })}
-    </div>
-  );
-}
-
-/**
- * Read-only pinned-email chips for a sent message — same shape as `RefChips`
- * minus the remove action. Rendered on the canvas beside the bubble (not inside
- * the accent fill), so it keeps the same neutral `bg-secondary` tone the chip
- * had in the composer: a selected email reads the same before and after sending.
- */
-export function RefChipsReadOnly({
-  refs,
-  colors,
-  className,
-}: {
-  refs: EmailRef[];
-  colors?: AccountColor[];
-  className?: string;
-}) {
-  if (refs.length === 0) return null;
-  return (
-    <div className={cn("flex flex-wrap gap-1.5", className)}>
-      {refs.map((ref) => (
-        <RefChip
-          key={refKey(ref)}
-          item={ref}
-          colors={colors}
-          toneClass="bg-secondary text-secondary-foreground"
-        />
-      ))}
     </div>
   );
 }

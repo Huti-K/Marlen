@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ConnectedAccount, EmailDraft } from "@trailin/shared";
+import type { ConnectedAccount, EmailDraft } from "@marlen/shared";
 import { moduleLogger } from "../../core/logger.js";
 import { contentDisposition } from "../../core/utils/fileResponse.js";
 import { mapWithConcurrency } from "../../core/utils/jobs.js";
@@ -129,9 +129,9 @@ function assertSafeHeaderValue(header: string, value: string): void {
   }
 }
 
-function textPartLines(body: string): string[] {
+function bodyPartLines(body: string, format: "text" | "html" = "text"): string[] {
   return [
-    "Content-Type: text/plain; charset=UTF-8",
+    `Content-Type: text/${format === "html" ? "html" : "plain"}; charset=UTF-8`,
     "Content-Transfer-Encoding: base64",
     "",
     Buffer.from(body, "utf8").toString("base64"),
@@ -166,6 +166,7 @@ function buildRawMessage(input: {
   bcc?: string;
   subject: string;
   body: string;
+  bodyFormat?: "text" | "html";
   extraHeaders?: string[];
   attachments?: DraftAttachment[];
 }): string {
@@ -184,18 +185,22 @@ function buildRawMessage(input: {
 
   const lines =
     input.attachments && input.attachments.length > 0
-      ? [...headerLines, ...multipartMixedLines(input.body, input.attachments)]
-      : [...headerLines, ...textPartLines(input.body)];
+      ? [...headerLines, ...multipartMixedLines(input.body, input.bodyFormat, input.attachments)]
+      : [...headerLines, ...bodyPartLines(input.body, input.bodyFormat)];
   return Buffer.from(lines.join("\r\n"), "utf8").toString("base64url");
 }
 
-function multipartMixedLines(body: string, attachments: DraftAttachment[]): string[] {
+function multipartMixedLines(
+  body: string,
+  bodyFormat: "text" | "html" | undefined,
+  attachments: DraftAttachment[],
+): string[] {
   const boundary = `part-${randomUUID()}`;
   return [
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "",
     `--${boundary}`,
-    ...textPartLines(body),
+    ...bodyPartLines(body, bodyFormat),
     ...attachments.flatMap((attachment) => [`--${boundary}`, ...attachmentPartLines(attachment)]),
     `--${boundary}--`,
   ];
@@ -253,6 +258,7 @@ async function createGmailDraft(
     ...(input.bcc?.length ? { bcc: input.bcc.join(", ") } : {}),
     subject: input.subject,
     body: input.body,
+    ...(input.bodyFormat ? { bodyFormat: input.bodyFormat } : {}),
     ...(input.attachments?.length ? { attachments: input.attachments } : {}),
     ...(threadingHeaders
       ? {
@@ -366,9 +372,10 @@ async function fetchGmailDraftFull(
 /**
  * Save body/subject as passed. Everything the caller doesn't override is
  * fetched from the current draft first, since Gmail's drafts.update replaces
- * the whole message rather than patching it. The rebuilt message is always
- * text/plain, so saving an edit to an HTML draft composed in Gmail's web UI
- * converts it to plain text: lossy for markup, not for anything shown here.
+ * the whole message rather than patching it. Without an explicit html
+ * bodyFormat the rebuilt message is text/plain, so saving an edit to an HTML
+ * draft composed in Gmail's web UI converts it to plain text: lossy for
+ * markup, not for anything shown here.
  */
 async function updateGmailDraft(
   account: ConnectedAccount,
@@ -382,6 +389,9 @@ async function updateGmailDraft(
     ...(current.bcc ? { bcc: current.bcc } : {}),
     subject: input.subject ?? current.subject,
     body: input.body ?? current.body,
+    // The fetched fallback body is stripped to plain text, so the format only
+    // ever applies to a caller-supplied body.
+    ...(input.body !== undefined && input.bodyFormat ? { bodyFormat: input.bodyFormat } : {}),
     extraHeaders: current.extraHeaders,
     ...(current.attachments.length > 0 ? { attachments: current.attachments } : {}),
   });

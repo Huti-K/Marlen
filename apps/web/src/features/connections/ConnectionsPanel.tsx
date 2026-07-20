@@ -1,4 +1,4 @@
-import type { PipedreamStatus } from "@trailin/shared";
+import type { PipedreamStatus } from "@marlen/shared";
 import { Check, ExternalLink, Pencil, X } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";

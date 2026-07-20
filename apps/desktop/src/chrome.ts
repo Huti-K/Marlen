@@ -45,11 +45,11 @@ export function splashUrl(): string {
     ],
     [
       60_000,
-      "Das dauert ungewöhnlich lange. Trailin protokolliert den Start in logs/trailin.log im Datenordner.",
+      "Das dauert ungewöhnlich lange. Marlen protokolliert den Start in logs/marlen.log im Datenordner.",
     ],
   ] as const;
   const html =
-    `<!doctype html><title>Trailin</title><style>` +
+    `<!doctype html><title>Marlen</title><style>` +
     `html,body{height:100%;margin:0;background:${chromeBackground(dark)}}` +
     `body{display:flex;align-items:center;justify-content:center;color:${fill};` +
     `font:400 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}` +
@@ -58,7 +58,7 @@ export function splashUrl(): string {
     `#f{height:100%;width:0;background:${fill}}` +
     `p{margin:14px 0 0}#n{margin-top:6px;font-size:12px;opacity:.65}` +
     `</style><main><div id="t"><div id="f"></div></div>` +
-    `<p>Trailin wird gestartet</p><p id="n"></p></main><script>` +
+    `<p>Marlen wird gestartet</p><p id="n"></p></main><script>` +
     `var p=0,s=Date.now(),n=${JSON.stringify(notes)};` +
     `setInterval(function(){` +
     `p+=(92-p)*0.06;document.getElementById("f").style.width=p.toFixed(1)+"%";` +

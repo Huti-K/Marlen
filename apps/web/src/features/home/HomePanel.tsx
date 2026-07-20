@@ -1,8 +1,9 @@
+import type { MissedAutomation, RunFeedItem } from "@marlen/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { MissedAutomation, RunFeedItem } from "@trailin/shared";
 import { CheckCheck } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ErrorBanner, Notice } from "@/components/ui/feedback";
 import { ActivitySection } from "@/features/home/ActivitySection";
@@ -19,8 +20,6 @@ import {
 import { useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import type { View } from "@/lib/nav";
-import { takePendingDraftFocus } from "@/lib/paletteFocus";
-import { subscribeTrailin } from "@/lib/trailinEvents";
 import { errorMessage } from "@/lib/utils";
 
 /**
@@ -86,19 +85,21 @@ export function HomePanel({
   // waiting for the server event's debounce.
   const refreshDrafts = () => void queryClient.invalidateQueries({ queryKey: ["drafts"] });
 
-  // The search palette navigates here, then dispatches this with the hit's
-  // ids — but only once this effect's listener is attached, which loses the
-  // race when Home wasn't already mounted. Catch that case by also reading
-  // the same payload stashed just before navigate (see lib/paletteFocus.ts).
+  // The palette lands here with ?draft=<accountId>:<draftId>. Consumed once —
+  // the param is cleared — so back/forward doesn't replay the focus.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const draftParam = searchParams.get("draft");
   React.useEffect(() => {
-    const pending = takePendingDraftFocus();
-    if (pending) setFocusDraft(pending);
-    return subscribeTrailin("open-draft", (detail) => {
-      if (detail) setFocusDraft(detail);
-      // Already handled live — discard so a later remount doesn't replay it.
-      takePendingDraftFocus();
-    });
-  }, []);
+    if (!draftParam) return;
+    const separator = draftParam.indexOf(":");
+    if (separator > 0) {
+      setFocusDraft({
+        accountId: draftParam.slice(0, separator),
+        draftId: draftParam.slice(separator + 1),
+      });
+    }
+    setSearchParams({}, { replace: true });
+  }, [draftParam, setSearchParams]);
 
   // The flagship output: the pinned automation's latest successful run, when
   // one is pinned. Otherwise fall back to the most recent successful run that

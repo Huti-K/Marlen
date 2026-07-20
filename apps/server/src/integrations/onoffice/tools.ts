@@ -6,7 +6,7 @@ import { resultsOf } from "./client.js";
 import { getOnOfficeClient } from "./config.js";
 
 /**
- * The onOffice CRM tool surface as Trailin AgentTools, run in-process against
+ * The onOffice CRM tool surface as Marlen AgentTools, run in-process against
  * onoffice/client.ts. Read tools stay available to unattended runs. Create
  * tools (additive records) can be opted into for unattended runs on the onOffice
  * row in Settings; modify/delete/send is interactive-only and armed by its own

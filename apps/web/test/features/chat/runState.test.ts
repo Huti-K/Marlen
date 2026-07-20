@@ -1,4 +1,4 @@
-import type { ChatStreamEvent } from "@trailin/shared";
+import type { ChatStreamEvent } from "@marlen/shared";
 import { describe, expect, it } from "vitest";
 import {
   createInitialRunState,

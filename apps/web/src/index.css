@@ -26,7 +26,7 @@
 }
 
 /*
-  Trailin — borderless neutral minimalism. See DESIGN.md.
+  Marlen — borderless neutral minimalism. See DESIGN.md.
 
   Depth comes from three surface tones, never from lines:
     background  — the canvas
@@ -576,6 +576,46 @@
   animation: count-tick 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Streamed words fade in as they arrive. Spans exist only while the message
+   streams and keep positional identity across deltas, so a word animates once,
+   when it first appears. Opacity only — transforms don't apply to inline
+   boxes, and a long answer must stay cheap. */
+@keyframes stream-word {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.stream-word {
+  animation: stream-word 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Chart marks arrive as a draw, not a paste. Bars grow from the label edge;
+   the line plot hides behind a surface-toned cover that slides aside left to
+   right. Transform only, so a card full of marks never reflows. */
+@keyframes chart-bar-in {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.chart-bar-in {
+  transform-origin: left center;
+  animation: chart-bar-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes chart-reveal {
+  to {
+    transform: translateX(100%);
+  }
+}
+.chart-reveal {
+  animation: chart-reveal 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
+}
+
 /*
   Command palette (Cmd+K). Radix flips `data-state` on the overlay and the
   panel, and its Presence keeps the node mounted while the exit animation
@@ -885,8 +925,16 @@
   }
   .dot-breathe,
   .check-pop,
-  .count-tick {
+  .count-tick,
+  .flash-accent,
+  .stream-word,
+  .chart-bar-in {
     animation: none;
+  }
+  /* The cover parks off to the side; the plot renders complete. */
+  .chart-reveal {
+    animation: none;
+    transform: translateX(100%);
   }
   .icon-send:hover svg,
   .icon-discard:hover svg,

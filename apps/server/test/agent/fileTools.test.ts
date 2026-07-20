@@ -21,7 +21,7 @@ function resultText(result: { content: { type: string; text?: string }[] }): str
 }
 
 beforeAll(async () => {
-  home = await mkdtemp(join(tmpdir(), "trailin-filetools-home-"));
+  home = await mkdtemp(join(tmpdir(), "marlen-filetools-home-"));
   process.env.AGENT_HOME_PATH = home;
   ({ fileToolsFor } = await import("../../src/agent/fileTools.js"));
   await writeFile(join(home, "notiz.md"), "Der Inhalt der Notiz.\n", "utf8");
@@ -38,7 +38,7 @@ describe("confined file tools", () => {
 
     for (const path of ["../outside.md", "/etc/passwd", "~/anything"]) {
       const result = await read.execute("t2", { path });
-      expect(resultText(result)).toContain("outside your Trailin home folder");
+      expect(resultText(result)).toContain("outside your Marlen home folder");
     }
   });
 
@@ -50,7 +50,7 @@ describe("confined file tools", () => {
     const read = tools.find((t) => t.name === "file_read");
     if (!read) throw new Error("file_read not mounted");
     const result = await read.execute("t3", { path: "/etc/passwd" });
-    expect(resultText(result)).toContain("outside your Trailin home folder");
+    expect(resultText(result)).toContain("outside your Marlen home folder");
   });
 
   it("swaps in unconfined variants when grants are armed interactively", async () => {
@@ -61,7 +61,7 @@ describe("confined file tools", () => {
     // With the read grant armed the same tool name reaches beyond the home.
     const read = tools.find((t) => t.name === "file_read");
     if (!read) throw new Error("file_read not mounted");
-    const outside = await mkdtemp(join(tmpdir(), "trailin-filetools-outside-"));
+    const outside = await mkdtemp(join(tmpdir(), "marlen-filetools-outside-"));
     await writeFile(join(outside, "extern.txt"), "Draußen.\n", "utf8");
     const result = await read.execute("t4", { path: join(outside, "extern.txt") });
     expect(resultText(result)).toContain("Draußen.");

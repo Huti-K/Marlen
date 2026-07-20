@@ -1,11 +1,12 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { Automation, Todo } from "@marlen/shared";
 import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Automation, Todo } from "@trailin/shared";
-import { Check, ChevronRight, Menu, MessageSquareShare, Pencil, Trash2, Zap } from "lucide-react";
+import { Check, Menu, MessageSquareShare, Pencil, Trash2, Zap } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { ExpandButton } from "@/components/ui/disclosure-toggle";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -253,16 +254,7 @@ export function TodoRow({
               </Button>
             )}
             {expandable && !editing && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-expanded={open}
-                title={t(open ? "common.collapse" : "common.expand")}
-                aria-label={t(open ? "common.collapse" : "common.expand")}
-                onClick={() => setOpen((v) => !v)}
-              >
-                <ChevronRight className={cn("transition-transform", open && "rotate-90")} />
-              </Button>
+              <ExpandButton open={open} onToggle={() => setOpen((v) => !v)} />
             )}
           </div>
         </div>

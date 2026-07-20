@@ -1,4 +1,4 @@
-import type { ConnectedAccount } from "@trailin/shared";
+import type { ConnectedAccount } from "@marlen/shared";
 import { errorMessage } from "../../core/utils/util.js";
 import { proxyRequest } from "../../integrations/pipedream/connect.js";
 import type { DraftAttachment } from "../providers.js";

@@ -1,5 +1,5 @@
+import type { SeenState } from "@marlen/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SeenState } from "@trailin/shared";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { AccountDot } from "@/components/ui/account-dot";

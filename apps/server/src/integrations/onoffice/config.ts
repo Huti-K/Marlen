@@ -1,4 +1,4 @@
-import type { OnOfficeStatus } from "@trailin/shared";
+import type { OnOfficeStatus } from "@marlen/shared";
 import { env } from "../../core/env.js";
 import { getOnOfficeAutomationCreates, getOnOfficeWriteAccess } from "../../db/settings.js";
 import { OnOfficeClient, STABLE_URL } from "./client.js";

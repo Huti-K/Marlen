@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AgentCard, ChatToolCall, EmailRef, MessageCard } from "@trailin/shared";
+import type { AgentCard, ChatToolCall, EmailRef, MessageCard } from "@marlen/shared";
 import { emitServerEvent } from "../core/events.js";
 import { moduleLogger, type TurnLogger } from "../core/logger.js";
 import { errorMessage } from "../core/utils/util.js";

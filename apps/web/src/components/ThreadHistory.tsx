@@ -1,4 +1,4 @@
-import type { EmailThreadMessage } from "@trailin/shared";
+import type { EmailThreadMessage } from "@marlen/shared";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

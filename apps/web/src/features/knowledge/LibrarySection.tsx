@@ -1,11 +1,11 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ConnectedAccount,
   LibraryDocument,
   LibrarySearchHit,
   LibraryStatus,
   MemoryEntry,
-} from "@trailin/shared";
+} from "@marlen/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FolderOpen, Plus, Upload } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

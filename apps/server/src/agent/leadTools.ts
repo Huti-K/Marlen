@@ -1,8 +1,9 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { Lead } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { Lead } from "@trailin/shared";
 import { getLead, listLeads, updateLead } from "../db/leads.js";
 import { recordLead, removeLead } from "../services/leads.js";
+import { buildLeadCard, cardNote } from "./cards.js";
 import { textResult, tool } from "./toolkit.js";
 
 /**
@@ -185,6 +186,32 @@ const leadUpdate: AgentTool = tool({
   },
 });
 
+const leadPresent: AgentTool = tool({
+  name: "present_lead",
+  label: "Show lead",
+  description:
+    `Show one lead to the user as a card in the chat — its status, priority, interest and last ` +
+    `contact, laid out as a block they read at a glance. Use it when the user asks about a ` +
+    `specific lead, or right after you record or update one they are discussing. Pass the lead ` +
+    `id from lead_list or lead_record. Not for your own lookups — use lead_list for those.`,
+  params: {
+    id: Type.String({ description: "The lead id (from lead_list or lead_record)." }),
+  },
+  catchToText: true,
+  execute: async ({ id }) => {
+    const lead = await getLead(id);
+    if (!lead) return textResult(`No lead with id ${id} — check lead_list.`);
+    const who = lead.name ? `${lead.name} <${lead.email}>` : lead.email;
+    return textResult(
+      `Showing ${who} as a card.${cardNote(
+        `this lead (${who})`,
+        "Speak to what the user should know or do next; the card already lists the fields.",
+      )}`,
+      buildLeadCard(lead),
+    );
+  },
+});
+
 const leadDelete: AgentTool = tool({
   name: "lead_delete",
   label: "Delete lead",
@@ -204,7 +231,7 @@ const leadDelete: AgentTool = tool({
   },
 });
 
-export const leadTools: AgentTool[] = [leadRecord, leadList, leadUpdate];
+export const leadTools: AgentTool[] = [leadRecord, leadList, leadUpdate, leadPresent];
 
 /** Interactive-only: deletion cascades over the lead's automations. */
 export const leadDeleteTool: AgentTool = leadDelete;

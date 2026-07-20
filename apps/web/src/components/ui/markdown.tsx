@@ -115,11 +115,70 @@ const components: Components = {
   td: ({ children }) => <td className="border-b border-border px-3 py-2 align-top">{children}</td>,
 };
 
-/** Renders LLM-produced markdown (chat replies, automation run reports) as styled text. */
-export function Markdown({ content, className }: { content: string; className?: string }) {
+interface HastNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  children?: HastNode[];
+  properties?: Record<string, unknown>;
+}
+
+/** Text inside these keeps its exact spacing; word-wrapping would restyle it. */
+const STREAM_SKIP = new Set(["code", "pre"]);
+
+/**
+ * Wraps each word of a streaming message in a `.stream-word` span so newly
+ * arrived text fades in. Earlier words keep their positional identity across
+ * deltas, so a word animates once, when it first appears — only markdown that
+ * restructures around the tail (e.g. emphasis closing) replays its words.
+ */
+function rehypeStreamWords() {
+  return (tree: unknown) => wrapWords(tree as HastNode);
+}
+
+function wrapWords(node: HastNode): void {
+  if (!node.children || (node.tagName && STREAM_SKIP.has(node.tagName))) return;
+  node.children = node.children.flatMap((child): HastNode[] => {
+    if (child.type !== "text" || !child.value) {
+      wrapWords(child);
+      return [child];
+    }
+    return child.value
+      .split(/(\s+)/)
+      .filter(Boolean)
+      .map((part) =>
+        /^\s/.test(part)
+          ? { type: "text", value: part }
+          : {
+              type: "element",
+              tagName: "span",
+              properties: { className: ["stream-word"] },
+              children: [{ type: "text", value: part }],
+            },
+      );
+  });
+}
+
+const STREAM_PLUGINS = [rehypeStreamWords];
+
+/** Renders LLM-produced markdown (chat replies, automation run reports) as styled text.
+ *  `stream` marks text still being generated: new words fade in as they arrive. */
+export function Markdown({
+  content,
+  className,
+  stream,
+}: {
+  content: string;
+  className?: string;
+  stream?: boolean;
+}) {
   return (
     <div className={cn("[&>*:not(:last-child)]:mb-2", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={stream ? STREAM_PLUGINS : undefined}
+        components={components}
+      >
         {content}
       </ReactMarkdown>
     </div>

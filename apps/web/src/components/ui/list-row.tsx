@@ -1,5 +1,6 @@
 import type * as React from "react";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { cn, rowTransition } from "@/lib/utils";
 
 /**
  * A single settings/account row — icon or label at left, status/actions at
@@ -15,5 +16,33 @@ export function ListRow({ className, ...props }: React.HTMLAttributes<HTMLDivEle
       )}
       {...props}
     />
+  );
+}
+
+/**
+ * The quiet terminal line a row becomes once it has been sent. It carries the
+ * live row's transition name, so sending morphs the row in place rather than
+ * reading as a leave plus an arrival — the one outward, irreversible action
+ * must not look like a discard.
+ */
+export function SentRow({
+  id,
+  title,
+  subtitle,
+  label,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  label: string;
+}) {
+  return (
+    <ListRow style={rowTransition(id)}>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{title}</p>
+        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
+      <Badge variant="success">{label}</Badge>
+    </ListRow>
   );
 }

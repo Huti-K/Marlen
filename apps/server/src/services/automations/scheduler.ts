@@ -1,4 +1,4 @@
-import type { MissedAutomation, RunTrigger } from "@trailin/shared";
+import type { MissedAutomation, RunTrigger } from "@marlen/shared";
 import { desc, eq } from "drizzle-orm";
 import cron, { type ScheduledTask } from "node-cron";
 import { moduleLogger } from "../../core/logger.js";

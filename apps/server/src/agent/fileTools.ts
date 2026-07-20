@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { FileAccessSettings } from "@trailin/shared";
+import type { FileAccessSettings } from "@marlen/shared";
 import { getFileAccessSettings } from "../db/settings.js";
 import { getAgentHomeDir, resolveWithin } from "../storage/home/agentHome.js";
 import { textResult } from "./toolkit.js";
@@ -21,7 +21,7 @@ import { textResult } from "./toolkit.js";
 const SECRET_ENV_RE = /key|secret|token|password|credential/i;
 
 const WHOLE_FS_NOTE = " Relative paths start in the user's home directory.";
-const HOME_NOTE = " Relative paths start in the Trailin home folder.";
+const HOME_NOTE = " Relative paths start in the Marlen home folder.";
 
 function fileTool(tool: AgentTool, name: string, note: string): AgentTool {
   return { ...tool, name, description: `${tool.description}${note}` };
@@ -44,7 +44,7 @@ function confine(tool: AgentTool, home: string): AgentTool {
         const absPath = resolveWithin(home, raw.trim());
         if (!absPath) {
           return textResult(
-            `That path is outside your Trailin home folder (${home}), which is as far as your ` +
+            `That path is outside your Marlen home folder (${home}), which is as far as your ` +
               `default file access reaches. The user can grant whole-filesystem access under ` +
               `Settings → File access.`,
           );

@@ -1,6 +1,6 @@
 import { readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { WhatsAppConnection } from "@trailin/shared";
+import type { WhatsAppConnection } from "@marlen/shared";
 import makeWASocket, {
   Browsers,
   DisconnectReason,
@@ -247,7 +247,7 @@ async function connect(): Promise<void> {
       keys: makeCacheableSignalKeyStore(authState.keys, socketLogger),
     },
     logger: socketLogger,
-    browser: Browsers.macOS("Trailin"),
+    browser: Browsers.macOS("Marlen"),
     // Recent-history sync is plenty; a full-history sync floods the store with
     // months-old chats.
     syncFullHistory: false,

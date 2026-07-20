@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { Automation, Lead } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { Automation, Lead } from "@trailin/shared";
 import { desc, eq } from "drizzle-orm";
 import { notFound } from "../core/errors.js";
 import { db, schema } from "../db/index.js";

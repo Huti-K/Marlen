@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentCard } from "@trailin/shared";
+import type { AgentCard } from "@marlen/shared";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -45,7 +45,7 @@ const unusedSessions = {
 };
 
 beforeAll(async () => {
-  const dir = await mkdtemp(join(tmpdir(), "trailin-turn-"));
+  const dir = await mkdtemp(join(tmpdir(), "marlen-turn-"));
   process.env.DATABASE_PATH = join(dir, "test.db");
   turnRecorder = await import("../../src/agent/turnRecorder.js");
   dbModule = await import("../../src/db/index.js");

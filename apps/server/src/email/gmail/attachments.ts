@@ -1,4 +1,4 @@
-import type { ConnectedAccount } from "@trailin/shared";
+import type { ConnectedAccount } from "@marlen/shared";
 import { proxyRequest } from "../../integrations/pipedream/connect.js";
 import type { AttachmentProvider, EmailAttachment } from "../attachmentProviders.js";
 import { forEachAttachmentPart, GMAIL_API, type MessagePart } from "./message.js";

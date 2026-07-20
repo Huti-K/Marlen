@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { Todo } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { Todo } from "@trailin/shared";
 import { notFound } from "../core/errors.js";
 import { listTodos, type TodoUpdate } from "../db/todos.js";
 import { applyTodoUpdate } from "../services/todos.js";

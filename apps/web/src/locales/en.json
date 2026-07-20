@@ -7,12 +7,12 @@
     "expandChat": "Expand chat",
     "collapseChat": "Collapse chat",
     "updateAvailable": "Update ready",
-    "updateRestart": "Restart & update Trailin"
+    "updateRestart": "Restart & update Marlen"
   },
   "changelog": {
     "open": "Changelog",
     "title": "What's new",
-    "subtitle": "Recent updates to Trailin",
+    "subtitle": "Recent updates to Marlen",
     "ready": "Ready"
   },
   "views": {
@@ -62,8 +62,6 @@
     "signIn": "Sign in",
     "signOut": "Sign out",
     "submit": "Submit",
-    "noResults": "No matches",
-    "noResultsBody": "Nothing here matches “{{query}}”.",
     "clearSearch": "Clear search"
   },
   "errors": {
@@ -114,6 +112,17 @@
     "refs": {
       "remove": "Remove {{label}}"
     },
+    "tool": {
+      "failed": "failed",
+      "parameters": "Parameters",
+      "result": "Result",
+      "running": "Running…",
+      "noValue": "Not available",
+      "steps_one": "{{count}} step",
+      "steps_other": "{{count}} steps",
+      "stepsFailed_one": "{{count}} failed",
+      "stepsFailed_other": "{{count}} failed"
+    },
     "focus": {
       "allAccounts": "All accounts",
       "noAccounts": "No connected accounts yet."
@@ -121,21 +130,20 @@
     "cards": {
       "noSubject": "(no subject)",
       "emptyBody": "(empty message)",
-      "addToChat": "Add to chat",
+      "lead": {
+        "badge": "Lead"
+      },
+      "delegation": {
+        "badge": "Research"
+      },
+      "chart": {
+        "badge": "Chart",
+        "pointCount_one": "{{count}} point",
+        "pointCount_other": "{{count}} points",
+        "alt": "Chart: {{title}}"
+      },
       "choices": {
         "title": "Choose one"
-      },
-      "hits": {
-        "title": "Email search",
-        "resultCount_one": "{{count}} result",
-        "resultCount_other": "{{count}} results",
-        "truncatedLabel": "+ more",
-        "empty": "No matching emails."
-      },
-      "thread": {
-        "label": "Thread",
-        "messageCount_one": "{{count}} message",
-        "messageCount_other": "{{count}} messages"
       },
       "draft": {
         "badge": "Draft",
@@ -151,7 +159,8 @@
         "kept": "Kept as draft",
         "sentLabel": "Sent",
         "discardedLabel": "Discarded",
-        "goneLabel": "This draft no longer exists"
+        "goneLabel": "This draft no longer exists",
+        "voice": "In your style"
       },
       "messageDraft": {
         "badge": "{{channel}} draft",
@@ -202,7 +211,8 @@
     },
     "showcase": {
       "intro": "Here is a sample of everything I can show in chat, tool activity, one of every card, a formatted reply, and the thinking state.",
-      "toolsNote": "While tools run, each one appears as a chip: finished, still running, or failed."
+      "toolsNote": "While tools run, each one appears as a chip: finished, still running, or failed.",
+      "toolsDone": "Once a longer run is finished, its steps fold into a single line:"
     },
     "attachmentViewer": {
       "openInBrowser": "Open in browser",
@@ -246,7 +256,6 @@
     "unlinkConfirm": "Unlink this device and delete the locally mirrored chats? Your WhatsApp account and the chats on your phone are not affected."
   },
   "onoffice": {
-    "crmLabel": "CRM",
     "setupTitle": "Connect onOffice",
     "setupIntro": "Create an API user in onOffice, generate an access token, and paste the token and secret below. They stay on this computer and are never included in a backup.",
     "openApiDocs": "onOffice API docs",
@@ -261,7 +270,7 @@
   "connections": {
     "customToggle": "Use my own Pipedream project",
     "customToggleOn": "Email runs through the Pipedream project configured below.",
-    "builtinInUse": "Email runs through Trailin's built-in Pipedream.",
+    "builtinInUse": "Email runs through Marlen's built-in Pipedream.",
     "builtinMissing": "This build has no built-in Pipedream, turn this on and add your own below.",
     "addAccount": "Add a new Account",
     "searchProviders": "Search all apps… (Gmail, Zoho, IMAP, Notion, …)",
@@ -271,8 +280,8 @@
     "crmHeading": "CRM",
     "messagingHeading": "Messaging",
     "anyAppHint": "These are just a few, search above to connect any of 2,000+ apps, from other mail services to your calendar, notes and chat.",
-    "setupTitle": "One-time setup: connect Trailin to Pipedream",
-    "setupIntro": "Trailin uses <pd>Pipedream</pd>, a free service, to link your email accounts safely, as many as you like, also several from the same provider. It needs three values from your own Pipedream workspace, copied once:",
+    "setupTitle": "One-time setup: connect Marlen to Pipedream",
+    "setupIntro": "Marlen uses <pd>Pipedream</pd>, a free service, to link your email accounts safely, as many as you like, also several from the same provider. It needs three values from your own Pipedream workspace, copied once:",
     "setupStep1": "Create a free Pipedream account.",
     "setupStep2": "Under Settings → API, create an OAuth client and copy its Client ID and Client Secret below.",
     "setupStep3": "Create a project (any name) and paste its URL, or the proj_… id, below.",
@@ -289,6 +298,7 @@
     "emailAccounts": "Connected accounts",
     "permissions": {
       "edit": "Permissions",
+      "editEmail": "Permissions & signature",
       "hint": "Reading is always allowed, the assistant can read and search this account. Everything else needs its own grant:",
       "hintEmail": "Reading is always allowed, the assistant can read and search this account and prepare drafts. Everything else needs its own grant:",
       "write": {
@@ -340,7 +350,17 @@
         "confirmTitle": "Auto-send WhatsApp messages?",
         "confirmBody": "Once on, WhatsApp messages are sent immediately whenever an instruction or automation explicitly asks to send, with no draft to review. Without this, every message stays a draft with a Send button. You can turn this off anytime.",
         "confirmCta": "Allow auto-send"
-      }
+      },
+      "notLoaded": "Permissions could not be loaded. Please reload the page."
+    },
+    "signature": {
+      "title": "Email signature",
+      "hint": "Paste your signature here, straight from Gmail or Outlook. Formatting, links and images are kept, and the assistant puts it under every email it drafts from this account.",
+      "save": "Save signature",
+      "saved": "Signature saved.",
+      "removed": "Signature removed.",
+      "clear": "Clear",
+      "loadFailed": "The signature could not be loaded."
     },
     "noAccounts": "No email accounts connected yet. Use the buttons above, you can connect several accounts per provider.",
     "finishConnecting": "Complete the connection in the browser tab that just opened, the account appears here automatically once it's linked.",
@@ -357,11 +377,12 @@
     "advancedCustom": "Own Pipedream project",
     "learnVoiceStarted": "Learning your writing style from {{name}}, it'll appear in Settings shortly.",
     "voiceLearning": "Learning style…",
+    "voiceLearned": "Style learned",
     "voiceLearnFailed": "Style learning failed",
     "voiceLearnRetry": "Retry learning writing style"
   },
   "home": {
-    "setupBanner": "Trailin isn't fully set up, the agent can't reach your mail yet.",
+    "setupBanner": "Marlen isn't fully set up, the agent can't reach your mail yet.",
     "setupBannerCta": "Finish setup",
     "offlineBanner": "Can't reach your email provider right now, check your connection.",
     "missedBanner_one": "1 automation didn't run while the app was closed.",
@@ -409,7 +430,6 @@
     "todosLinkedRun": "Completing starts: {{name}}",
     "todosLinkedLabel": "Run when completed",
     "todosLinkedNone": "No automation",
-    "todosLinkedGeneric": "Automation",
     "todosDone_one": "1 done",
     "todosDone_other": "{{count}} done",
     "todosRestore": "Reopen",
@@ -580,8 +600,6 @@
     "error": "error",
     "delete": "Delete",
     "deleteConfirm": "Delete \"{{title}}\"? The file is also removed from the folder.",
-    "sectionCount_one": "{{count}} section",
-    "sectionCount_other": "{{count}} sections",
     "showMore_one": "Show 1 more",
     "showMore_other": "Show {{count}} more",
     "deleteFolderConfirm": "The folder \"{{title}}\" and every file inside it will be deleted.",
@@ -651,22 +669,22 @@
     "selectAll": "Select all"
   },
   "setup": {
-    "title": "Welcome to Trailin",
+    "title": "Welcome to Marlen",
     "intro": "Your mail, handled by an agent you can talk to. Two things and you're in:",
     "stepAiTitle": "Sign in to your AI",
     "stepAiDescription": "Use a subscription you already have (Claude, Copilot, ChatGPT) or paste an API key. Your sign-in stays on this computer.",
     "aiDone": "Signed in, using {{model}}.",
     "stepEmailTitle": "Connect an email account",
     "stepEmailDescription": "Link Gmail or Outlook so the agent can see your mail. You can add more accounts later.",
-    "pipedreamMissingBody": "This build has no built-in email bridge, Trailin connects through your own free Pipedream project instead. Set it up once right here, then link your accounts:",
+    "pipedreamMissingBody": "This build has no built-in email bridge, Marlen connects through your own free Pipedream project instead. Set it up once right here, then link your accounts:",
     "advancedLink": "Advanced: use my own Pipedream project",
     "allSetTitle": "You're all set",
     "allSetBody": "The agent can now read your mail, draft replies, and answer your questions.",
-    "allSetReadOnly": "Trailin starts read-only: the agent drafts and answers, but never sends, changes or deletes anything until you allow it per account, the shield on each account's row in Settings.",
-    "openApp": "Open Trailin",
+    "allSetReadOnly": "Marlen starts read-only: the agent drafts and answers, but never sends, changes or deletes anything until you allow it per account, the shield on each account's row in Settings.",
+    "openApp": "Open Marlen",
     "skip": "Skip for now, I'll look around first",
     "offlineTitle": "Can't reach the server",
-    "offlineBody": "Checking connection to Trailin's server every few seconds, this will pick up automatically once it's back."
+    "offlineBody": "Checking connection to Marlen's server every few seconds, this will pick up automatically once it's back."
   },
   "settings": {
     "sections": {
@@ -686,11 +704,11 @@
       },
       "preferences": {
         "title": "Preferences",
-        "description": "How Trailin looks, speaks, and tells time."
+        "description": "How Marlen looks, speaks, and tells time."
       },
       "data": {
         "title": "Local data",
-        "description": "Everything Trailin has stored on this computer, and how to back it up."
+        "description": "Everything Marlen has stored on this computer, and how to back it up."
       },
       "about": {
         "title": "About",
@@ -765,13 +783,13 @@
     "loginInputPlaceholder": "Paste the code / redirect URL if it doesn't finish…",
     "fileAccess": {
       "title": "File access",
-      "description": "What the assistant may do with files outside its own Trailin folder. That folder (memory, skills, your document library) is always available to it.",
+      "description": "What the assistant may do with files outside its own Marlen folder. That folder (memory, skills, your document library) is always available to it.",
       "chipOff": "No access",
       "read": {
         "title": "Read files",
         "badge": "Read",
         "on": "May list folders, find files, search their contents (grep), and read files when you ask it to.",
-        "off": "Can only read files in its own Trailin folder.",
+        "off": "Can only read files in its own Marlen folder.",
         "confirmTitle": "Allow the AI to read files?",
         "confirmBody": "Once on, the assistant can list folders, find files, search their contents (grep), and read files anywhere on this computer when you ask it to, your Downloads, Documents, and everything else your account can see. Instructions hidden in an email could try to make it read private files, so it is told never to pass file contents on without your say-so. You can turn this off anytime.",
         "confirmCta": "Allow reading files"
@@ -780,7 +798,7 @@
         "title": "Write files",
         "badge": "Write",
         "on": "May create new files (write) and edit existing ones (edit) when you ask it to.",
-        "off": "Can only create and change files in its own Trailin folder.",
+        "off": "Can only create and change files in its own Marlen folder.",
         "confirmTitle": "Allow the AI to write files?",
         "confirmBody": "Once on, the assistant can create new files (write) and edit existing ones (edit) anywhere on this computer when you ask it to. Instructions hidden in an email could try to trigger unwanted changes. You can turn this off anytime.",
         "confirmCta": "Allow writing files"

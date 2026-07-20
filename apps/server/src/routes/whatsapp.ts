@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { WhatsAppStatus } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { WhatsAppStatus } from "@trailin/shared";
 import { resetSessions } from "../agent/sessionCache.js";
 import { getWhatsAppSendAccess, setWhatsAppSendAccess } from "../db/settings.js";
 import { getWhatsAppBusinessAccount } from "../integrations/whatsapp/dispatch.js";

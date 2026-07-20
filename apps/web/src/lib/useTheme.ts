@@ -2,7 +2,7 @@ import * as React from "react";
 
 export type ThemePref = "light" | "dark" | "system";
 
-const STORAGE_KEY = "trailin-theme";
+const STORAGE_KEY = "marlen-theme";
 
 function readPref(): ThemePref {
   if (typeof window === "undefined") return "system";

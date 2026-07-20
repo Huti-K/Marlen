@@ -37,10 +37,10 @@ jobs:
         run: pnpm -r typecheck
 
       - name: Web build
-        run: pnpm --filter @trailin/web build
+        run: pnpm --filter @marlen/web build
 
       - name: Server tests
-        run: pnpm --filter @trailin/server test
+        run: pnpm --filter @marlen/server test
 
       - name: Web tests
-        run: pnpm --filter @trailin/web test
+        run: pnpm --filter @marlen/web test

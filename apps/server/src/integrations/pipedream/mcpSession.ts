@@ -1,3 +1,4 @@
+import type { ConnectedAccount } from "@marlen/shared";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   StreamableHTTPClientTransport,
@@ -5,7 +6,6 @@ import {
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import type { ConnectedAccount } from "@trailin/shared";
 import { moduleLogger } from "../../core/logger.js";
 import { type ConnectConfig, getPipedreamAccessToken } from "./connect.js";
 
@@ -61,7 +61,7 @@ export async function connectForAccount(
       },
     },
   });
-  const client = new McpClient({ name: "trailin-email-agent", version: "0.1.0" });
+  const client = new McpClient({ name: "marlen-email-agent", version: "0.1.0" });
   await client.connect(transport);
   return {
     client,

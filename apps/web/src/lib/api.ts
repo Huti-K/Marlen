@@ -2,6 +2,8 @@ import type {
   AccountColor,
   AccountDrafts,
   AccountPermissions,
+  AccountSignature,
+  AccountVoiceInfo,
   ApiErrorCode,
   AppStatus,
   Automation,
@@ -41,7 +43,7 @@ import type {
   TodoStatus,
   VoiceLearnRun,
   WhatsAppStatus,
-} from "@trailin/shared";
+} from "@marlen/shared";
 import i18n from "@/lib/i18n";
 import { openExternal } from "@/lib/utils";
 
@@ -161,6 +163,13 @@ export const api = {
   setAccountColors: (colors: AccountColor[]) =>
     http<{ colors: AccountColor[] }>("PUT", "/api/settings/account-colors", { colors }),
 
+  accountSignatures: () =>
+    get<{ signatures: AccountSignature[] }>("/api/settings/account-signatures"),
+  setAccountSignatures: (signatures: AccountSignature[]) =>
+    http<{ signatures: AccountSignature[] }>("PUT", "/api/settings/account-signatures", {
+      signatures,
+    }),
+
   llmProviders: () => get<LlmProviderInfo[]>("/api/llm/providers"),
   modelSettings: () => get<ModelSettings>("/api/llm/model"),
   setModel: (provider: string, model: string) =>
@@ -194,6 +203,8 @@ export const api = {
     http<{ ok: boolean }>("POST", `/api/pipedream/accounts/${encodeURIComponent(id)}/learn-voice`),
   // Each account's latest automatic voice-learn attempt (running/ok/error).
   voiceLearnRuns: () => get<VoiceLearnRun[]>("/api/learn/voice-runs"),
+  // Learned voices with their style directives resolved for display.
+  accountVoices: () => get<AccountVoiceInfo[]>("/api/learn/voices"),
 
   onOfficeStatus: () => get<OnOfficeStatus>("/api/onoffice"),
   saveOnOffice: (body: OnOfficeConfigInput) => http<OnOfficeStatus>("PUT", "/api/onoffice", body),

@@ -1,4 +1,4 @@
-import type { VoiceLearnRun } from "@trailin/shared";
+import type { VoiceLearnRun } from "@marlen/shared";
 import { eq } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, schema } from "./index.js";

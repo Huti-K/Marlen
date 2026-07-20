@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { RunTrigger } from "@trailin/shared";
+import type { RunTrigger } from "@marlen/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { env } from "../../core/env.js";
 import { emitRunNotification, emitServerEvent } from "../../core/events.js";

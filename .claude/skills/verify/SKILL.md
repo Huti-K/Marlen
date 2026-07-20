@@ -1,13 +1,13 @@
 ---
 name: verify
-description: Build, run, and drive Trailin (server + web UI) to verify changes end-to-end.
+description: Build, run, and drive Marlen (server + web UI) to verify changes end-to-end.
 ---
 
-# Verifying Trailin changes
+# Verifying Marlen changes
 
 ## Cheapest first: unit tests
 
-`pnpm --filter @trailin/server test` (vitest; tests in `apps/server/test/`).
+`pnpm --filter @marlen/server test` (vitest; tests in `apps/server/test/`).
 Run these before spinning up a server.
 
 Route handlers are testable without a socket: `buildApp()` from `src/app.ts`
@@ -24,7 +24,7 @@ The Fastify server serves the built web UI itself when `apps/web/dist` exists,
 so one process gives you both the API and the SPA:
 
 ```sh
-pnpm --filter @trailin/web build          # ~1s; refresh dist after UI changes
+pnpm --filter @marlen/web build          # ~1s; refresh dist after UI changes
 cd apps/server
 DATABASE_PATH=/tmp/<scratch>/verify.db AGENT_HOME_PATH=/tmp/<scratch>/home WHATSAPP_AUTH_PATH=/tmp/<scratch>/whatsapp-auth PORT=3111 pnpm exec tsx src/index.ts
 ```

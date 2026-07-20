@@ -1,4 +1,4 @@
-import type { OutboundDraft } from "@trailin/shared";
+import type { OutboundDraft } from "@marlen/shared";
 
 /**
  * Send registry for outbound comm channels, mirroring the email DraftProvider

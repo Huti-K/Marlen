@@ -1,4 +1,4 @@
-import type { AccountColor, MessageCard, RunFeedItem } from "@trailin/shared";
+import type { AccountColor, MessageCard, RunFeedItem } from "@marlen/shared";
 import { Sparkles } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

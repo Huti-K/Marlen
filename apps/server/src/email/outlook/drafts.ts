@@ -1,4 +1,4 @@
-import type { ConnectedAccount, CreatedDraft, EmailDraft } from "@trailin/shared";
+import type { ConnectedAccount, CreatedDraft, EmailDraft } from "@marlen/shared";
 import { moduleLogger } from "../../core/logger.js";
 import { proxyRequest } from "../../integrations/pipedream/connect.js";
 import { draftsMutated } from "../draftsCache.js";
@@ -133,7 +133,7 @@ async function createStandaloneOutlookDraft(
   return (await proxyRequest(account.id, "post", `${GRAPH_API}/messages`, {
     body: {
       subject: input.subject,
-      body: { contentType: "Text", content: input.body },
+      body: { contentType: input.bodyFormat === "html" ? "HTML" : "Text", content: input.body },
       toRecipients: toRecipientsPayload(input.to),
       ...(input.cc?.length ? { ccRecipients: toRecipientsPayload(input.cc) } : {}),
       ...(input.bcc?.length ? { bccRecipients: toRecipientsPayload(input.bcc) } : {}),
@@ -180,7 +180,7 @@ async function createOutlookReplyDraft(
   // The caller's body always wins; subject/to/cc/bcc override Graph's prefill only when actually supplied.
   return (await proxyRequest(account.id, "patch", `${GRAPH_API}/messages/${draft.id}`, {
     body: {
-      body: { contentType: "Text", content: input.body },
+      body: { contentType: input.bodyFormat === "html" ? "HTML" : "Text", content: input.body },
       ...(input.subject ? { subject: input.subject } : {}),
       ...(input.to.length ? { toRecipients: toRecipientsPayload(input.to) } : {}),
       ...(input.cc?.length ? { ccRecipients: toRecipientsPayload(input.cc) } : {}),
@@ -230,8 +230,14 @@ async function updateOutlookDraft(
 ): Promise<void> {
   const body: Record<string, unknown> = {};
   if (patch.subject !== undefined) body.subject = patch.subject;
-  // Always Text: an edit in Trailin's plain-text editor saves as plain text, not silently as HTML.
-  if (patch.body !== undefined) body.body = { contentType: "Text", content: patch.body };
+  // Text unless the caller says html: an edit in Marlen's plain-text editor
+  // saves as plain text, not silently as HTML.
+  if (patch.body !== undefined) {
+    body.body = {
+      contentType: patch.bodyFormat === "html" ? "HTML" : "Text",
+      content: patch.body,
+    };
+  }
 
   await proxyRequest(account.id, "patch", `${GRAPH_API}/messages/${draftId}`, { body });
 

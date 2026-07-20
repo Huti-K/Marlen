@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { OutboundDraft, ServerEvent } from "@trailin/shared";
+import type { OutboundDraft, ServerEvent } from "@marlen/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -17,8 +17,8 @@ let app: Awaited<ReturnType<typeof import("../../src/app.js").buildApp>>;
 const sends: OutboundDraft[] = [];
 
 beforeAll(async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "trailin-outbound-test-"));
-  process.env.AGENT_HOME_PATH = join(scratch, "Trailin");
+  const scratch = await mkdtemp(join(tmpdir(), "marlen-outbound-test-"));
+  process.env.AGENT_HOME_PATH = join(scratch, "Marlen");
   process.env.DATABASE_PATH = join(scratch, "test.db");
   store = await import("../../src/db/outboundStore.js");
   events = await import("../../src/core/events.js");

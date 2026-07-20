@@ -1,4 +1,4 @@
-import type { AccountPermissions, ConnectedAccount } from "@trailin/shared";
+import type { AccountPermissions, ConnectedAccount } from "@marlen/shared";
 import { SendHorizontal, ShieldCheck, SquarePen, Trash2, TriangleAlert } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -226,12 +226,15 @@ export function AccountPermissionsEditor({
     },
   };
 
+  /** Reports whether the write landed, so an armed grant only closes its dialog on success. */
   const persist = async (key: PermissionKey, value: boolean) => {
     setSaving(true);
     try {
       await onPersist({ ...granted, [key]: value });
+      return true;
     } catch (err) {
       toast.error(err);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -241,8 +244,7 @@ export function AccountPermissionsEditor({
     if (!confirmKey) return;
     setConfirmBusy(true);
     try {
-      await persist(confirmKey, true);
-      setConfirmKey(null);
+      if (await persist(confirmKey, true)) setConfirmKey(null);
     } finally {
       setConfirmBusy(false);
     }

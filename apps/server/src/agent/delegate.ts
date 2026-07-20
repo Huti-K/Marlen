@@ -1,8 +1,10 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { DelegationTask } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
 import { mapWithConcurrency } from "../core/utils/jobs.js";
 import { errorMessage } from "../core/utils/util.js";
 import { automationReadTools } from "./automationTools.js";
+import { buildDelegationCard } from "./cards.js";
 import { buildKnowledgeContext, buildKnowledgeReadTools } from "./knowledgeTools.js";
 import { runOneShot } from "./oneShot.js";
 import { prompts } from "./prompts.js";
@@ -67,21 +69,42 @@ lookup, call the email or web tools directly instead.`,
         webFetchTool,
       ];
 
+      // One lane per worker, re-published as a live delegation card on every
+      // transition (pending → running → done/failed); the final result carries
+      // the settled card, which replaces the streamed one on the same tool call.
+      const lanes: DelegationTask[] = tasks.map((task) => ({
+        label: truncateLabel(task),
+        status: "pending",
+      }));
       let finished = 0;
-      const reports = await mapWithConcurrency(tasks, CONCURRENCY, async (task) => {
+      const publish = () =>
+        onUpdate?.(
+          textResult(`${finished}/${tasks.length} tasks done`, buildDelegationCard(lanes)),
+        );
+      publish();
+
+      const reports = await mapWithConcurrency(tasks, CONCURRENCY, async (task, index) => {
         // The main turn was aborted (e.g. client disconnect): don't start
         // more workers; in-flight ones stop via the signal passed below.
         if (signal?.aborted) return "Cancelled before it started.";
+        const lane = lanes[index] as DelegationTask;
+        lane.status = "running";
+        publish();
+        const startedAt = Date.now();
         let report: string;
+        let failed = false;
         try {
           report =
             (await runOneShot({ systemPrompt, tools, prompt: task, signal })) ||
             "(the worker returned an empty report)";
         } catch (error) {
           report = `Worker failed: ${errorMessage(error)}`;
+          failed = true;
         }
         finished += 1;
-        onUpdate?.(textResult(`${finished}/${tasks.length} tasks done`));
+        lane.status = failed ? "failed" : "done";
+        lane.elapsedMs = Date.now() - startedAt;
+        publish();
         return report;
       });
 
@@ -92,7 +115,7 @@ lookup, call the email or web tools directly instead.`,
         text += `\n\nNote: ${dropped} additional task(s) were dropped (max ${MAX_TASKS} per call).`;
       }
 
-      return textResult(text);
+      return textResult(text, buildDelegationCard(lanes));
     },
   });
 }

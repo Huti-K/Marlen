@@ -1,4 +1,4 @@
-import type { EmailRef } from "@trailin/shared";
+import type { EmailRef } from "@marlen/shared";
 import * as React from "react";
 import {
   createInitialRunState,
@@ -13,7 +13,7 @@ import { toast } from "@/lib/toast";
 import { errorMessage } from "@/lib/utils";
 
 /** Same-device continuity: the conversation to restore on the next load. */
-const LAST_CONVERSATION_KEY = "trailin-last-conversation";
+const LAST_CONVERSATION_KEY = "marlen-last-conversation";
 
 export interface UseChatRunsOptions {
   setHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -60,7 +60,7 @@ export function useChatRuns({
   pendingFocusRef.current = pendingFocusAccountId;
   // Mirrors `state` synchronously so a handler can read the freshest value
   // even before React has re-rendered (e.g. newConversation() immediately
-  // followed by a send() in the same tick, as trailin:send-chat does).
+  // followed by a send() in the same tick, as marlen:send-chat does).
   const stateRef = React.useRef(createInitialRunState());
   const [state, setState] = React.useState(stateRef.current);
 

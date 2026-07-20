@@ -1,4 +1,4 @@
-import { type AppStatus, isSetupComplete } from "@trailin/shared";
+import { type AppStatus, isSetupComplete } from "@marlen/shared";
 import { ChevronLeft, ChevronRight, type LucideIcon, TriangleAlert, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -102,7 +102,7 @@ export function Sidebar({ status, onClose, isCollapsed, onCollapsedChange }: Sid
         >
           <img
             src="/logo.svg"
-            alt="Trailin Logo"
+            alt="Marlen Logo"
             className="h-8 w-auto object-contain transition-opacity hover:opacity-80"
           />
           <span
@@ -111,7 +111,7 @@ export function Sidebar({ status, onClose, isCollapsed, onCollapsedChange }: Sid
               isCollapsed && "md:hidden",
             )}
           >
-            Trailin
+            Marlen
           </span>
         </Link>
 

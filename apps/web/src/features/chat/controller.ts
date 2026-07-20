@@ -1,4 +1,4 @@
-import type { EmailRef } from "@trailin/shared";
+import type { EmailRef } from "@marlen/shared";
 
 /**
  * Command channel into the chat: other panels drive the ONE persistent

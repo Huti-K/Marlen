@@ -6,6 +6,7 @@ import { buildWhatsAppTools } from "../integrations/whatsapp/tools.js";
 import { automationManageTools, automationReadTools } from "./automationTools.js";
 import { composeBriefingTool } from "./briefingTool.js";
 import type { SessionCapabilities } from "./capabilities.js";
+import { presentChartTool } from "./chartTool.js";
 import { presentChoicesTool } from "./choicesTool.js";
 import { compactedMessages } from "./compaction.js";
 import { buildDelegateTool } from "./delegate.js";
@@ -103,6 +104,7 @@ export async function buildAgent(
         ...(caps.interactive ? [voiceLearnTool] : []),
         composeBriefingTool,
         ...(caps.interactive ? [presentChoicesTool] : []),
+        ...(caps.interactive ? [presentChartTool] : []),
       ],
       messages: history,
     },

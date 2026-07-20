@@ -1,15 +1,6 @@
+import type { Automation, Lead, LeadPriority, LeadStatus } from "@marlen/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Automation, Lead, LeadPriority, LeadStatus } from "@trailin/shared";
-import {
-  CalendarClock,
-  Check,
-  ChevronRight,
-  Pencil,
-  Phone,
-  Plus,
-  Trash2,
-  Users,
-} from "lucide-react";
+import { CalendarClock, Check, Pencil, Phone, Plus, Trash2, Users } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -17,13 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
+import { ExpandButton } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormField } from "@/components/ui/form-field";
 import { HoverActions } from "@/components/ui/hover-actions";
 import { Input } from "@/components/ui/input";
+import { ListRow } from "@/components/ui/list-row";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { LEAD_PRIORITIES, LEAD_PRIORITY_TONE, LEAD_STATUS_TONE } from "@/features/leads/leadTone";
 import { api } from "@/lib/api";
 import { relativeTime } from "@/lib/dates";
 import { toast } from "@/lib/toast";
@@ -39,24 +33,7 @@ import { cn, stagger } from "@/lib/utils";
 
 const STATUSES: LeadStatus[] = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 
-/** Pastel status → tone mapping: attention on "new", success once they replied. */
-const STATUS_TONE: Record<LeadStatus, "default" | "muted" | "success" | "warning" | "destructive"> =
-  {
-    new: "warning",
-    contacted: "muted",
-    engaged: "success",
-    qualified: "default",
-    won: "success",
-    lost: "muted",
-  };
-
-/** Priority tier A/B/C, brightest on "A" so the hot leads pop. */
-const PRIORITIES = ["A", "B", "C"] as const satisfies readonly LeadPriority[];
-const PRIORITY_TONE: Record<(typeof PRIORITIES)[number], "default" | "muted" | "success"> = {
-  A: "success",
-  B: "default",
-  C: "muted",
-};
+const PRIORITIES = LEAD_PRIORITIES;
 
 const EMPTY_FORM = { email: "", name: "", phone: "", interest: "", notes: "" };
 
@@ -116,10 +93,21 @@ export function LeadsPanel() {
 
   const load = () => queryClient.invalidateQueries({ queryKey: ["leads"] });
 
+  const filtered = filter !== null || priorityFilter !== null;
   const visible = leads
     .filter((lead) => (filter ? lead.status === filter : true))
     .filter((lead) => (priorityFilter ? lead.priority === priorityFilter : true));
-  const attachedTo = (lead: Lead) => automations.filter((a) => a.leadId === lead.id);
+  // Grouped once rather than re-scanned per row, so the list stays linear.
+  const automationsByLead = React.useMemo(() => {
+    const byLead = new Map<string, Automation[]>();
+    for (const automation of automations) {
+      if (!automation.leadId) continue;
+      const list = byLead.get(automation.leadId);
+      if (list) list.push(automation);
+      else byLead.set(automation.leadId, [automation]);
+    }
+    return byLead;
+  }, [automations]);
 
   const create = async () => {
     setSaving(true);
@@ -246,17 +234,17 @@ export function LeadsPanel() {
       {loading ? (
         <div className="flex flex-col gap-2">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="surface flex items-center justify-between gap-3 rounded-lg p-3">
+            <ListRow key={i}>
               <Skeleton className="h-4 w-44" />
               <Skeleton className="h-4 w-24" />
-            </div>
+            </ListRow>
           ))}
         </div>
       ) : visible.length === 0 ? (
         <EmptyState
           icon={Users}
-          title={filter ? t("leads.emptyFilteredTitle") : t("leads.emptyTitle")}
-          description={filter ? t("leads.emptyFilteredBody") : t("leads.emptyBody")}
+          title={filtered ? t("leads.emptyFilteredTitle") : t("leads.emptyTitle")}
+          description={filtered ? t("leads.emptyFilteredBody") : t("leads.emptyBody")}
         />
       ) : (
         <div className="flex flex-col gap-2">
@@ -264,7 +252,7 @@ export function LeadsPanel() {
             <div key={lead.id} className="animate-in-up" style={stagger(i)}>
               <LeadRow
                 lead={lead}
-                automations={attachedTo(lead)}
+                automations={automationsByLead.get(lead.id) ?? []}
                 onPatch={onPatch}
                 onDelete={() => setConfirmDelete(lead)}
               />
@@ -341,9 +329,12 @@ function LeadRow({
           <span className="truncate text-sm font-medium tracking-tight">
             {lead.name || lead.email}
           </span>
-          <Badge variant={STATUS_TONE[lead.status]}>{t(`leads.status.${lead.status}`)}</Badge>
+          <Badge variant={LEAD_STATUS_TONE[lead.status]}>{t(`leads.status.${lead.status}`)}</Badge>
           {lead.priority !== "" && (
-            <Badge variant={PRIORITY_TONE[lead.priority]} aria-label={t("leads.priorityLabel")}>
+            <Badge
+              variant={LEAD_PRIORITY_TONE[lead.priority]}
+              aria-label={t("leads.priorityLabel")}
+            >
               {lead.priority}
             </Badge>
           )}
@@ -386,18 +377,7 @@ function LeadRow({
             </Button>
           </HoverActions>
         )}
-        {expandable && !editing && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-expanded={open}
-            title={t(open ? "common.collapse" : "common.expand")}
-            aria-label={t(open ? "common.collapse" : "common.expand")}
-            onClick={() => setOpen((v) => !v)}
-          >
-            <ChevronRight className={cn("transition-transform", open && "rotate-90")} />
-          </Button>
-        )}
+        {expandable && !editing && <ExpandButton open={open} onToggle={() => setOpen((v) => !v)} />}
       </div>
 
       {editing ? (

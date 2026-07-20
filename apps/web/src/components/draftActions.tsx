@@ -1,5 +1,9 @@
+import { Sparkles } from "lucide-react";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { revealChat, sendChatCommand } from "@/features/chat/controller";
 
 /** A draft action pending confirmation in the shared armed dialog. */
 export type DraftAction = "send" | "discard";
@@ -73,5 +77,64 @@ export function DraftActionDialog({
       busy={busy}
       onConfirm={onConfirm}
     />
+  );
+}
+
+/**
+ * Hands a draft to the chat for rewording. With a `conversationId` the agent
+ * wrote this draft, so its conversation reopens with the context and the draft
+ * card intact; without one the draft predates the link and a fresh chat with a
+ * prefilled ask is the best available.
+ */
+export function RefineInChatButton({
+  conversationId,
+  subject,
+}: {
+  conversationId?: string | null;
+  subject: string;
+}) {
+  const { t } = useTranslation();
+  const label = conversationId ? t("drafts.refineInChat") : t("drafts.refine");
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className="icon-refine hover:bg-accent/10 hover:text-accent"
+      onClick={(e) => {
+        e.stopPropagation();
+        revealChat();
+        if (conversationId) sendChatCommand({ kind: "open", conversationId });
+        else sendChatCommand({ kind: "prefill", text: t("drafts.refinePrompt", { subject }) });
+      }}
+      title={label}
+      aria-label={label}
+    >
+      <Sparkles />
+    </Button>
+  );
+}
+
+/** The cancel/save footer an in-place draft edit reveals once it is dirty. */
+export function EditSaveActions({
+  saving,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  saving: boolean;
+  busy: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex justify-end gap-2">
+      <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving || busy}>
+        {t("common.cancel")}
+      </Button>
+      <Button size="sm" onClick={onSave} disabled={busy} loading={saving}>
+        {saving ? t("common.saving") : t("drafts.save")}
+      </Button>
+    </div>
   );
 }

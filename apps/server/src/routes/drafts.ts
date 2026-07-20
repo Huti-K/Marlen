@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { AccountDrafts, ConnectedAccount, EmailDraft } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { AccountDrafts, ConnectedAccount, EmailDraft } from "@trailin/shared";
 import { badRequest, notFound, toProviderError, upstreamError } from "../core/errors.js";
 import { errorMessage } from "../core/utils/util.js";
 import {

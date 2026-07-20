@@ -1,4 +1,4 @@
-import type { FileAccessSettings } from "@trailin/shared";
+import type { FileAccessSettings } from "@marlen/shared";
 import { Eye, HardDrive, SquarePen, TerminalSquare } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -34,13 +34,16 @@ export function FileAccessSection({ index }: { index: number }) {
       .catch(() => {});
   }, []);
 
+  /** Reports whether the write landed, so an armed grant only closes its dialog on success. */
   const persist = async (next: FileAccessSettings) => {
     setSaving(true);
     try {
       const { fileAccess: saved } = await api.setFileAccess(next);
       setGrants(saved);
+      return true;
     } catch (err) {
       toast.error(err);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -91,8 +94,7 @@ export function FileAccessSection({ index }: { index: number }) {
     if (!confirmKey || !grants) return;
     setConfirmBusy(true);
     try {
-      await persist({ ...grants, [confirmKey]: true });
-      setConfirmKey(null);
+      if (await persist({ ...grants, [confirmKey]: true })) setConfirmKey(null);
     } finally {
       setConfirmBusy(false);
     }

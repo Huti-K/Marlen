@@ -13,7 +13,6 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type AccountColor,
   type AccountDrafts,
@@ -22,7 +21,8 @@ import {
   OUTBOUND_CHANNEL_LABELS,
   type OutboundDraft,
   type Todo,
-} from "@trailin/shared";
+} from "@marlen/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
   CircleCheck,

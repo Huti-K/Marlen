@@ -5,9 +5,8 @@ import {
   EMAIL_APP_LABELS,
   type EmailApp,
   type PipedreamApp,
-  type VoiceLearnRun,
-} from "@trailin/shared";
-import { Inbox, LogOut, Plus, RotateCcw, Settings } from "lucide-react";
+} from "@marlen/shared";
+import { Inbox, LogOut, Plus, Settings } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { AppIcon } from "@/components/ui/app-icon";
@@ -35,6 +34,8 @@ import {
   OnOfficePickerButton,
   useOnOfficeStatus,
 } from "@/features/connections/OnOffice";
+import { SignatureEditor } from "@/features/connections/SignatureEditor";
+import { VoiceLearnBadge } from "@/features/connections/VoiceLearnBadge";
 import {
   useWhatsAppStatus,
   WhatsAppAccountRow,
@@ -168,12 +169,12 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   const [results, setResults] = React.useState<PipedreamApp[] | null>(null);
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [removing, setRemoving] = React.useState(false);
-  // Each account's latest automatic voice-learn attempt — "running" shows a
-  // progress badge on the row, "error" a failure badge plus the retry button.
-  const [voiceRuns, setVoiceRuns] = React.useState<VoiceLearnRun[]>([]);
   const [colors, setColors] = React.useState<AccountColor[]>([]);
   // Per-account permission grants; an account without a record is read-only.
-  const [permissions, setPermissions] = React.useState<AccountPermissions[]>([]);
+  // null until the grant set is known. A write merges into this set and the
+  // server stores the result wholesale, so persisting against a set we never
+  // loaded would silently revoke every other account's grants.
+  const [permissions, setPermissions] = React.useState<AccountPermissions[] | null>(null);
   const [permissionsAccountId, setPermissionsAccountId] = React.useState<string | null>(null);
   const [onOfficePermsOpen, setOnOfficePermsOpen] = React.useState(false);
   // onOffice is a native (non-Pipedream) CRM connection surfaced in the same
@@ -253,27 +254,22 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     [],
   );
 
-  const loadVoiceRuns = React.useCallback(async () => {
-    try {
-      setVoiceRuns(await api.voiceLearnRuns());
-    } catch {
-      /* the badges just stay absent */
-    }
-  }, []);
-
   const loadPermissions = React.useCallback(async () => {
     try {
       const { permissions: saved } = await api.accountPermissions();
       setPermissions(saved);
-    } catch {
-      /* rows just show as read-only until a reload */
+    } catch (err) {
+      toast.error(err);
     }
   }, []);
 
   const grantsFor = (accountId: string): PermissionGrants =>
-    permissions.find((p) => p.accountId === accountId) ?? READ_ONLY_GRANTS;
+    permissions?.find((p) => p.accountId === accountId) ?? READ_ONLY_GRANTS;
 
   const persistPermissions = async (accountId: string, next: PermissionGrants) => {
+    // Refuses rather than writing a set built on an unknown baseline; the
+    // editor surfaces the throw as a toast and leaves the switch untouched.
+    if (!permissions) throw new Error(t("connections.permissions.notLoaded"));
     const merged = [
       ...permissions.filter((p) => p.accountId !== accountId),
       { accountId, ...next },
@@ -281,15 +277,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
     const { permissions: saved } = await api.setAccountPermissions(merged);
     setPermissions(saved);
   };
-
-  React.useEffect(() => {
-    void loadVoiceRuns();
-  }, [loadVoiceRuns]);
-
-  // A learn attempt starting/finishing emits "learn" — refresh the row badges.
-  useServerEvents(["learn"], () => {
-    void loadVoiceRuns();
-  });
 
   React.useEffect(() => {
     void loadPermissions();
@@ -371,16 +358,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
       toast.error(err);
     } finally {
       setBusy(null);
-    }
-  };
-
-  // Rerun a failed (or skipped) voice-learn attempt from the account row.
-  const retryLearn = async (account: ConnectedAccount) => {
-    try {
-      await api.learnAccountVoice(account.id);
-      toast.success(t("connections.learnVoiceStarted", { name: account.name }));
-    } catch (err) {
-      toast.error(err);
     }
   };
 
@@ -659,41 +636,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                           <p className="min-w-0 truncate text-sm font-medium">{account.name}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {(() => {
-                            // Voice-learn status: in-flight and failed attempts are
-                            // shown; a finished learn needs no chip of its own.
-                            const run = voiceRuns.find((r) => r.accountId === account.id);
-                            if (run?.status === "running") {
-                              return (
-                                <Badge variant="muted">
-                                  <Spinner className="h-3 w-3" />
-                                  {t("connections.voiceLearning")}
-                                </Badge>
-                              );
-                            }
-                            if (run?.status === "error") {
-                              return (
-                                <>
-                                  <Badge
-                                    variant="destructive"
-                                    data-tooltip={run.error ?? undefined}
-                                  >
-                                    {t("connections.voiceLearnFailed")}
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={() => void retryLearn(account)}
-                                    aria-label={t("connections.voiceLearnRetry")}
-                                    data-tooltip={t("connections.voiceLearnRetry")}
-                                  >
-                                    <RotateCcw />
-                                  </Button>
-                                </>
-                              );
-                            }
-                            return null;
-                          })()}
+                          <VoiceLearnBadge account={account} />
                           {!account.healthy && (
                             <Badge variant="destructive">{t("connections.unhealthy")}</Badge>
                           )}
@@ -705,8 +648,16 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                                 id === account.id ? null : account.id,
                               )
                             }
-                            aria-label={t("connections.permissions.edit")}
-                            data-tooltip={t("connections.permissions.edit")}
+                            aria-label={
+                              isEmailApp(account.app)
+                                ? t("connections.permissions.editEmail")
+                                : t("connections.permissions.edit")
+                            }
+                            data-tooltip={
+                              isEmailApp(account.app)
+                                ? t("connections.permissions.editEmail")
+                                : t("connections.permissions.edit")
+                            }
                           >
                             <Settings />
                           </Button>
@@ -722,11 +673,14 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                         </div>
                       </ListRow>
                       {permissionsAccountId === account.id && (
-                        <AccountPermissionsEditor
-                          account={account}
-                          granted={grantsFor(account.id)}
-                          onPersist={(next) => persistPermissions(account.id, next)}
-                        />
+                        <>
+                          <AccountPermissionsEditor
+                            account={account}
+                            granted={grantsFor(account.id)}
+                            onPersist={(next) => persistPermissions(account.id, next)}
+                          />
+                          {isEmailApp(account.app) && <SignatureEditor accountId={account.id} />}
+                        </>
                       )}
                     </div>
                   );

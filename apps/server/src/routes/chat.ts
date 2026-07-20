@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { ChatStreamEvent } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { ChatStreamEvent } from "@trailin/shared";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
 import { parseStoredRefs } from "../agent/emailRefs.js";

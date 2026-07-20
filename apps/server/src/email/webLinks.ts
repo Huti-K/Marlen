@@ -1,4 +1,4 @@
-import type { ConnectedAccount } from "@trailin/shared";
+import type { ConnectedAccount } from "@marlen/shared";
 
 type ThreadLinkBuilder = (account: ConnectedAccount, providerThreadId: string) => string;
 

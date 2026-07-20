@@ -1,4 +1,4 @@
-import type { EmailRef } from "@trailin/shared";
+import type { EmailRef } from "@marlen/shared";
 import { isNonEmptyString, isRecord } from "../core/utils/util.js";
 
 /**

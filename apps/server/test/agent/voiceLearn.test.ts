@@ -34,8 +34,8 @@ function deps(modelConfigured: boolean, learned: string[], learn?: () => Promise
 }
 
 beforeAll(async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "trailin-voicelearn-test-"));
-  process.env.AGENT_HOME_PATH = join(scratch, "Trailin");
+  const scratch = await mkdtemp(join(tmpdir(), "marlen-voicelearn-test-"));
+  process.env.AGENT_HOME_PATH = join(scratch, "Marlen");
   process.env.DATABASE_PATH = join(scratch, "test.db");
   voiceLearn = await import("../../src/agent/voiceLearn.js");
 });

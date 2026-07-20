@@ -1,7 +1,7 @@
 import { extname } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { type AttachmentItem, type ConnectedAccount, formatFileSize } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import { type AttachmentItem, type ConnectedAccount, formatFileSize } from "@trailin/shared";
 import { inlineForMime, mimeForExt } from "../core/utils/fileResponse.js";
 import { errorMessage } from "../core/utils/util.js";
 import {

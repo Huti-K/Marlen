@@ -1,10 +1,10 @@
-# Trailin — agent working rules
+# Marlen — agent working rules
 
 `CLAUDE.md` imports this file via `@AGENTS.md`.
 
 ## What
 
-Trailin is a local-first AI email assistant shipped as a desktop app: it reads,
+Marlen is a local-first AI email assistant shipped as a desktop app: it reads,
 drafts, and organizes mail (Gmail, Outlook / Microsoft 365, anything Pipedream
 connects), runs scheduled automations, and answers a chat. Single user, single
 machine — the Fastify server, SQLite db, and LLM agent all run on-device; there
@@ -28,7 +28,7 @@ before touching `apps/web`.
 
 - `pnpm dev` — server on :3001 + web on :5173 with reload
 - `pnpm check` — lint + conventions + typecheck + tests; must pass before a change is done
-- `pnpm --filter @trailin/server test` / `pnpm --filter @trailin/web test` — vitest per package
+- `pnpm --filter @marlen/server test` / `pnpm --filter @marlen/web test` — vitest per package
 - `pnpm lint:fix` — Biome; `pnpm knip` — dead-export check (keep it green)
 - pnpm only, never npm/yarn (the desktop build's internal npm install into `build/app` is the packaging exception)
 - End-to-end verification: the `verify` skill (`.claude/skills/verify`) boots an isolated server + headless UI
@@ -50,7 +50,7 @@ before touching `apps/web`.
 - **API shape.** Routes validate input with TypeBox and throw the `errors.ts`
   AppError helpers; the central handler renders `{ error, requestId }`.
   Uniform 200s, deliberately no `schema.response` declarations. Annotate
-  handler return types with `@trailin/shared` types — an inline inferred
+  handler return types with `@marlen/shared` types — an inline inferred
   envelope silently decouples server and web.
 - **Trust boundaries.** JSON the app wrote to its own db is trusted:
   `JSON.parse(...) as T` is house style there. Parse-to-`unknown` + narrowing
@@ -88,7 +88,7 @@ deprecated pattern — build new code in the target shape:
 - Web server-state: TanStack Query with SSE-topic-keyed invalidation. No new
   hand-rolled load/race-guard/cache loops in panels.
 - Cross-panel intents: router/URL state + the chat controller. No new
-  `trailinEvents` window events.
+  `marlenEvents` window events.
 - DB access: drizzle by default; `lazyStatement` raw SQL only for FTS/virtual
   tables; never bare `sqlite.prepare`.
 - Stores emit their own `emitServerEvent`; callers never do.

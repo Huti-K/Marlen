@@ -1,4 +1,4 @@
-import type { ApiErrorCode } from "@trailin/shared";
+import type { ApiErrorCode } from "@marlen/shared";
 import type { FastifyInstance } from "fastify";
 import { errorMessage } from "./utils/util.js";
 
@@ -93,7 +93,7 @@ function statusOf(error: unknown): number {
  * answers { statusCode, error: "Internal Server Error", message }, and since
  * the web client reads the `error` field it would show "Internal Server Error"
  * and drop the real message. The real message is included even on a 500:
- * Trailin runs on the user's own machine.
+ * Marlen runs on the user's own machine.
  */
 export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, req, reply) => {

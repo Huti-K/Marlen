@@ -1,4 +1,4 @@
-import type { RunNotification, ServerEvent, ServerEventTopic } from "@trailin/shared";
+import type { RunNotification, ServerEvent, ServerEventTopic } from "@marlen/shared";
 import * as React from "react";
 
 /**

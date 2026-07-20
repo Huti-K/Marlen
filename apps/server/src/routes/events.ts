@@ -1,5 +1,5 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import type { ServerEvent } from "@trailin/shared";
+import type { ServerEvent } from "@marlen/shared";
 import { onServerEvent } from "../core/events.js";
 import { openSse } from "./sse.js";
 

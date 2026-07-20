@@ -1,10 +1,10 @@
-# @trailin/desktop
+# @marlen/desktop
 
-Electron shell around the Trailin server + web app. It runs the bundled
-`@trailin/server` as a utility child process on `127.0.0.1` (ports 43117+),
+Electron shell around the Marlen server + web app. It runs the bundled
+`@marlen/server` as a utility child process on `127.0.0.1` (ports 43117+),
 opens a window on it, and auto-updates from this repo's GitHub releases.
 All state (SQLite DB, library, logs) lives in Electron's per-user data
-directory (`~/Library/Application Support/Trailin` on macOS).
+directory (`~/Library/Application Support/Marlen` on macOS).
 
 Day-to-day development doesn't involve this package — `pnpm dev` at the repo
 root (browser + Vite) stays the loop. This shell only matters when working on
@@ -13,8 +13,8 @@ the shell itself or cutting a release.
 ## Run the shell locally
 
 ```sh
-pnpm --filter @trailin/web build
-pnpm --filter @trailin/desktop dev
+pnpm --filter @marlen/web build
+pnpm --filter @marlen/desktop dev
 ```
 
 `dev` assembles `build/app` (see `scripts/build.mjs`), npm-installs the
@@ -22,7 +22,7 @@ runtime deps there, rebuilds native modules against Electron's ABI, and
 launches Electron. First run takes a few minutes (Electron headers +
 better-sqlite3 compile); later runs are incremental.
 
-`TRAILIN_DESKTOP_SMOKE=1` makes the shell quit itself right after the window
+`MARLEN_DESKTOP_SMOKE=1` makes the shell quit itself right after the window
 finishes loading — a boot smoke test for CI or a headless check.
 
 The `packageManager: "npm@…"` field in this package's package.json is

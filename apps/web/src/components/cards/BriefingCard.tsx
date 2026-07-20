@@ -5,8 +5,8 @@ import type {
   BriefingPriority,
   BriefingRollup,
   CardAccount,
-} from "@trailin/shared";
-import { BRIEFING_PRIORITIES } from "@trailin/shared";
+} from "@marlen/shared";
+import { BRIEFING_PRIORITIES } from "@marlen/shared";
 import { AlertTriangle, Clock, Eye, MessageCircleQuestion, PenLine, Sunrise } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

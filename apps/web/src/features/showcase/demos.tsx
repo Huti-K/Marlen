@@ -668,7 +668,7 @@ const RESIZE_MAX = 380;
 export function ResizableDemo() {
   const [collapsed, setCollapsed] = React.useState(false);
   const { width, onPointerDown } = useResizableWidth({
-    storageKey: "trailin-showcase-resize",
+    storageKey: "marlen-showcase-resize",
     defaultWidth: 260,
     min: RESIZE_MIN,
     max: RESIZE_MAX,

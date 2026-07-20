@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { BriefingItem, BriefingRollup, CardAccount, ConnectedAccount } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { BriefingItem, BriefingRollup, CardAccount, ConnectedAccount } from "@trailin/shared";
 import { errorMessage, isNonEmptyString, isRecord } from "../core/utils/util.js";
 import { threadWebUrl } from "../email/webLinks.js";
 import { listAccounts } from "../integrations/pipedream/connect.js";

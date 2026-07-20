@@ -1,4 +1,4 @@
-import type { ApiErrorCode } from "@trailin/shared";
+import type { ApiErrorCode } from "@marlen/shared";
 import { toast as sonnerToast } from "sonner";
 import { ApiError } from "@/lib/api";
 import i18n from "@/lib/i18n";

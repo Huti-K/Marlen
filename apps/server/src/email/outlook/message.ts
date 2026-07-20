@@ -1,4 +1,4 @@
-import type { ConnectedAccount } from "@trailin/shared";
+import type { ConnectedAccount } from "@marlen/shared";
 import { proxyRequest } from "../../integrations/pipedream/connect.js";
 
 export const GRAPH_API = "https://graph.microsoft.com/v1.0/me";

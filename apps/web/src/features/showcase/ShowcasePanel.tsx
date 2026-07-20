@@ -133,7 +133,7 @@ export function ShowcasePanel() {
   // live agent turn. Force prefill while the gallery is open so it only fills
   // the composer. `pagehide` covers a refresh, which skips the unmount path.
   React.useEffect(() => {
-    const KEY = "trailin-quick-action-mode";
+    const KEY = "marlen-quick-action-mode";
     const previous = localStorage.getItem(KEY);
     const restore = () => {
       if (previous === null) localStorage.removeItem(KEY);

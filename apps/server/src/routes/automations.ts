@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { RunTrigger } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { RunTrigger } from "@trailin/shared";
 import { and, asc, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
 import { notFound, requireRow } from "../core/errors.js";

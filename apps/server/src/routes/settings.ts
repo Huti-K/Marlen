@@ -1,12 +1,13 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { isLanguage, SUPPORTED_LANGUAGES } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import { isLanguage, SUPPORTED_LANGUAGES } from "@trailin/shared";
 import { resetSessions } from "../agent/sessionCache.js";
 import { badRequest } from "../core/errors.js";
 import { emitServerEvent } from "../core/events.js";
 import {
   getAccountColors,
   getAccountPermissions,
+  getAccountSignatures,
   getFileAccessSettings,
   getLanguageSetting,
   getTimezoneSetting,
@@ -14,6 +15,7 @@ import {
   LANGUAGE_SETTING_KEY,
   setAccountColors,
   setAccountPermissions,
+  setAccountSignatures,
   setFileAccessSettings,
   setSetting,
   TIMEZONE_SETTING_KEY,
@@ -46,6 +48,21 @@ const fileAccessBody = Type.Object({
 const accountColorsBody = Type.Object({
   colors: Type.Array(Type.Object({ accountId: Type.String(), hex: Type.String() })),
 });
+
+// Generous cap: a pasted signature can carry an inline data-URI image.
+const accountSignaturesBody = Type.Object({
+  signatures: Type.Array(
+    Type.Object({ accountId: Type.String(), html: Type.String({ maxLength: 500_000 }) }),
+  ),
+});
+
+/** Drops active content (scripts, handlers, javascript: URLs) while keeping mail-client formatting. */
+function sanitizeSignatureHtml(html: string): string {
+  return html
+    .replace(/<(script|style|iframe|object|embed|form)[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/((?:href|src)\s*=\s*["'])\s*javascript:/gi, "$1");
+}
 
 export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/settings/language", async () => ({ language: await getLanguageSetting() }));
@@ -121,4 +138,28 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
     emitServerEvent("accounts");
     return { colors: req.body.colors };
   });
+
+  app.get("/api/settings/account-signatures", async () => ({
+    signatures: await getAccountSignatures(),
+  }));
+
+  app.put(
+    "/api/settings/account-signatures",
+    { schema: { body: accountSignaturesBody } },
+    async (req) => {
+      // Last entry wins per account; an empty signature removes the record.
+      const byId = new Map(
+        req.body.signatures.map((s) => [
+          s.accountId,
+          { accountId: s.accountId, html: sanitizeSignatureHtml(s.html).trim() },
+        ]),
+      );
+      const signatures = [...byId.values()].filter((s) => s.html);
+      await setAccountSignatures(signatures);
+      // The draft tools' descriptions mention the signature; rebuild agent toolsets.
+      await resetSessions();
+      emitServerEvent("accounts");
+      return { signatures };
+    },
+  );
 };

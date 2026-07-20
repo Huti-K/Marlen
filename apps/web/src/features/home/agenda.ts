@@ -1,4 +1,4 @@
-import type { Todo } from "@trailin/shared";
+import type { Todo } from "@marlen/shared";
 import { timeLabel } from "@/lib/dates";
 
 /** Due-date arithmetic shared by the Home agenda (rows + due-date picker). */

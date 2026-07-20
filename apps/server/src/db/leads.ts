@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Lead, LeadPriority, LeadSource, LeadStatus } from "@trailin/shared";
+import type { Lead, LeadPriority, LeadSource, LeadStatus } from "@marlen/shared";
 import { desc, eq } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, schema } from "./index.js";

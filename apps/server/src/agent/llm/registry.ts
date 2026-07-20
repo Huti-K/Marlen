@@ -1,6 +1,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import type { LlmProviderInfo, ModelSettings } from "@trailin/shared";
+import type { LlmProviderInfo, ModelSettings } from "@marlen/shared";
 import { env } from "../../core/env.js";
 import { badRequest } from "../../core/errors.js";
 import { moduleLogger } from "../../core/logger.js";

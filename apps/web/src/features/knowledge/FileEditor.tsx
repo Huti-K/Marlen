@@ -1,9 +1,10 @@
+import type { LibraryDocument, LibraryStatus, MemoryEntry, Skill } from "@marlen/shared";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import type { LibraryDocument, LibraryStatus, MemoryEntry, Skill } from "@trailin/shared";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Markdown } from "tiptap-markdown";
+import { AccountDot } from "@/components/ui/account-dot";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Dialog } from "@/components/ui/dialog";
@@ -164,10 +165,7 @@ export function FileEditor({
   };
 
   const accountDot = (accountId: string) => (
-    <span
-      className="h-2 w-2 rounded-full"
-      style={{ backgroundColor: colors.find((c) => c.accountId === accountId)?.hex ?? "#616161" }}
-    />
+    <AccountDot color={colors.find((c) => c.accountId === accountId)?.hex} className="h-2 w-2" />
   );
 
   const title =

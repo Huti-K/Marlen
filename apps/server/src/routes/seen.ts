@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { SeenState } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import type { SeenState } from "@trailin/shared";
 import { getSeenState, markAllSeen, markSeen } from "../db/seenStore.js";
 
 const seenBody = Type.Object({

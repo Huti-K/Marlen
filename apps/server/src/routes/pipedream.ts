@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import { type ConnectedAccount, EMAIL_APPS } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
-import { type ConnectedAccount, EMAIL_APPS } from "@trailin/shared";
 import { resetSessions } from "../agent/sessionCache.js";
 import { startVoiceLearnOnConnect } from "../agent/voiceLearn.js";
 import { env } from "../core/env.js";

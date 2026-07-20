@@ -3,9 +3,9 @@ import type {
   AgentToolResult,
   AgentToolUpdateCallback,
 } from "@earendil-works/pi-agent-core";
+import type { AgentCard, ConnectedAccount } from "@marlen/shared";
 import { type Static, type TObject, type TProperties, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { AgentCard, ConnectedAccount } from "@trailin/shared";
 import { errorMessage } from "../core/utils/util.js";
 import { accountNameMap, resolveAccountParam } from "./accounts.js";
 

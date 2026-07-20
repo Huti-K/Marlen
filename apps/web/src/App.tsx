@@ -1,4 +1,4 @@
-import { type AppStatus, isLanguage, isSetupComplete } from "@trailin/shared";
+import { type AppStatus, isLanguage, isSetupComplete } from "@marlen/shared";
 import {
   ChevronLeft,
   ChevronRight,
@@ -45,7 +45,7 @@ import { useTheme } from "@/lib/useTheme";
 import { cn, MOD_LABEL, withViewTransition } from "@/lib/utils";
 
 /** Set once setup finished (or was skipped); an established app never re-gates. */
-const SETUP_DISMISSED_KEY = "trailin-setup-dismissed";
+const SETUP_DISMISSED_KEY = "marlen-setup-dismissed";
 
 /** Drag range for the chat panel width, shared by the resize hook and the drag handle's
  *  ARIA value. The hook additionally caps the panel at a fraction of the window, so the
@@ -130,13 +130,13 @@ export default function App() {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(
     () =>
-      typeof window !== "undefined" && localStorage.getItem("trailin-sidebar-collapsed") === "true",
+      typeof window !== "undefined" && localStorage.getItem("marlen-sidebar-collapsed") === "true",
   );
   const [chatOpen, setChatOpen] = React.useState(false);
   const [agentCollapsed, setAgentCollapsed] = React.useState(
     () =>
       typeof window !== "undefined" &&
-      localStorage.getItem("trailin-agent-sidebar-collapsed") === "true",
+      localStorage.getItem("marlen-agent-sidebar-collapsed") === "true",
   );
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
@@ -153,7 +153,7 @@ export default function App() {
   const [historyCollapsed, setHistoryCollapsed] = React.useState(
     () =>
       typeof window !== "undefined" &&
-      localStorage.getItem("trailin-chat-history-collapsed") === "true",
+      localStorage.getItem("marlen-chat-history-collapsed") === "true",
   );
   const [historyQuery, setHistoryQuery] = React.useState("");
   const [, theme, setThemePref] = useTheme();
@@ -162,7 +162,7 @@ export default function App() {
     setThemePref(theme === "dark" ? "light" : "dark");
   }, [theme, setThemePref]);
   const { width: chatWidth, onPointerDown: onChatResizeStart } = useResizableWidth({
-    storageKey: "trailin-chat-width",
+    storageKey: "marlen-chat-width",
     defaultWidth: 384,
     min: CHAT_WIDTH_MIN,
     max: CHAT_WIDTH_MAX,
@@ -227,15 +227,15 @@ export default function App() {
   }, [onChatRoute]);
 
   React.useEffect(() => {
-    localStorage.setItem("trailin-chat-history-collapsed", String(historyCollapsed));
+    localStorage.setItem("marlen-chat-history-collapsed", String(historyCollapsed));
   }, [historyCollapsed]);
 
   React.useEffect(() => {
-    localStorage.setItem("trailin-sidebar-collapsed", String(sidebarCollapsed));
+    localStorage.setItem("marlen-sidebar-collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
   React.useEffect(() => {
-    localStorage.setItem("trailin-agent-sidebar-collapsed", String(agentCollapsed));
+    localStorage.setItem("marlen-agent-sidebar-collapsed", String(agentCollapsed));
   }, [agentCollapsed]);
 
   React.useEffect(() => {

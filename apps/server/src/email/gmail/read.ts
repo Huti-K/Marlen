@@ -1,4 +1,4 @@
-import type { ConnectedAccount, EmailThreadMessage } from "@trailin/shared";
+import type { ConnectedAccount, EmailThreadMessage } from "@marlen/shared";
 import { upstreamStatusCode } from "../../core/errors.js";
 import { mapWithConcurrency } from "../../core/utils/jobs.js";
 import { proxyRequest } from "../../integrations/pipedream/connect.js";

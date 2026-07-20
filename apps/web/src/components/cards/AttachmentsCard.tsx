@@ -1,4 +1,4 @@
-import { type AgentCard, type AttachmentItem, formatFileSize } from "@trailin/shared";
+import { type AgentCard, type AttachmentItem, formatFileSize } from "@marlen/shared";
 import type { LucideIcon } from "lucide-react";
 import { Download, Eye, FileText, ImageIcon, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";

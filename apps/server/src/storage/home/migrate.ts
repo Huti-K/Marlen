@@ -1,6 +1,6 @@
 import { cp, readdir, readFile, rename, rm, rmdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { MemoryEntry } from "@trailin/shared";
+import type { MemoryEntry } from "@marlen/shared";
 import { env } from "../../core/env.js";
 import { moduleLogger } from "../../core/logger.js";
 import { writeFileAtomic } from "../../core/utils/atomicFile.js";

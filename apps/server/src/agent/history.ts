@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Api, Message, Model } from "@earendil-works/pi-ai";
-import type { ChatToolCall } from "@trailin/shared";
+import type { ChatToolCall } from "@marlen/shared";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { decoratePrompt, parseStoredRefs } from "./emailRefs.js";

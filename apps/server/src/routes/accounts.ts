@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import type { AppStatus } from "@trailin/shared";
-import { EMAIL_APPS } from "@trailin/shared";
+import type { AppStatus } from "@marlen/shared";
+import { EMAIL_APPS } from "@marlen/shared";
 import { activeModelConfigured, getActiveModelIds } from "../agent/llm/registry.js";
 import { getOnOfficeConfig } from "../integrations/onoffice/config.js";
 import { listAccounts, pipedreamConfigured } from "../integrations/pipedream/connect.js";

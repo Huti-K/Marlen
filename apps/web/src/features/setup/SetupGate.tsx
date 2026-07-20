@@ -3,7 +3,7 @@ import {
   isSetupComplete,
   type LlmProviderInfo,
   type PipedreamStatus,
-} from "@trailin/shared";
+} from "@marlen/shared";
 import { Check } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

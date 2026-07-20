@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { LearnRun } from "@trailin/shared";
+import type { LearnRun } from "@marlen/shared";
 import { desc, inArray } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, schema } from "./index.js";

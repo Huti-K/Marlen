@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AutomationSuggestion } from "@trailin/shared";
+import type { AutomationSuggestion } from "@marlen/shared";
 import { desc, eq, inArray, ne } from "drizzle-orm";
 import { emitServerEvent } from "../core/events.js";
 import { db, schema } from "./index.js";

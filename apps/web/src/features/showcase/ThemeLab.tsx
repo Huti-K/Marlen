@@ -318,7 +318,7 @@ export function ThemeLab() {
   const [theme, setTheme] = React.useState<ThemeName>(() => {
     // App applies the `dark` class in an effect (after our first render), so read
     // the persisted preference it also seeds from to avoid a light/dark desync.
-    const saved = localStorage.getItem("trailin-theme");
+    const saved = localStorage.getItem("marlen-theme");
     if (saved === "dark" || saved === "light") return saved;
     return document.documentElement.classList.contains("dark") ? "dark" : "light";
   });
@@ -402,7 +402,7 @@ export function ThemeLab() {
       const next = prev === "dark" ? "light" : "dark";
       document.documentElement.classList.toggle("dark", next === "dark");
       try {
-        localStorage.setItem("trailin-theme", next);
+        localStorage.setItem("marlen-theme", next);
       } catch {
         /* ignore */
       }

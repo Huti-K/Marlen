@@ -1,4 +1,4 @@
-import type { LlmProviderInfo, LoginFlowStatus } from "@trailin/shared";
+import type { LlmProviderInfo, LoginFlowStatus } from "@marlen/shared";
 import { ExternalLink, Plus, X } from "lucide-react";
 import * as React from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { cn, errorMessage, openExternal } from "@/lib/utils";
+import { cn, errorMessage, openExternal, stagger } from "@/lib/utils";
 
 /**
  * Provider list + sign-in flows (subscription OAuth or API key).
@@ -81,7 +81,7 @@ export function Providers({
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
         {rows.map((p, i) => (
-          <div key={p.id} className="animate-in-up" style={{ animationDelay: `${i * 50}ms` }}>
+          <div key={p.id} className="animate-in-up" style={stagger(i)}>
             <ProviderRow
               provider={p}
               busy={busy}

@@ -1,5 +1,5 @@
+import type { WhatsAppStatus } from "@marlen/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { WhatsAppStatus } from "@trailin/shared";
 import { LogOut, MessageCircle, Plus, RefreshCw, Settings, X } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

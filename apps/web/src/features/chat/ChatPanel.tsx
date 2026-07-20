@@ -1,18 +1,18 @@
-import type { ChatToolCall, EmailRef } from "@trailin/shared";
+import type { ChatToolCall, EmailRef } from "@marlen/shared";
 import type { ParseKeys } from "i18next";
-import { Check, Copy, MessagesSquare, Send } from "lucide-react";
+import { Check, Copy, MessagesSquare, Send, X } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { AgentCardView } from "@/components/cards";
-import { SHOWCASE_TURNS } from "@/components/cards/samples";
 import { Button } from "@/components/ui/button";
+import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingRow } from "@/components/ui/feedback";
 import { Highlight } from "@/components/ui/highlight";
 import { Markdown } from "@/components/ui/markdown";
 import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
-import { RefChips, RefChipsReadOnly } from "@/features/chat/composer/RefChips";
+import { RefChips } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
 import { onChatCommand } from "@/features/chat/controller";
 import { HistoryList } from "@/features/chat/HistoryList";
@@ -86,8 +86,11 @@ export function ChatPanel({
 
   useAutoGrow(textareaRef, input);
 
-  /** Answers `/showcase` client-side: one sample turn per thing the assistant can render. */
-  const showcase = (message: string) => {
+  /** Answers `/showcase` client-side: one sample turn per thing the assistant can
+   *  render. Dev-only, and the fixtures load dynamically so they stay out of the
+   *  production bundle. */
+  const showcase = async (message: string) => {
+    const { SHOWCASE_TURNS } = await import("@/components/cards/samples");
     const userMessage: DisplayMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -161,8 +164,8 @@ export function ChatPanel({
     if (!message || runs.busy) return;
     setHistoryOpen(false);
 
-    if (message.toLowerCase() === SHOWCASE_COMMAND) {
-      showcase(message);
+    if (import.meta.env.DEV && message.toLowerCase() === SHOWCASE_COMMAND) {
+      await showcase(message);
       return;
     }
     if (message.toLowerCase() === SYSTEM_PROMPT_COMMAND) {
@@ -283,7 +286,7 @@ export function ChatPanel({
                     on the canvas rather than baked into the accent fill, so the
                     selected email reads as quiet reference, not high-contrast. */}
                 {m.role === "user" && m.refs && m.refs.length > 0 && (
-                  <RefChipsReadOnly refs={m.refs} colors={accountColors} />
+                  <RefChips refs={m.refs} colors={accountColors} />
                 )}
                 {(m.content ||
                   m.streaming ||
@@ -370,8 +373,8 @@ export function ChatPanel({
   );
 }
 
-function formatToolValue(value: unknown): string {
-  if (value === undefined) return "Not available";
+function formatToolValue(value: unknown, unavailable: string): string {
+  if (value === undefined) return unavailable;
   if (typeof value === "string") return value;
   try {
     return JSON.stringify(value, null, 2);
@@ -380,30 +383,109 @@ function formatToolValue(value: unknown): string {
   }
 }
 
-function ToolActivity({ call }: { call: ChatToolCall }) {
+/**
+ * Live elapsed readout for a running tool; freezes where it stands when the
+ * call completes. Renders nothing for calls restored already-done, where the
+ * start time is unknown.
+ */
+function ToolTimer({ done }: { done: boolean }) {
+  const start = React.useRef(performance.now());
+  const restored = React.useRef(done);
+  const [elapsedMs, setElapsedMs] = React.useState(0);
+  React.useEffect(() => {
+    if (restored.current || done) return;
+    const id = window.setInterval(() => setElapsedMs(performance.now() - start.current), 100);
+    return () => window.clearInterval(id);
+  }, [done]);
+  if (restored.current) return null;
   return (
-    <details className="my-1 text-xs text-muted-foreground">
+    <span className="ml-auto shrink-0 pl-2 font-mono text-2xs tabular-nums text-muted-foreground/70">
+      {(elapsedMs / 1000).toFixed(1)}s
+    </span>
+  );
+}
+
+function ToolActivity({ call }: { call: ChatToolCall }) {
+  const { t } = useTranslation();
+  return (
+    <details className="animate-in-up my-1 text-xs text-muted-foreground">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 py-0.5 hover:text-foreground">
-        {!call.done && <Spinner className="h-3 w-3" />}
-        <span title={call.name}>{call.label ?? call.name}</span>
+        {!call.done ? (
+          <Spinner className="h-3 w-3" />
+        ) : call.isError ? (
+          <X className="check-pop h-3 w-3 shrink-0 text-destructive" strokeWidth={3} />
+        ) : (
+          <Check className="check-pop h-3 w-3 shrink-0 text-success" strokeWidth={3} />
+        )}
+        <span className="truncate" title={call.name}>
+          {call.label ?? call.name}
+        </span>
         {call.detail && !call.done && <span className="truncate opacity-70">· {call.detail}</span>}
-        {call.isError && <span className="text-destructive">· failed</span>}
+        {call.isError && (
+          <span className="shrink-0 text-destructive">· {t("chat.tool.failed")}</span>
+        )}
+        <ToolTimer done={call.done} />
       </summary>
       <div className="mt-1 space-y-2 border-l border-border pl-3">
         <div>
-          <div className="mb-0.5 font-medium">Parameters</div>
+          <div className="mb-0.5 font-medium">{t("chat.tool.parameters")}</div>
           <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 font-mono text-2xs text-foreground">
-            {formatToolValue(call.parameters)}
+            {formatToolValue(call.parameters, t("chat.tool.noValue"))}
           </pre>
         </div>
         <div>
-          <div className="mb-0.5 font-medium">Result</div>
+          <div className="mb-0.5 font-medium">{t("chat.tool.result")}</div>
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-2 p-2 font-mono text-2xs text-foreground">
-            {call.done ? formatToolValue(call.result) : "Running…"}
+            {call.done
+              ? formatToolValue(call.result, t("chat.tool.noValue"))
+              : t("chat.tool.running")}
           </pre>
         </div>
       </div>
     </details>
+  );
+}
+
+/** A closed cluster this long folds into a step-count summary line. */
+const CLUSTER_COLLAPSE_MIN = 4;
+
+/**
+ * One contiguous run of tool calls with no prose between them. While the run
+ * is live the steps stay visible and tick off one by one; once the cluster is
+ * `closed` (prose follows it, or the turn is over) a long fully-finished
+ * cluster folds into a step-count line so past work reads as one quiet
+ * summary instead of a wall of rows.
+ */
+function ToolCluster({ calls, closed }: { calls: ChatToolCall[]; closed: boolean }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  const collapsible = closed && calls.length >= CLUSTER_COLLAPSE_MIN && calls.every((c) => c.done);
+  if (!collapsible) {
+    return (
+      <>
+        {calls.map((c) => (
+          <ToolActivity key={c.id} call={c} />
+        ))}
+      </>
+    );
+  }
+  const failed = calls.filter((c) => c.isError).length;
+  return (
+    <div className="my-1">
+      <DisclosureToggle
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+        className="animate-in-up py-0.5"
+      >
+        {t("chat.tool.steps", { count: calls.length })}
+        {failed > 0 && (
+          <span className="text-destructive">
+            · {t("chat.tool.stepsFailed", { count: failed })}
+          </span>
+        )}
+      </DisclosureToggle>
+      {open && calls.map((c) => <ToolActivity key={c.id} call={c} />)}
+    </div>
   );
 }
 
@@ -418,26 +500,29 @@ function AssistantSequence({
   const calls = [...message.toolCalls].sort(
     (a, b) => (a.contentOffset ?? 0) - (b.contentOffset ?? 0),
   );
-  const parts: React.ReactNode[] = [];
+  // Prose-separated clusters: a call with no text since the previous one joins
+  // the previous cluster. Keyed by the first call's id — stable while the
+  // stream appends calls and text.
+  const groups: { key: string; text: string; calls: ChatToolCall[] }[] = [];
   let offset = 0;
-  for (let i = 0; i < calls.length; ) {
-    const callOffset = Math.max(
-      offset,
-      Math.min(message.content.length, calls[i]?.contentOffset ?? 0),
-    );
+  for (const call of calls) {
+    const callOffset = Math.max(offset, Math.min(message.content.length, call.contentOffset ?? 0));
     const text = message.content.slice(offset, callOffset);
-    if (text) parts.push(<Markdown key={`text-${i}`} content={text} />);
-    let j = i;
-    while (j < calls.length && (calls[j]?.contentOffset ?? 0) === (calls[i]?.contentOffset ?? 0)) {
-      const call = calls[j];
-      if (call) parts.push(<ToolActivity key={call.id} call={call} />);
-      j++;
-    }
+    const last = groups[groups.length - 1];
+    if (last && !text) last.calls.push(call);
+    else groups.push({ key: call.id, text, calls: [call] });
     offset = callOffset;
-    i = j;
   }
   const tail = message.content.slice(offset);
-  if (tail) parts.push(<Markdown key="text-tail" content={tail} />);
+  const parts: React.ReactNode[] = groups.flatMap((group, i) => [
+    group.text ? <Markdown key={`text-${group.key}`} content={group.text} /> : null,
+    <ToolCluster
+      key={`calls-${group.key}`}
+      calls={group.calls}
+      closed={!message.streaming || i < groups.length - 1 || tail.length > 0}
+    />,
+  ]);
+  if (tail) parts.push(<Markdown key="text-tail" content={tail} stream={message.streaming} />);
   if (message.streaming && (message.thinking || parts.length === 0)) {
     parts.push(
       <div key="thinking" className="animate-pulse leading-relaxed text-muted-foreground">

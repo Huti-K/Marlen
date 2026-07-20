@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
 import type * as React from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,6 +37,24 @@ export function DisclosureToggle({
       )}
       {children}
     </button>
+  );
+}
+
+/** The chevron toggle in an expandable row's trailing action cluster. */
+export function ExpandButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const { t } = useTranslation();
+  const label = t(open ? "common.collapse" : "common.expand");
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-expanded={open}
+      title={label}
+      aria-label={label}
+      onClick={onToggle}
+    >
+      <ChevronRight className={cn("transition-transform", open && "rotate-90")} />
+    </Button>
   );
 }
 

@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
-import { formatFileSize } from "@trailin/shared";
+import { formatFileSize } from "@marlen/shared";
 import { mimeForExt } from "../../core/utils/fileResponse.js";
 import type { DraftAttachment } from "../../email/providers.js";
 import { documentPath } from "./ingest.js";

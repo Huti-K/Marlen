@@ -1,5 +1,5 @@
+import type { SearchResult } from "@marlen/shared";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import type { SearchResult } from "@trailin/shared";
 import {
   CornerDownLeft,
   Database,
@@ -23,8 +23,6 @@ import { revealChat, sendChatCommand } from "@/features/chat/controller";
 import { api } from "@/lib/api";
 import { dateTimeLabel } from "@/lib/dates";
 import { registerOpenSearch, visibleNavItems } from "@/lib/nav";
-import { setPendingDraftFocus } from "@/lib/paletteFocus";
-import { dispatchTrailin } from "@/lib/trailinEvents";
 import { cn, MOD_LABEL } from "@/lib/utils";
 
 /**
@@ -201,14 +199,9 @@ export function SearchPalette({ onofficeConfigured }: { onofficeConfigured: bool
       sendChatCommand({ kind: "open", conversationId: hit.id });
       revealChat();
     } else if (hit.type === "draft") {
-      // Stashed before navigate: HomePanel may not be mounted yet to catch the
-      // CustomEvent below (see lib/paletteFocus.ts).
-      if (hit.accountId) setPendingDraftFocus({ accountId: hit.accountId, draftId: hit.id });
-      navigate("/");
-      // SearchResult.accountId is optional in general, but every draft hit
-      // carries one (drafts always belong to an account) — the same
-      // invariant the setPendingDraftFocus guard above relies on.
-      dispatchTrailin("open-draft", { accountId: hit.accountId as string, draftId: hit.id });
+      // Home consumes ?draft= from the URL on mount, so the param is already
+      // there on its first render whether or not it was mounted before.
+      navigate({ pathname: "/", search: `?draft=${hit.accountId}:${hit.id}` });
     } else {
       // The Knowledge panel consumes ?focus= from the URL on mount — no
       // mount race, and back/forward stays clean because it clears the param.

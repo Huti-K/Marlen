@@ -17,11 +17,11 @@ let legacyLibrary: string;
 let legacyHome: string;
 
 beforeAll(async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "trailin-home-test-"));
-  legacySkills = await mkdtemp(join(tmpdir(), "trailin-legacy-skills-"));
-  legacyLibrary = await mkdtemp(join(tmpdir(), "trailin-legacy-library-"));
-  legacyHome = await mkdtemp(join(tmpdir(), "trailin-legacy-home-"));
-  process.env.AGENT_HOME_PATH = join(scratch, "Trailin");
+  const scratch = await mkdtemp(join(tmpdir(), "marlen-home-test-"));
+  legacySkills = await mkdtemp(join(tmpdir(), "marlen-legacy-skills-"));
+  legacyLibrary = await mkdtemp(join(tmpdir(), "marlen-legacy-library-"));
+  legacyHome = await mkdtemp(join(tmpdir(), "marlen-legacy-home-"));
+  process.env.AGENT_HOME_PATH = join(scratch, "Marlen");
   process.env.LEGACY_AGENT_HOME_PATH = legacyHome;
   process.env.SKILLS_PATH = legacySkills;
   process.env.LIBRARY_PATH = legacyLibrary;

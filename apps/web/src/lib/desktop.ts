@@ -1,6 +1,6 @@
 /**
  * The bridge the desktop shell's preload script exposes as
- * window.trailinDesktop (apps/desktop/src/preload.ts). Absent in a plain
+ * window.marlenDesktop (apps/desktop/src/preload.ts). Absent in a plain
  * browser tab — callers feature-detect via desktopBridge().
  */
 
@@ -47,7 +47,7 @@ type DesktopBridge = {
 };
 
 export function desktopBridge(): DesktopBridge | undefined {
-  return (window as Window & { trailinDesktop?: DesktopBridge }).trailinDesktop;
+  return (window as Window & { marlenDesktop?: DesktopBridge }).marlenDesktop;
 }
 
 /** The inset (macOS) title-bar reservation, or null in a browser tab / on a

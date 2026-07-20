@@ -4,7 +4,7 @@
  * fixtures that feed them. Safe to delete with the folder.
  */
 
-import type { AccountColor } from "@trailin/shared";
+import type { AccountColor } from "@marlen/shared";
 import { Wrench } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";

@@ -8,7 +8,7 @@ import { revealChat, sendChatCommand } from "@/features/chat/controller";
  */
 export type QuickActionMode = "send" | "prefill";
 
-const STORAGE_KEY = "trailin-quick-action-mode";
+const STORAGE_KEY = "marlen-quick-action-mode";
 
 function getQuickActionMode(): QuickActionMode {
   if (typeof window === "undefined") return "send";

@@ -1,10 +1,10 @@
-import { isLanguage, type Language } from "@trailin/shared";
+import { isLanguage, type Language } from "@marlen/shared";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import de from "@/locales/de.json";
 import en from "@/locales/en.json";
 
-const STORAGE_KEY = "trailin-language";
+const STORAGE_KEY = "marlen-language";
 
 /**
  * Language for the first paint: the last server-confirmed choice (mirrored in

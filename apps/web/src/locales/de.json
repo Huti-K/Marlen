@@ -7,12 +7,12 @@
     "expandChat": "Chat ausklappen",
     "collapseChat": "Chat einklappen",
     "updateAvailable": "Update bereit",
-    "updateRestart": "Trailin neu starten & aktualisieren"
+    "updateRestart": "Marlen neu starten & aktualisieren"
   },
   "changelog": {
     "open": "Änderungen",
     "title": "Neuigkeiten",
-    "subtitle": "Aktuelle Änderungen in Trailin",
+    "subtitle": "Aktuelle Änderungen in Marlen",
     "ready": "Bereit"
   },
   "views": {
@@ -62,8 +62,6 @@
     "signIn": "Anmelden",
     "signOut": "Abmelden",
     "submit": "Senden",
-    "noResults": "Keine Treffer",
-    "noResultsBody": "Hier passt nichts zu „{{query}}“.",
     "clearSearch": "Suche zurücksetzen"
   },
   "errors": {
@@ -114,6 +112,17 @@
     "refs": {
       "remove": "{{label}} entfernen"
     },
+    "tool": {
+      "failed": "fehlgeschlagen",
+      "parameters": "Parameter",
+      "result": "Ergebnis",
+      "running": "Läuft…",
+      "noValue": "Nicht verfügbar",
+      "steps_one": "{{count}} Schritt",
+      "steps_other": "{{count}} Schritte",
+      "stepsFailed_one": "{{count}} fehlgeschlagen",
+      "stepsFailed_other": "{{count}} fehlgeschlagen"
+    },
     "focus": {
       "allAccounts": "Alle Konten",
       "noAccounts": "Noch keine verbundenen Konten."
@@ -121,21 +130,20 @@
     "cards": {
       "noSubject": "(kein Betreff)",
       "emptyBody": "(leere Nachricht)",
-      "addToChat": "Zum Chat hinzufügen",
+      "lead": {
+        "badge": "Lead"
+      },
+      "delegation": {
+        "badge": "Recherche"
+      },
+      "chart": {
+        "badge": "Diagramm",
+        "pointCount_one": "{{count}} Wert",
+        "pointCount_other": "{{count}} Werte",
+        "alt": "Diagramm: {{title}}"
+      },
       "choices": {
         "title": "Option wählen"
-      },
-      "hits": {
-        "title": "E-Mail-Suche",
-        "resultCount_one": "{{count}} Ergebnis",
-        "resultCount_other": "{{count}} Ergebnisse",
-        "truncatedLabel": "+ weitere",
-        "empty": "Keine passenden E-Mails."
-      },
-      "thread": {
-        "label": "Konversation",
-        "messageCount_one": "{{count}} Nachricht",
-        "messageCount_other": "{{count}} Nachrichten"
       },
       "draft": {
         "badge": "Entwurf",
@@ -151,7 +159,8 @@
         "kept": "Als Entwurf behalten",
         "sentLabel": "Gesendet",
         "discardedLabel": "Verworfen",
-        "goneLabel": "Diesen Entwurf gibt es nicht mehr"
+        "goneLabel": "Diesen Entwurf gibt es nicht mehr",
+        "voice": "In Ihrem Stil"
       },
       "messageDraft": {
         "badge": "{{channel}}-Entwurf",
@@ -202,7 +211,8 @@
     },
     "showcase": {
       "intro": "Hier sehen Sie alles, was ich im Chat zeigen kann: Tool-Aktivität, jede Kartenart, eine formatierte Antwort und den Denk-Zustand.",
-      "toolsNote": "Jedes Tool zeigt sich einzeln: fertig, noch aktiv oder fehlgeschlagen."
+      "toolsNote": "Jedes Tool zeigt sich einzeln: fertig, noch aktiv oder fehlgeschlagen.",
+      "toolsDone": "Nach einem längeren Lauf falten sich die fertigen Schritte zu einer Zeile zusammen:"
     },
     "attachmentViewer": {
       "openInBrowser": "Im Browser öffnen",
@@ -246,7 +256,6 @@
     "unlinkConfirm": "Dieses Gerät trennen und die lokal gespiegelten Chats löschen? Ihr WhatsApp-Konto und die Chats auf Ihrem Handy bleiben unberührt."
   },
   "onoffice": {
-    "crmLabel": "CRM",
     "setupTitle": "onOffice verbinden",
     "setupIntro": "Legen Sie in onOffice einen API-Benutzer an, erzeugen Sie ein Zugriffstoken und tragen Sie Token und Secret unten ein. Beide bleiben auf diesem Computer und landen nie in einem Backup.",
     "openApiDocs": "onOffice-API-Doku",
@@ -261,7 +270,7 @@
   "connections": {
     "customToggle": "Eigenes Pipedream-Projekt verwenden",
     "customToggleOn": "E-Mail läuft über das unten konfigurierte Pipedream-Projekt.",
-    "builtinInUse": "E-Mail läuft über das eingebaute Pipedream von Trailin.",
+    "builtinInUse": "E-Mail läuft über das eingebaute Pipedream von Marlen.",
     "builtinMissing": "Diese Version hat kein eingebautes Pipedream. Schalten Sie das hier ein und tragen Sie unten Ihre eigenen Zugangsdaten ein.",
     "addAccount": "Neues Konto hinzufügen",
     "searchProviders": "Alle Apps durchsuchen… (Gmail, Zoho, IMAP, Notion, …)",
@@ -271,8 +280,8 @@
     "crmHeading": "CRM",
     "messagingHeading": "Messaging",
     "anyAppHint": "Das sind nur einige. Suchen Sie oben, dann finden Sie über 2.000 Apps, von anderen Mail-Diensten über Kalender und Notizen bis Chat.",
-    "setupTitle": "Einmalige Einrichtung: Trailin mit Pipedream verbinden",
-    "setupIntro": "Trailin verbindet Ihre E-Mail-Konten über <pd>Pipedream</pd>, einen kostenlosen Dienst. Verbinden Sie so viele Konten, wie Sie wollen, auch mehrere vom selben Anbieter. Dafür brauchen Sie drei Werte aus Ihrem Pipedream-Workspace:",
+    "setupTitle": "Einmalige Einrichtung: Marlen mit Pipedream verbinden",
+    "setupIntro": "Marlen verbindet Ihre E-Mail-Konten über <pd>Pipedream</pd>, einen kostenlosen Dienst. Verbinden Sie so viele Konten, wie Sie wollen, auch mehrere vom selben Anbieter. Dafür brauchen Sie drei Werte aus Ihrem Pipedream-Workspace:",
     "setupStep1": "Erstellen Sie ein kostenloses Pipedream-Konto.",
     "setupStep2": "Erstellen Sie unter Settings → API einen OAuth-Client und tragen Sie dessen Client ID und Client Secret unten ein.",
     "setupStep3": "Erstellen Sie ein Projekt (Name beliebig) und tragen Sie unten dessen URL oder die proj_…-ID ein.",
@@ -289,6 +298,7 @@
     "emailAccounts": "Verbundene Konten",
     "permissions": {
       "edit": "Berechtigungen",
+      "editEmail": "Berechtigungen & Signatur",
       "hint": "Lesen ist immer erlaubt. Alles Weitere braucht eine eigene Freigabe:",
       "hintEmail": "Lesen und Entwürfe sind immer erlaubt. Alles Weitere braucht eine eigene Freigabe:",
       "write": {
@@ -340,7 +350,17 @@
         "confirmTitle": "WhatsApp-Nachrichten automatisch senden?",
         "confirmBody": "WhatsApp-Nachrichten gehen dann sofort raus, sobald eine Anweisung oder Automatisierung senden will, ohne Entwurf zur Durchsicht. Ohne diese Freigabe bleibt jede Nachricht ein Entwurf mit Senden-Knopf. Jederzeit abschaltbar.",
         "confirmCta": "Automatisch senden erlauben"
-      }
+      },
+      "notLoaded": "Berechtigungen konnten nicht geladen werden. Bitte Seite neu laden."
+    },
+    "signature": {
+      "title": "E-Mail-Signatur",
+      "hint": "Fügen Sie hier Ihre Signatur ein, direkt aus Gmail oder Outlook. Formatierung, Links und Bilder bleiben erhalten, und der Assistent setzt sie unter jede E-Mail, die er aus diesem Konto entwirft.",
+      "save": "Signatur speichern",
+      "saved": "Signatur gespeichert.",
+      "removed": "Signatur entfernt.",
+      "clear": "Leeren",
+      "loadFailed": "Die Signatur konnte nicht geladen werden."
     },
     "noAccounts": "Noch keine E-Mail-Konten verbunden. Nutzen Sie die Knöpfe oben. Pro Anbieter geht auch mehr als ein Konto.",
     "finishConnecting": "Schließen Sie die Verbindung im neuen Browser-Tab ab. Das Konto erscheint dann automatisch hier.",
@@ -357,11 +377,12 @@
     "advancedCustom": "Eigenes Pipedream-Projekt",
     "learnVoiceStarted": "Ihr Schreibstil wird aus {{name}} gelernt. Er erscheint gleich in den Einstellungen.",
     "voiceLearning": "Stil wird gelernt…",
+    "voiceLearned": "Stil gelernt",
     "voiceLearnFailed": "Stil-Lernen fehlgeschlagen",
     "voiceLearnRetry": "Schreibstil erneut lernen"
   },
   "home": {
-    "setupBanner": "Trailin ist noch nicht fertig eingerichtet. Der Assistent erreicht Ihre E-Mails noch nicht.",
+    "setupBanner": "Marlen ist noch nicht fertig eingerichtet. Der Assistent erreicht Ihre E-Mails noch nicht.",
     "setupBannerCta": "Einrichtung abschließen",
     "offlineBanner": "Ihr E-Mail-Anbieter ist gerade nicht erreichbar. Prüfen Sie Ihre Verbindung.",
     "missedBanner_one": "1 Automatisierung lief nicht, während die App geschlossen war.",
@@ -409,7 +430,6 @@
     "todosLinkedRun": "Beim Erledigen startet: {{name}}",
     "todosLinkedLabel": "Beim Erledigen starten",
     "todosLinkedNone": "Keine Automatisierung",
-    "todosLinkedGeneric": "Automatisierung",
     "todosDone_one": "1 erledigt",
     "todosDone_other": "{{count}} erledigt",
     "todosRestore": "Wieder öffnen",
@@ -580,8 +600,6 @@
     "error": "Fehler",
     "delete": "Löschen",
     "deleteConfirm": "„{{title}}“ löschen? Die Datei wird auch aus dem Ordner entfernt.",
-    "sectionCount_one": "{{count}} Abschnitt",
-    "sectionCount_other": "{{count}} Abschnitte",
     "showMore_one": "1 weitere anzeigen",
     "showMore_other": "{{count}} weitere anzeigen",
     "deleteFolderConfirm": "Der Ordner „{{title}}“ und alle enthaltenen Dateien werden gelöscht.",
@@ -651,22 +669,22 @@
     "selectAll": "Alle auswählen"
   },
   "setup": {
-    "title": "Willkommen bei Trailin",
+    "title": "Willkommen bei Marlen",
     "intro": "Ihre E-Mails, erledigt von einem Assistenten, mit dem Sie sprechen können. Zwei Schritte, dann sind Sie drin:",
     "stepAiTitle": "Bei Ihrer KI anmelden",
     "stepAiDescription": "Nutzen Sie ein vorhandenes Abo (Claude, Copilot, ChatGPT) oder fügen Sie einen API-Schlüssel ein. Ihre Anmeldung bleibt auf diesem Computer.",
     "aiDone": "Angemeldet, verwendet {{model}}.",
     "stepEmailTitle": "E-Mail-Konto verbinden",
     "stepEmailDescription": "Verbinden Sie Gmail oder Outlook, damit der Assistent Ihre Post sehen kann. Weitere Konten können Sie später hinzufügen.",
-    "pipedreamMissingBody": "Diese Version hat keine eingebaute E-Mail-Brücke. Trailin verbindet sich stattdessen über Ihr eigenes kostenloses Pipedream-Projekt. Einmal hier einrichten, dann Konten verbinden:",
+    "pipedreamMissingBody": "Diese Version hat keine eingebaute E-Mail-Brücke. Marlen verbindet sich stattdessen über Ihr eigenes kostenloses Pipedream-Projekt. Einmal hier einrichten, dann Konten verbinden:",
     "advancedLink": "Erweitert: eigenes Pipedream-Projekt verwenden",
     "allSetTitle": "Alles bereit",
     "allSetBody": "Der Assistent kann jetzt Ihre Post lesen, Antworten entwerfen und Ihre Fragen beantworten.",
-    "allSetReadOnly": "Trailin startet schreibgeschützt: Der Assistent entwirft und antwortet, sendet und löscht aber nichts. Das erlauben Sie je Konto über das Schild-Symbol in den Einstellungen.",
-    "openApp": "Trailin öffnen",
+    "allSetReadOnly": "Marlen startet schreibgeschützt: Der Assistent entwirft und antwortet, sendet und löscht aber nichts. Das erlauben Sie je Konto über das Schild-Symbol in den Einstellungen.",
+    "openApp": "Marlen öffnen",
     "skip": "Später, ich sehe mich erst um",
     "offlineTitle": "Server nicht erreichbar",
-    "offlineBody": "Die Verbindung zum Trailin-Server wird alle paar Sekunden geprüft. Es geht von selbst weiter, sobald er wieder da ist."
+    "offlineBody": "Die Verbindung zum Marlen-Server wird alle paar Sekunden geprüft. Es geht von selbst weiter, sobald er wieder da ist."
   },
   "settings": {
     "sections": {
@@ -686,14 +704,14 @@
       },
       "preferences": {
         "title": "Darstellung & Sprache",
-        "description": "Wie Trailin aussieht, spricht und die Uhrzeit anzeigt."
+        "description": "Wie Marlen aussieht, spricht und die Uhrzeit anzeigt."
       },
       "data": {
         "title": "Lokale Daten",
-        "description": "Alles, was Trailin auf diesem Computer gespeichert hat, und wie Sie es sichern."
+        "description": "Alles, was Marlen auf diesem Computer gespeichert hat, und wie Sie es sichern."
       },
       "about": {
-        "title": "Über Trailin",
+        "title": "Über Marlen",
         "description": "Welche Version Sie verwenden, und Updates, sobald eine neuere erscheint."
       },
       "language": {
@@ -765,13 +783,13 @@
     "loginInputPlaceholder": "Code / Weiterleitungs-URL einfügen, falls der Vorgang nicht automatisch abschließt…",
     "fileAccess": {
       "title": "Dateizugriff",
-      "description": "Was der Assistent mit Dateien außerhalb seines Trailin-Ordners darf. In seinen eigenen Ordner (Notizen, Skills, Bibliothek) kommt er immer.",
+      "description": "Was der Assistent mit Dateien außerhalb seines Marlen-Ordners darf. In seinen eigenen Ordner (Notizen, Skills, Bibliothek) kommt er immer.",
       "chipOff": "Kein Zugriff",
       "read": {
         "title": "Dateien lesen",
         "badge": "Lesen",
         "on": "Darf Ordner auflisten, Dateien finden, Inhalte durchsuchen (grep) und lesen, wenn Sie es sagen.",
-        "off": "Kann nur Dateien in seinem eigenen Trailin-Ordner lesen.",
+        "off": "Kann nur Dateien in seinem eigenen Marlen-Ordner lesen.",
         "confirmTitle": "Der KI das Lesen von Dateien erlauben?",
         "confirmBody": "Der Assistent darf dann überall auf diesem Computer Ordner auflisten, Dateien finden, durchsuchen (grep) und lesen, also Downloads, Dokumente und alles, was Ihr Konto sieht. In E-Mails versteckte Anweisungen könnten ihn auf private Dateien ansetzen. Er gibt Dateiinhalte nie ohne Ihr Okay weiter. Jederzeit abschaltbar.",
         "confirmCta": "Lesen erlauben"
@@ -780,7 +798,7 @@
         "title": "Dateien schreiben",
         "badge": "Schreiben",
         "on": "Darf neue Dateien anlegen (write) und bestehende bearbeiten (edit), wenn Sie es sagen.",
-        "off": "Kann nur Dateien in seinem eigenen Trailin-Ordner anlegen und ändern.",
+        "off": "Kann nur Dateien in seinem eigenen Marlen-Ordner anlegen und ändern.",
         "confirmTitle": "Der KI das Schreiben von Dateien erlauben?",
         "confirmBody": "Der Assistent darf dann überall auf diesem Computer neue Dateien anlegen (write) und bestehende bearbeiten (edit). In E-Mails versteckte Anweisungen könnten ungewollte Änderungen anstoßen. Jederzeit abschaltbar.",
         "confirmCta": "Schreiben erlauben"

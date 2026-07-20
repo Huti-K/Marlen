@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { LibraryDocument } from "@trailin/shared";
+import type { LibraryDocument } from "@marlen/shared";
 import { eq } from "drizzle-orm";
 import { db, lazyStatement, lazyTransaction, schema } from "../../db/index.js";
 import { buildFtsMatch, upsertSql } from "../../db/sql.js";

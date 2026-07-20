@@ -4,7 +4,7 @@ import type {
   ChatStreamEvent,
   ChatToolCall,
   EmailRef,
-} from "@trailin/shared";
+} from "@marlen/shared";
 
 /**
  * One message as the chat panel renders it — a user turn, or an assistant
@@ -28,7 +28,6 @@ export interface DisplayMessage {
 
 /** One turn's own message buffer, independent of what the panel currently shows. */
 export interface RunEntry {
-  runId: string;
   /** Assigned once the server confirms/creates the conversation; undefined until then. */
   conversationId: string | undefined;
   messages: DisplayMessage[];
@@ -259,7 +258,7 @@ export function reduceRunEvent(state: RunState, action: RunAction): RunState {
       const { runId, userMessage, assistantMessage } = action;
       const conversationId = state.activeConversationId;
       const nextMessages = [...state.messages, userMessage, assistantMessage];
-      const run: RunEntry = { runId, conversationId, messages: nextMessages };
+      const run: RunEntry = { conversationId, messages: nextMessages };
       const runs = { ...state.runs, [runId]: run };
       const runIdByConversation =
         conversationId !== undefined

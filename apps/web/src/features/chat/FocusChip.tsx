@@ -1,4 +1,4 @@
-import type { Conversation } from "@trailin/shared";
+import type { Conversation } from "@marlen/shared";
 import { ChevronDown } from "lucide-react";
 import * as React from "react";
 import { createPortal } from "react-dom";

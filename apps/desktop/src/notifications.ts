@@ -30,7 +30,7 @@ function showNotification(data: string, onOpenRequest: () => void): void {
   if (BrowserWindow.getAllWindows().some((window) => window.isFocused())) return;
   if (!Notification.isSupported()) return;
   const notification = new Notification({
-    title: event.notification.automationName ?? "Trailin",
+    title: event.notification.automationName ?? "Marlen",
     body: event.notification.summary ?? "",
   });
   notification.on("click", onOpenRequest);

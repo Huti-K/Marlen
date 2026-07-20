@@ -18,12 +18,12 @@ const log = moduleLogger("backup");
  */
 export const backupRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/api/backup", async (_req, reply) => {
-    const tmpPath = join(tmpdir(), `trailin-backup-${randomUUID()}.db`);
+    const tmpPath = join(tmpdir(), `marlen-backup-${randomUUID()}.db`);
     await sqlite.backup(tmpPath);
 
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     reply.header("Content-Type", "application/x-sqlite3");
-    reply.header("Content-Disposition", `attachment; filename="trailin-backup-${stamp}.db"`);
+    reply.header("Content-Disposition", `attachment; filename="marlen-backup-${stamp}.db"`);
 
     const stream = createReadStream(tmpPath);
     // Drop the temp snapshot when the response finishes or aborts.

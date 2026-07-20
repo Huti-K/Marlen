@@ -5,7 +5,7 @@ import {
   type LlmProviderInfo,
   type ModelSettings,
   SUPPORTED_LANGUAGES,
-} from "@trailin/shared";
+} from "@marlen/shared";
 import {
   Check,
   DatabaseBackup,
