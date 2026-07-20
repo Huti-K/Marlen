@@ -1,4 +1,4 @@
-import { PipedreamClient } from "@pipedream/sdk";
+import type { PipedreamClient } from "@pipedream/sdk";
 import type {
   ConnectedAccount,
   ConnectTokenResponse,
@@ -147,7 +147,10 @@ function signatureOf(config: ConnectConfig): string {
   return [config.clientId, config.clientSecret, config.projectId, config.environment].join("\n");
 }
 
-function buildClient(config: ConnectConfig): PipedreamClient {
+// The SDK loads on first client build, not at module scope: ~75ms of server boot
+// that an install which never opens a connect flow does not spend.
+async function buildClient(config: ConnectConfig): Promise<PipedreamClient> {
+  const { PipedreamClient } = await import("@pipedream/sdk");
   return new PipedreamClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
@@ -169,7 +172,7 @@ async function getClient(): Promise<{ pd: PipedreamClient; config: ConnectConfig
   }
   const signature = signatureOf(config);
   if (!cached || cached.signature !== signature) {
-    cached = { client: buildClient(config), signature };
+    cached = { client: await buildClient(config), signature };
   }
   return { pd: cached.client, config };
 }
@@ -182,7 +185,7 @@ export async function verifyConnectConfig(
     "clientId" | "clientSecret" | "projectId" | "environment" | "externalUserId"
   >,
 ): Promise<void> {
-  const pd = buildClient(config as ConnectConfig);
+  const pd = await buildClient(config as ConnectConfig);
   await pd.tokens.create({ externalUserId: config.externalUserId });
 }
 

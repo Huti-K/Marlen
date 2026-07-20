@@ -12,10 +12,30 @@ directories:
   # tile); electron-builder derives the platform formats (icns/ico) from it.
   buildResources: resources
 
-# Plain files instead of an asar archive: the server runs as a utility child
-# process reading its bundle and the web dist straight from disk, and
-# better-sqlite3's native binary would need unpacking anyway.
-asar: false
+# One archive instead of ~16k loose files. File count is what the first launch
+# after an install or update costs: Windows Defender scans every file on access,
+# which is why the same build starts far slower there than on macOS.
+asar: true
+# Everything read as a real file rather than through Electron's asar-aware fs:
+# native binaries, the server bundle the utility process forks (plus the prompt
+# and instruction texts it reads beside itself), the web dist @fastify/static
+# streams, and pino's transport, which resolves its target in a worker thread.
+asarUnpack:
+  - "**/*.node"
+  - "server/**"
+  - "web/**"
+  - "node_modules/{pino,pino-roll,thread-stream,sonic-boom}/**"
+
+# Dev artifacts npm packages ship but the runtime never opens: sourcemaps,
+# TypeScript sources and declarations, docs, tests. They are ~46% of the file
+# count, and file count is what the first launch after an install or update
+# costs, most of all on Windows, where Defender scans each one on access.
+# Scoped to node_modules: the app's own .md files are data (server/prompts,
+# server/instructions are read at runtime), not documentation.
+files:
+  - "**/*"
+  - "!node_modules/**/*.{map,ts,mts,cts,md,markdown}"
+  - "!node_modules/**/{test,tests,__tests__,__mocks__,docs,example,examples,.github}/**"
 
 publish:
   provider: github

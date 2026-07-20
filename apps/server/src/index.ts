@@ -1,3 +1,4 @@
+import type { FastifyInstance } from "fastify";
 import { activeModelConfigured } from "./agent/llm/registry.js";
 import { resetSessions } from "./agent/sessionCache.js";
 import { beginTurn, recoverInterruptedTurns, serializeTurnCards } from "./agent/turnRecorder.js";
@@ -28,8 +29,7 @@ async function main(): Promise<void> {
 
   const app = await buildApp();
 
-  // Register the turn runner (automations/turnRunner.ts) before the scheduler
-  // starts, so even a run fired during boot finds it.
+  // Registered before listen, so a run fired the instant the API opens finds it.
   registerTurnRunner(async ({ runId, prompt, title, signal, log }) => {
     const turn = beginTurn(runId);
     const { text, cards } = await turn.run({
@@ -41,26 +41,6 @@ async function main(): Promise<void> {
     });
     return { text, cardsJson: serializeTurnCards(cards) };
   });
-
-  await seedDefaultAutomations();
-  await startScheduler();
-  // Runs runOnNewMail-flagged automations when new inbound mail arrives.
-  startMailProbe();
-  await recoverInterruptedTurns();
-
-  await startLearning();
-  await startNightlySuggest();
-  // Voice-learn catch-up for accounts never attempted. Off the boot critical
-  // path (void); it records its own outcomes.
-  void reconcileVoiceLearns();
-
-  await startLibrary((message) => app.log.info(message));
-  app.log.info(`Document library folder: ${getLibraryDir()}`);
-
-  // Reconnect a paired WhatsApp account (no-op while none linked). Live agent
-  // sessions hold a tool list for the old link state, so a pairing/unlink rebuilds them.
-  onWhatsAppLinkedChange(() => void resetSessions());
-  startWhatsApp();
 
   // app.close() is the one complete teardown path (cron tasks, learn loops,
   // folder watcher, cached agent sessions' MCP toolsets), for signals and
@@ -75,17 +55,6 @@ async function main(): Promise<void> {
     await stopWhatsApp();
     await resetSessions();
   });
-
-  if (!(await activeModelConfigured())) {
-    app.log.warn(
-      "No LLM credentials yet — open Settings in the web UI to sign in with a subscription or save an API key.",
-    );
-  }
-  if (!(await pipedreamConfigured())) {
-    app.log.warn(
-      "Pipedream is not set up — open Settings → Connect email in the web UI to link your email accounts.",
-    );
-  }
 
   // Ctrl-C / `docker stop` drains in-flight requests, then runs the onClose
   // hooks before exiting.
@@ -102,7 +71,48 @@ async function main(): Promise<void> {
     });
   }
 
+  // The desktop shell swaps its splash for the app as soon as the port answers,
+  // so nothing a request can do without belongs ahead of this.
   await app.listen({ port: env.port, host: env.host });
+
+  // Already serving: a service that fails to start degrades its own feature
+  // rather than taking the process down.
+  await startServices(app).catch((error: unknown) =>
+    app.log.error({ err: error }, "background services failed to start"),
+  );
+}
+
+/** Scheduling, learning, indexing, channel reconnects: none of it answers a request. */
+async function startServices(app: FastifyInstance): Promise<void> {
+  await seedDefaultAutomations();
+  await startScheduler();
+  // Runs runOnNewMail-flagged automations when new inbound mail arrives.
+  startMailProbe();
+  await recoverInterruptedTurns();
+
+  await startLearning();
+  await startNightlySuggest();
+  // Voice-learn catch-up for accounts never attempted; records its own outcomes.
+  void reconcileVoiceLearns();
+
+  await startLibrary((message) => app.log.info(message));
+  app.log.info(`Document library folder: ${getLibraryDir()}`);
+
+  // Reconnect a paired WhatsApp account (no-op while none linked). Live agent
+  // sessions hold a tool list for the old link state, so a pairing/unlink rebuilds them.
+  onWhatsAppLinkedChange(() => void resetSessions());
+  startWhatsApp();
+
+  if (!(await activeModelConfigured())) {
+    app.log.warn(
+      "No LLM credentials yet — open Settings in the web UI to sign in with a subscription or save an API key.",
+    );
+  }
+  if (!(await pipedreamConfigured())) {
+    app.log.warn(
+      "Pipedream is not set up — open Settings → Connect email in the web UI to link your email accounts.",
+    );
+  }
 }
 
 installProcessErrorHandlers();

@@ -4,8 +4,6 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import { basename, extname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { type HtmlToTextOptions, htmlToText } from "html-to-text";
-import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
 import { emitServerEvent } from "../../core/events.js";
 import { moduleLogger } from "../../core/logger.js";
 import { errorMessage } from "../../core/utils/util.js";
@@ -62,8 +60,11 @@ const HTML_EXTRACT_OPTIONS: HtmlToTextOptions = {
   })),
 };
 
+// pdf-parse and mammoth load on first use, not at module scope: together they cost
+// ~180ms of server boot that a library holding neither format never spends.
 async function extractText(absPath: string, ext: string): Promise<string> {
   if (ext === ".pdf") {
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(await readFile(absPath)) });
     try {
       return (await parser.getText()).text;
@@ -72,6 +73,7 @@ async function extractText(absPath: string, ext: string): Promise<string> {
     }
   }
   if (ext === ".docx") {
+    const { default: mammoth } = await import("mammoth");
     const { value } = await mammoth.extractRawText({ buffer: await readFile(absPath) });
     return value;
   }
