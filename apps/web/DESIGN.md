@@ -164,7 +164,11 @@ about floating panels still follows the rules above:
   `max-w-4xl`/`max-w-5xl` via container queries when the canvas itself is wide (the
   sidebar and chat panel eat variable width, so the canvas — not the viewport — decides).
 - Motion is quiet: content rises `6px` and fades in over ~360ms; lists stagger. Animate
-  only `transform`/`opacity`. Respect `prefers-reduced-motion`.
+  only `transform`/`opacity`. Respect `prefers-reduced-motion` — every animation in
+  `index.css` has an entry in its reduce block.
+- **A list never snaps.** Arriving rows stagger in; rows that leave or move ride a view
+  transition (see Row motion below) so the list closes its own gaps. Rearranging reads
+  faster than arriving — ~0.3s against the 0.36s entrance.
 
 ## State & liveness
 
@@ -221,8 +225,19 @@ fix the state, don't add a reload.
   uppercase muted overline heading a group of rows; `sm` for dense meta lists.
 - **Step marks:** the shared `StepCircle` (`ui/step-circle.tsx`) — the tiny numbered
   circle fronting setup/guide steps.
-- **Edit-in-place:** the shared `InlineEditButton` (`ui/inline-edit-button.tsx`) —
-  text-cursor button styled as the value it shows, swapping to the caller's editor.
+- **Row motion:** `withViewTransition` + `rowTransition` (`lib/utils.ts`) — every
+  list mutation that removes or moves a row runs through them, so the rows around
+  it slide to their new places instead of the list snapping. `rowTransition(id)`
+  names the row; `withViewTransition` wraps the **synchronous** write (a state set
+  or `setQueryData`) — an `invalidateQueries` refetch lands too late to animate, so
+  a row that must leave sets local state and lets the refetch reconcile behind it.
+- **Loading:** the shared `LoadingSweep` (`ui/feedback.tsx`) — one accent strip on
+  the canvas edge, delayed so the many millisecond-fast local queries never flash
+  it. Never add a per-panel spinner for a refetch; a busy *control* still takes
+  `loading`.
+- **Icon verbs:** `.icon-send` / `.icon-discard` / `.icon-refine` — a row action's
+  glyph moves in its verb's direction on hover (lift, tip, swell). Transform only,
+  so a hover never reflows the row.
 - **Notices:** the shared `Notice` (`ui/feedback.tsx`) — pastel tone box for inline
   status/setup messages, optionally dismissible. No hand-rolled tint containers.
   A failed panel fetch renders `RetryableError` (same file) — banner + quiet retry.
