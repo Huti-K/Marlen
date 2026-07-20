@@ -38,6 +38,7 @@ import {
 import {
   useWhatsAppStatus,
   WhatsAppAccountRow,
+  WhatsAppBusinessRow,
   WhatsAppPairingCard,
   WhatsAppPermissionsEditor,
   WhatsAppPickerButton,
@@ -78,6 +79,26 @@ function PickerRow({
       }
     />
   );
+}
+
+function PickerSkeleton() {
+  return (
+    <>
+      {[0, 1, 2].map((i) => (
+        <Skeleton key={i} className="h-11 w-full rounded-lg" />
+      ))}
+    </>
+  );
+}
+
+/**
+ * Native connectors are absent from the Pipedream catalog, so the picker
+ * matches them here: every whitespace-separated token of the query must be a
+ * substring of one of the connector's keywords. An empty query matches.
+ */
+function matchesNative(query: string, keywords: string[]): boolean {
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return tokens.every((token) => keywords.some((keyword) => keyword.includes(token)));
 }
 
 /** A labelled group of picker rows (e.g. "Popular email apps"). */
@@ -456,13 +477,11 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   })();
 
   // Offer onOffice in the picker only until it's connected — after that it's
-  // managed through its connected row below. Match its free-text search the way
-  // Pipedream matches an app name.
-  const onOfficeQueryMatch = (() => {
-    const q = query.trim().toLowerCase();
-    return q === "" || "onoffice".includes(q) || "crm".includes(q);
-  })();
-  const showOnOfficePick = onOffice !== null && !onOffice.configured && onOfficeQueryMatch;
+  // managed through its connected row below.
+  const showOnOfficePick =
+    onOffice !== null &&
+    !onOffice.configured &&
+    matchesNative(query, ["onoffice", "crm", "immobilien", "makler", "real estate"]);
 
   const openOnOfficeForm = () => {
     setPickerOpen(false);
@@ -471,11 +490,10 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
   };
 
   // Same footing for WhatsApp: offered in the picker only until it's linked.
-  const whatsAppQueryMatch = (() => {
-    const q = query.trim().toLowerCase();
-    return q === "" || "whatsapp".includes(q) || "messaging".includes(q);
-  })();
-  const showWhatsAppPick = whatsApp !== null && !whatsApp.linked && whatsAppQueryMatch;
+  const showWhatsAppPick =
+    whatsApp !== null &&
+    !whatsApp.linked &&
+    matchesNative(query, ["whatsapp", "messaging", "nachrichten", "chat", "business", "baileys"]);
 
   const openWhatsAppPairing = () => {
     setPickerOpen(false);
@@ -502,23 +520,27 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
               placeholder={t("connections.searchProviders")}
               autoFocus
             />
-            {!results ? (
+            {query.trim() ? (
+              results?.length === 0 && !showOnOfficePick && !showWhatsAppPick ? (
+                <p className="px-1 py-2 text-xs text-muted-foreground">
+                  {t("connections.noProvidersFound", { q: query.trim() })}
+                </p>
+              ) : (
+                <div className="flex max-h-80 flex-col gap-1.5 overflow-y-auto py-0.5">
+                  {showOnOfficePick && <OnOfficePickerButton onClick={openOnOfficeForm} />}
+                  {showWhatsAppPick && <WhatsAppPickerButton onClick={openWhatsAppPairing} />}
+                  {results ? (
+                    results.map((app) => (
+                      <PickerRow key={app.slug} app={app} busy={busy} onConnect={connect} />
+                    ))
+                  ) : (
+                    <PickerSkeleton />
+                  )}
+                </div>
+              )
+            ) : !results ? (
               <div className="flex flex-col gap-1.5 py-0.5">
-                {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} className="h-11 w-full rounded-lg" />
-                ))}
-              </div>
-            ) : results.length === 0 && !showOnOfficePick && !showWhatsAppPick ? (
-              <p className="px-1 py-2 text-xs text-muted-foreground">
-                {t("connections.noProvidersFound", { q: query.trim() })}
-              </p>
-            ) : query.trim() ? (
-              <div className="flex max-h-80 flex-col gap-1.5 overflow-y-auto py-0.5">
-                {showOnOfficePick && <OnOfficePickerButton onClick={openOnOfficeForm} />}
-                {showWhatsAppPick && <WhatsAppPickerButton onClick={openWhatsAppPairing} />}
-                {results.map((app) => (
-                  <PickerRow key={app.slug} app={app} busy={busy} onConnect={connect} />
-                ))}
+                <PickerSkeleton />
               </div>
             ) : (
               <div className="flex max-h-80 flex-col gap-4 overflow-y-auto py-0.5">
@@ -732,20 +754,27 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                 </div>
               </div>
             )}
-            {whatsApp?.linked && (
+            {whatsApp && (whatsApp.linked || whatsApp.business.connected) && (
               <div className="flex flex-col gap-1.5">
                 <GroupLabel as="p" size="sm" className="px-1">
                   {t("connections.messagingHeading")}
                 </GroupLabel>
                 <div className="animate-in-up flex flex-col gap-1.5">
-                  <WhatsAppAccountRow
-                    status={whatsApp}
-                    onTogglePermissions={() => setWhatsAppPermsOpen((open) => !open)}
-                    onUnlinked={async () => {
-                      await refreshWhatsApp();
-                      onChanged?.();
-                    }}
-                  />
+                  {whatsApp.linked ? (
+                    <WhatsAppAccountRow
+                      status={whatsApp}
+                      onTogglePermissions={() => setWhatsAppPermsOpen((open) => !open)}
+                      onUnlinked={async () => {
+                        await refreshWhatsApp();
+                        onChanged?.();
+                      }}
+                    />
+                  ) : (
+                    <WhatsAppBusinessRow
+                      status={whatsApp}
+                      onTogglePermissions={() => setWhatsAppPermsOpen((open) => !open)}
+                    />
+                  )}
                   {whatsAppPermsOpen && (
                     <WhatsAppPermissionsEditor status={whatsApp} onChanged={refreshWhatsApp} />
                   )}

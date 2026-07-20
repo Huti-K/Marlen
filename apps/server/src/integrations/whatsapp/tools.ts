@@ -10,7 +10,7 @@ import {
   updateOutboundDraft,
 } from "../../db/outboundStore.js";
 import { getWhatsAppSendAccess } from "../../db/settings.js";
-import { dispatchWhatsApp } from "./session.js";
+import { sendWhatsApp } from "./dispatch.js";
 import {
   chatDisplayName,
   findChatsByName,
@@ -214,7 +214,7 @@ const sendMessageTool = tool({
 
     if (params.send && (await getWhatsAppSendAccess())) {
       try {
-        const { sentRef } = await dispatchWhatsApp(resolved.jid, params.text);
+        const { sentRef } = await sendWhatsApp(resolved.jid, params.text);
         await markOutboundStatus(draft.id, "sent", sentRef);
         return textResult(`Sent a WhatsApp message to ${label}.${MESSAGE_CARD_NOTE}`, card);
       } catch (error) {
@@ -295,10 +295,11 @@ const updateMessageTool = tool({
 const READ_TOOLS: AgentTool[] = [listChatsTool, readMessagesTool, searchContactsTool];
 
 /**
- * Built whenever a personal account is linked. The message tool always drafts;
- * whether a send=true actually dispatches is decided at call time from the
- * Settings grant, so the tool is safe even in unattended runs.
+ * The read tools work on the personal link's chat mirror, so a Business-only
+ * setup (`mirror` false) gets just the send/update pair. The message tool
+ * always drafts; whether a send=true actually dispatches is decided at call
+ * time from the Settings grant, so the tool is safe even in unattended runs.
  */
-export function buildWhatsAppTools(): AgentTool[] {
-  return [...READ_TOOLS, sendMessageTool, updateMessageTool];
+export function buildWhatsAppTools(mirror: boolean): AgentTool[] {
+  return [...(mirror ? READ_TOOLS : []), sendMessageTool, updateMessageTool];
 }

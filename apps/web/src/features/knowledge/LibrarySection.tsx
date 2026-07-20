@@ -365,17 +365,23 @@ export function LibrarySection({ focusId }: { focusId: string | null }) {
           <>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
+              aria-label={t("library.openFolder")}
+              title={t("library.openFolder")}
               onClick={() =>
                 void api.revealLibraryFolder(revealPath).catch((err: unknown) => toast.error(err))
               }
             >
               <FolderOpen />
-              {t("library.openFolder")}
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setEditing({ kind: "create" })}>
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              aria-label={t("storage.editor.new")}
+              title={t("storage.editor.new")}
+              onClick={() => setEditing({ kind: "create" })}
+            >
               <Plus />
-              {t("storage.editor.new")}
             </Button>
             <Button size="sm" onClick={() => fileInputRef.current?.click()} loading={uploading}>
               <Upload />

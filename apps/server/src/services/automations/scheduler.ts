@@ -1,4 +1,4 @@
-import type { MissedAutomation } from "@trailin/shared";
+import type { MissedAutomation, RunTrigger } from "@trailin/shared";
 import { desc, eq } from "drizzle-orm";
 import cron, { type ScheduledTask } from "node-cron";
 import { moduleLogger } from "../../core/logger.js";
@@ -8,7 +8,6 @@ import { getTimezoneSetting } from "../../db/settings.js";
 import {
   type AutomationRunResult,
   executeAutomationRun,
-  type RunTrigger,
   sweepOrphanedRuns,
 } from "./runRecorder.js";
 

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { RunTrigger } from "@trailin/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { env } from "../../core/env.js";
 import { emitRunNotification, emitServerEvent } from "../../core/events.js";
@@ -28,17 +29,6 @@ export interface AutomationRunResult {
   /** Echoed so scheduler.ts can retire a one-off run without re-querying. Set when started is true. */
   schedule?: string;
 }
-
-/**
- * Why a run started, beyond its schedule. Rendered into the run's opening
- * message, so the agent knows what the run concerns — the firing mechanisms
- * themselves (todo completion, mail probe, catch-up) carry no other context
- * into the session.
- */
-export type RunTrigger =
-  | { kind: "todo"; todoId: string; title: string }
-  | { kind: "mail"; accountNames: string[] }
-  | { kind: "catchUp"; dueAt: string };
 
 export async function executeAutomationRun(
   automationId: string,
@@ -70,6 +60,7 @@ export async function executeAutomationRun(
     automationId,
     status: "running",
     result: "",
+    trigger: opts.trigger ? JSON.stringify(opts.trigger) : null,
     startedAt: new Date().toISOString(),
   });
   emitServerEvent("runs");

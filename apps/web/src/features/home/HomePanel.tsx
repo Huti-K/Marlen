@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MissedAutomation, RunFeedItem } from "@trailin/shared";
+import { CheckCheck } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -7,7 +8,14 @@ import { ErrorBanner, Notice } from "@/components/ui/feedback";
 import { ActivitySection } from "@/features/home/ActivitySection";
 import { AttentionSection } from "@/features/home/AttentionSection";
 import { BriefingHero, findBriefingCard } from "@/features/home/BriefingHero";
-import { ResultsSection } from "@/features/home/ResultsSection";
+import { freshResultRuns, ResultsSection } from "@/features/home/ResultsSection";
+import {
+  draftSeenKey,
+  outboundSeenKey,
+  runSeenKey,
+  todoSeenKey,
+  useSeen,
+} from "@/features/home/seen";
 import { useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import type { View } from "@/lib/nav";
@@ -46,7 +54,15 @@ export function HomePanel({
   });
   const pinnedQuery = useQuery({ queryKey: ["runs", "pinned"], queryFn: () => api.pinnedRun() });
   const missedQuery = useQuery({ queryKey: ["runs", "missed"], queryFn: () => api.missedRuns() });
+  // Same keys as AttentionSection's own queries, so these read its cache
+  // rather than fetching again; Home needs them only to count what is new.
+  const todosQuery = useQuery({ queryKey: ["todos"], queryFn: () => api.todos("open") });
+  const outboundQuery = useQuery({
+    queryKey: ["outbound", "open"],
+    queryFn: () => api.outbound("open"),
+  });
   const { colors } = useAccountColors({ withAccounts: false });
+  const seen = useSeen();
 
   const drafts = draftsQuery.data ?? null;
   const runs = runsQuery.data?.items ?? null;
@@ -111,6 +127,23 @@ export function HomePanel({
     return heroRun ? runs.filter((r) => r.id !== heroRun.id) : runs;
   }, [runs, heroRun]);
 
+  // Everything that can wear a new dot, counted for the "seen all" strip: the
+  // rows the sections below mark, and nothing they don't.
+  const newCount = [
+    ...(todosQuery.data ?? []).map((todo) => [todoSeenKey(todo.id), todo.createdAt] as const),
+    ...(outboundQuery.data ?? []).map(
+      (draft) => [outboundSeenKey(draft.id), draft.createdAt] as const,
+    ),
+    ...(drafts ?? []).flatMap((account) =>
+      account.drafts.map(
+        (draft) => [draftSeenKey(account.accountId, draft.id), draft.date] as const,
+      ),
+    ),
+    ...freshResultRuns(activityRuns, heroRun?.automationId).map(
+      ({ run }) => [runSeenKey(run.id), run.startedAt] as const,
+    ),
+  ].filter(([key, createdAt]) => seen.isNew(key, createdAt)).length;
+
   // No top-level loading gate: each section renders its own loading state
   // while its data is null, so the fast local reads (runs/automations) paint
   // straight away instead of waiting on the slow live mailbox drafts fetch.
@@ -133,6 +166,16 @@ export function HomePanel({
 
       {missed.length > 0 && <MissedRunsBanner missed={missed} />}
 
+      {newCount > 0 && (
+        <div className="-mb-6 flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">{t("home.newCount", { count: newCount })}</p>
+          <Button variant="ghost" size="sm" onClick={seen.seeAll}>
+            <CheckCheck />
+            {t("home.markAllSeen")}
+          </Button>
+        </div>
+      )}
+
       {heroRun && (
         <BriefingHero
           run={heroRun}
@@ -153,12 +196,14 @@ export function HomePanel({
         focusDraft={focusDraft}
         onDraftsChanged={refreshDrafts}
         onNavigate={onNavigate}
+        seen={seen}
       />
       <ResultsSection
         runs={activityRuns}
         heroAutomationId={heroRun?.automationId}
         colors={colors}
         onNavigate={onNavigate}
+        seen={seen}
       />
       <ActivitySection
         runs={activityRuns}
@@ -197,7 +242,12 @@ function MissedRunsBanner({ missed }: { missed: MissedAutomation[] }) {
 
   return (
     <Notice tone="warning" className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm">{error ?? t("home.missedBanner", { count: missed.length })}</p>
+      <div className="min-w-0">
+        <p className="text-sm">{error ?? t("home.missedBanner", { count: missed.length })}</p>
+        {!error && (
+          <p className="truncate text-xs opacity-80">{missed.map((m) => m.name).join(", ")}</p>
+        )}
+      </div>
       <Button size="sm" onClick={run} disabled={running}>
         {running ? t("home.missedRunning") : t("home.missedRun")}
       </Button>

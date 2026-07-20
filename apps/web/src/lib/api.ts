@@ -35,6 +35,7 @@ import type {
   PipedreamStatus,
   RunFeedItem,
   SearchResult,
+  SeenState,
   Skill,
   Todo,
   TodoStatus,
@@ -360,6 +361,11 @@ export const api = {
       linkedAutomationId?: string | null;
     },
   ) => http<Todo>("PATCH", `/api/todos/${encodeURIComponent(id)}`, patch),
+
+  // What the user has already seen on Home; anything newer renders as new.
+  seen: () => get<SeenState>("/api/seen"),
+  markSeen: (keys: string[]) => http<SeenState>("POST", "/api/seen", { keys }),
+  markAllSeen: () => http<SeenState>("POST", "/api/seen", { all: true }),
 
   // Memory/skill entries surface as files in the Knowledge browser: listed,
   // deleted, and edited there (the browser's md editor); created by the agent.

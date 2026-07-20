@@ -51,6 +51,15 @@ describe("automation run prompt context", () => {
     expect(prompts[1]).toContain(`previous successful run finished at ${recorded?.finishedAt}`);
     expect(prompts[1]).toContain("catch-up run");
     expect(prompts[1]).toContain("2026-07-18T06:00:00.000Z");
+
+    // The trigger also outlives the prompt: it is the run row's durable record
+    // of why it fired, which is what lets the UI mark a run as caught up.
+    const rows = await dbModule.db.select().from(dbModule.schema.automationRuns);
+    const triggers = rows.map((row) => row.trigger);
+    expect(triggers).toContain(
+      JSON.stringify({ kind: "catchUp", dueAt: "2026-07-18T06:00:00.000Z" }),
+    );
+    expect(triggers).toContain(null);
   });
 
   it("hands a chained run the todo that fired it", async () => {

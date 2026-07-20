@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, MessageSquareShare, RefreshCw, Sunrise } from "
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { BriefingCard } from "@/components/cards/BriefingCard";
+import { RunTriggerBadge } from "@/components/RunTriggerBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -168,6 +169,7 @@ export function BriefingHero({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          <RunTriggerBadge trigger={run.trigger} />
           {/* The briefing card carries this same count in its own stat row, so
               the header badge would double it up. Keep it while collapsed —
               there it's the only urgency signal on screen. */}

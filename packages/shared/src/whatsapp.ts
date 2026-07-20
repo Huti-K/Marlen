@@ -12,4 +12,7 @@ export interface WhatsAppStatus {
   phoneNumber: string | null;
   pushName: string | null;
   sendAccess: boolean;
+  /** A WhatsApp Business (Cloud API) account connected through Pipedream —
+   *  the send transport when no personal link exists. */
+  business: { connected: boolean; name: string | null };
 }

@@ -142,8 +142,17 @@ export const automationRuns = sqliteTable("automation_runs", {
   status: text("status", { enum: ["running", "success", "error"] }).notNull(),
   result: text("result").notNull().default(""),
   cards: text("cards"),
+  /** JSON RunTrigger; null = plain scheduled/manual run. */
+  trigger: text("trigger"),
   startedAt: text("started_at").notNull(),
   finishedAt: text("finished_at"),
+});
+
+/** Per-item "user has seen this" marks for Home ("todo:<id>", "run:<id>", …);
+ *  the __floor__ row pins install time so pre-existing items never read as new. */
+export const seenMarks = sqliteTable("seen_marks", {
+  key: text("key").primaryKey(),
+  seenAt: text("seen_at").notNull(),
 });
 
 /** One row per account (latest attempt, overwritten on retry); an "error" row persists until a rerun succeeds. */

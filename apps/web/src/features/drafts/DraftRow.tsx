@@ -13,6 +13,7 @@ import { ListRow } from "@/components/ui/list-row";
 import { OpenExternalButton } from "@/components/ui/open-external-button";
 import { Textarea } from "@/components/ui/textarea";
 import { revealChat, sendChatCommand } from "@/features/chat/controller";
+import { NewDot } from "@/features/home/seen";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn, errorMessage } from "@/lib/utils";
@@ -26,6 +27,7 @@ export function DraftRow({
   onSaved,
   onError,
   forceOpen,
+  isNew,
 }: {
   accountId: string;
   draft: EmailDraft;
@@ -36,6 +38,8 @@ export function DraftRow({
   onError: (message: string | null) => void;
   /** True when this draft was opened via the search palette — auto-expand and scroll to it. */
   forceOpen?: boolean;
+  /** Drafted since the user last looked — fronts the subject with the new dot. */
+  isNew?: boolean;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -171,7 +175,10 @@ export function DraftRow({
             <Mail />
           </IconChip>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{subjectDraft || t("drafts.noSubject")}</p>
+            <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+              {isNew && <NewDot />}
+              {subjectDraft || t("drafts.noSubject")}
+            </p>
             <p className="truncate text-xs text-muted-foreground">
               {meta}
               {!open && draft.snippet && (

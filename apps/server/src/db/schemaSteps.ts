@@ -543,4 +543,16 @@ export const SCHEMA_STEPS: readonly string[] = [
     ALTER TABLE automations ADD COLUMN position REAL NOT NULL DEFAULT 0;
     UPDATE automations SET position = -CAST(strftime('%s', created_at) AS REAL) * 1000;
   `,
+  // 30: runs persist why they fired (JSON RunTrigger; null = plain schedule/
+  // manual), so the UI can badge catch-up runs. seen_marks tracks which Home
+  // items the user has seen; the __floor__ row pins install time so items
+  // that existed before this step never render as new.
+  `
+    ALTER TABLE automation_runs ADD COLUMN trigger TEXT;
+    CREATE TABLE seen_marks (
+      key TEXT PRIMARY KEY,
+      seen_at TEXT NOT NULL
+    );
+    INSERT INTO seen_marks (key, seen_at) VALUES ('__floor__', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+  `,
 ];

@@ -4,6 +4,7 @@ import {
   getWhatsAppSendAccess,
 } from "../db/settings.js";
 import { getOnOfficeConfig } from "../integrations/onoffice/config.js";
+import { getWhatsAppBusinessAccount } from "../integrations/whatsapp/dispatch.js";
 import { isWhatsAppLinked } from "../integrations/whatsapp/session.js";
 
 /**
@@ -26,7 +27,10 @@ export interface SessionCapabilities {
     creates: boolean;
   };
   whatsapp: {
+    /** Some send transport exists: the personal link or a Business account. */
     linked: boolean;
+    /** The personal link's chat mirror exists, so the read tools work. */
+    mirror: boolean;
     /** Autosend is armed in Settings: a send=true message dispatches now. */
     sends: boolean;
   };
@@ -34,7 +38,8 @@ export interface SessionCapabilities {
 
 export async function sessionCapabilities(interactive: boolean): Promise<SessionCapabilities> {
   const configured = (await getOnOfficeConfig()) !== null;
-  const whatsappLinked = isWhatsAppLinked();
+  const whatsappMirror = isWhatsAppLinked();
+  const whatsappLinked = whatsappMirror || (await getWhatsAppBusinessAccount()) !== null;
   return {
     interactive,
     providerWrites: interactive,
@@ -45,6 +50,7 @@ export async function sessionCapabilities(interactive: boolean): Promise<Session
     },
     whatsapp: {
       linked: whatsappLinked,
+      mirror: whatsappMirror,
       sends: whatsappLinked && (await getWhatsAppSendAccess()),
     },
   };

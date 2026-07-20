@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@sinclair/typebox";
+import type { RunTrigger } from "@trailin/shared";
 import { and, asc, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { parseStoredCards } from "../agent/cards.js";
 import { notFound, requireRow } from "../core/errors.js";
@@ -62,6 +63,7 @@ function runsSelectBase() {
       status: schema.automationRuns.status,
       result: schema.automationRuns.result,
       cards: schema.automationRuns.cards,
+      trigger: schema.automationRuns.trigger,
       startedAt: schema.automationRuns.startedAt,
       finishedAt: schema.automationRuns.finishedAt,
       automationName: schema.automations.name,
@@ -70,11 +72,18 @@ function runsSelectBase() {
     .leftJoin(schema.automations, runToAutomation);
 }
 
-function toRunDto<T extends { cards: string | null }>(
+function toRunDto<T extends { cards: string | null; trigger: string | null }>(
   row: T,
-): Omit<T, "cards"> & { cards: ReturnType<typeof parseStoredCards> } {
-  const { cards, ...rest } = row;
-  return { ...rest, cards: parseStoredCards(cards) };
+): Omit<T, "cards" | "trigger"> & {
+  cards: ReturnType<typeof parseStoredCards>;
+  trigger: RunTrigger | null;
+} {
+  const { cards, trigger, ...rest } = row;
+  return {
+    ...rest,
+    cards: parseStoredCards(cards),
+    trigger: trigger ? (JSON.parse(trigger) as RunTrigger) : null,
+  };
 }
 
 export const automationRoutes: FastifyPluginAsyncTypebox = async (app) => {

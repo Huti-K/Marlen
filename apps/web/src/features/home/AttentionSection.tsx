@@ -47,6 +47,13 @@ import { Select } from "@/components/ui/select";
 import { DraftRow } from "@/features/drafts/DraftRow";
 import { DAY_MS, dayIso, dueMs, startOfDayMs } from "@/features/home/agenda";
 import { OutboundRow } from "@/features/home/OutboundRow";
+import {
+  draftSeenKey,
+  outboundSeenKey,
+  type Seen,
+  SeenOnInteract,
+  todoSeenKey,
+} from "@/features/home/seen";
 import { DoneTodoRow, TodoRow, useTodoPatch } from "@/features/home/TodoRow";
 import { accountColor } from "@/lib/accounts";
 import { api } from "@/lib/api";
@@ -92,6 +99,7 @@ export function AttentionSection({
   focusDraft,
   onDraftsChanged,
   onNavigate,
+  seen,
 }: {
   automations: Automation[] | null;
   /** Email provider drafts; null while the (slow, live-mailbox) fetch is in flight. */
@@ -102,6 +110,7 @@ export function AttentionSection({
   /** A draft row was sent/discarded/saved: refresh the drafts list without waiting on the event debounce. */
   onDraftsChanged: () => void;
   onNavigate: (view: View) => void;
+  seen: Seen;
 }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
@@ -278,23 +287,32 @@ export function AttentionSection({
       >
         {group.render.map((item) =>
           item.kind === "todo" ? (
-            <TodoRow
+            <SeenOnInteract
               key={item.todo.id}
-              todo={item.todo}
-              overdue={group.overdue}
-              lang={lang}
-              todayStart={todayStart}
-              onPatch={patch}
-              automations={automations}
-              onOpenChat={
-                item.todo.conversationId
-                  ? () =>
-                      openConversationInChat(item.todo.conversationId as string, () =>
-                        onNavigate("chat"),
-                      )
-                  : undefined
-              }
-            />
+              seen={seen}
+              itemKey={todoSeenKey(item.todo.id)}
+              createdAt={item.todo.createdAt}
+            >
+              {(isNew) => (
+                <TodoRow
+                  todo={item.todo}
+                  overdue={group.overdue}
+                  lang={lang}
+                  todayStart={todayStart}
+                  onPatch={patch}
+                  automations={automations}
+                  isNew={isNew}
+                  onOpenChat={
+                    item.todo.conversationId
+                      ? () =>
+                          openConversationInChat(item.todo.conversationId as string, () =>
+                            onNavigate("chat"),
+                          )
+                      : undefined
+                  }
+                />
+              )}
+            </SeenOnInteract>
           ) : (
             <AutomationRow
               key={item.automation.id}
@@ -342,16 +360,26 @@ export function AttentionSection({
                 )}
                 <div className="flex flex-col gap-2">
                   {rows.map((draft, i) => (
-                    <div key={draft.id} className="animate-in-up" style={stagger(i)}>
-                      <OutboundRow
-                        draft={draft}
-                        dateLabel={dateLabel}
-                        onChanged={() =>
-                          void queryClient.invalidateQueries({ queryKey: ["outbound"] })
-                        }
-                        onError={setRowError}
-                      />
-                    </div>
+                    <SeenOnInteract
+                      key={draft.id}
+                      seen={seen}
+                      itemKey={outboundSeenKey(draft.id)}
+                      createdAt={draft.createdAt}
+                      className="animate-in-up"
+                      style={stagger(i)}
+                    >
+                      {(isNew) => (
+                        <OutboundRow
+                          draft={draft}
+                          dateLabel={dateLabel}
+                          isNew={isNew}
+                          onChanged={() =>
+                            void queryClient.invalidateQueries({ queryKey: ["outbound"] })
+                          }
+                          onError={setRowError}
+                        />
+                      )}
+                    </SeenOnInteract>
                   ))}
                 </div>
               </div>
@@ -366,6 +394,7 @@ export function AttentionSection({
               focusDraft={focusDraft?.accountId === account.accountId ? focusDraft : null}
               onChanged={onDraftsChanged}
               onError={setRowError}
+              seen={seen}
             />
           ))}
         </div>
@@ -442,6 +471,7 @@ function AccountDraftGroup({
   focusDraft,
   onChanged,
   onError,
+  seen,
 }: {
   account: AccountDrafts;
   color?: string;
@@ -451,6 +481,7 @@ function AccountDraftGroup({
   focusDraft: { accountId: string; draftId: string } | null;
   onChanged: () => void;
   onError: (message: string | null) => void;
+  seen: Seen;
 }) {
   const { t } = useTranslation();
   const [showAll, setShowAll] = React.useState(false);
@@ -477,17 +508,27 @@ function AccountDraftGroup({
       ) : (
         <div className="flex flex-col gap-2">
           {visible.map((draft: EmailDraft, i: number) => (
-            <div key={draft.id} className="animate-in-up" style={stagger(i)}>
-              <DraftRow
-                accountId={account.accountId}
-                draft={draft}
-                dateLabel={dateLabel}
-                onDeleted={onChanged}
-                onSaved={onChanged}
-                onError={onError}
-                forceOpen={focusDraft?.draftId === draft.id}
-              />
-            </div>
+            <SeenOnInteract
+              key={draft.id}
+              seen={seen}
+              itemKey={draftSeenKey(account.accountId, draft.id)}
+              createdAt={draft.date}
+              className="animate-in-up"
+              style={stagger(i)}
+            >
+              {(isNew) => (
+                <DraftRow
+                  accountId={account.accountId}
+                  draft={draft}
+                  dateLabel={dateLabel}
+                  onDeleted={onChanged}
+                  onSaved={onChanged}
+                  onError={onError}
+                  forceOpen={focusDraft?.draftId === draft.id}
+                  isNew={isNew}
+                />
+              )}
+            </SeenOnInteract>
           ))}
           {account.drafts.length > DRAFTS_VISIBLE && (
             <DisclosureToggle open={showAll} onToggle={() => setShowAll((v) => !v)}>

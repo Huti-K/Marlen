@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import type { WhatsAppStatus } from "@trailin/shared";
 import { resetSessions } from "../agent/sessionCache.js";
 import { getWhatsAppSendAccess, setWhatsAppSendAccess } from "../db/settings.js";
+import { getWhatsAppBusinessAccount } from "../integrations/whatsapp/dispatch.js";
 import {
   beginWhatsAppPairing,
   getWhatsAppRuntimeStatus,
@@ -10,7 +11,12 @@ import {
 } from "../integrations/whatsapp/session.js";
 
 async function statusPayload(): Promise<WhatsAppStatus> {
-  return { ...getWhatsAppRuntimeStatus(), sendAccess: await getWhatsAppSendAccess() };
+  const business = await getWhatsAppBusinessAccount();
+  return {
+    ...getWhatsAppRuntimeStatus(),
+    sendAccess: await getWhatsAppSendAccess(),
+    business: { connected: business !== null, name: business?.name ?? null },
+  };
 }
 
 export const whatsAppRoutes: FastifyPluginAsyncTypebox = async (app) => {

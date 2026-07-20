@@ -131,11 +131,19 @@ export async function buildSystemPrompt(caps?: SessionCapabilities): Promise<str
   }
 
   if (whatsapp.linked) {
-    prompt += `
+    if (whatsapp.mirror) {
+      prompt += `
 - The user's personal WhatsApp is linked — the whatsapp_* tools work on its mirrored chats
   (synced since pairing, text only; media shows as a bracketed marker). Reach for them whenever
   a request touches WhatsApp conversations; leads often continue there — match people by phone
   number or name with whatsapp_search_contacts.`;
+    } else {
+      prompt += `
+- WhatsApp Business is connected — whatsapp_send_message reaches people by phone number (digits
+  with country code). There is no chat mirror in this setup: reading WhatsApp conversations is
+  not possible, and a first free-form message only arrives if the recipient wrote to this
+  number within the last 24 hours.`;
+    }
     prompt += `
   whatsapp_send_message prepares a WhatsApp message as a draft the user approves with a Send
   button; nothing dispatches on its own. Set send=true only if your instruction or the user

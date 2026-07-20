@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { AgentCardView } from "@/components/cards";
 import { OpenRunInChatButton } from "@/components/OpenRunInChatButton";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
+import { RunTriggerBadge } from "@/components/RunTriggerBadge";
 import { Button } from "@/components/ui/button";
 import { DisclosureToggle } from "@/components/ui/disclosure-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -215,6 +216,7 @@ function ActivityRunCard({
               </Button>
             )}
             <OpenRunInChatButton runId={run.id} onNavigateToChat={() => onNavigate("chat")} />
+            <RunTriggerBadge trigger={run.trigger} />
             <RunStatusBadge status={run.status} />
             <span className="text-xs tabular-nums text-muted-foreground">
               {timeLabel(run.startedAt)}

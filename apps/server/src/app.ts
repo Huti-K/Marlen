@@ -36,6 +36,7 @@ import { onOfficeRoutes } from "./routes/onoffice.js";
 import { outboundRoutes } from "./routes/outbound.js";
 import { pipedreamRoutes } from "./routes/pipedream.js";
 import { searchRoutes } from "./routes/search.js";
+import { seenRoutes } from "./routes/seen.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { skillRoutes } from "./routes/skills.js";
 import { todosRoutes } from "./routes/todos.js";
@@ -97,6 +98,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(draftRoutes);
   await app.register(outboundRoutes);
   await app.register(todosRoutes);
+  await app.register(seenRoutes);
   await app.register(memoryRoutes);
   await app.register(skillRoutes);
   await app.register(leadsRoutes);

@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { dueChip } from "@/features/home/agenda";
 import { DueDatePicker } from "@/features/home/DueDatePicker";
+import { NewDot } from "@/features/home/seen";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +66,7 @@ export function TodoRow({
   onPatch,
   onOpenChat,
   automations,
+  isNew,
 }: {
   todo: Todo;
   overdue: boolean;
@@ -74,6 +76,8 @@ export function TodoRow({
   onOpenChat?: () => void;
   /** All automations, for the linked-automation name and the edit-mode picker. */
   automations: Automation[] | null;
+  /** Filed since the user last looked — fronts the title with the new dot. */
+  isNew?: boolean;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -182,6 +186,7 @@ export function TodoRow({
               )}
               onClick={() => expandable && setOpen((v) => !v)}
             >
+              {isNew && <NewDot />}
               <span
                 className={cn(
                   "truncate text-sm font-medium transition-colors",

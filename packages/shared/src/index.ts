@@ -21,6 +21,7 @@ export const POPULAR_APPS = [
   "google_drive",
   "github",
   "todoist",
+  "whatsapp_business",
 ] as const;
 
 export interface PipedreamApp {
@@ -198,11 +199,23 @@ export interface AutomationSuggestion {
   decidedAt: string | null;
 }
 
+/**
+ * Why a run started, beyond its schedule. Rendered into the run's opening
+ * message and persisted on the run row, so both the agent and the UI know
+ * what the run concerns (a catch-up run shows the slot it covered).
+ */
+export type RunTrigger =
+  | { kind: "todo"; todoId: string; title: string }
+  | { kind: "mail"; accountNames: string[] }
+  | { kind: "catchUp"; dueAt: string };
+
 export interface AutomationRun {
   id: string;
   automationId: string;
   status: "running" | "success" | "error";
   result: string;
+  /** Null for plain scheduled/manual runs and runs recorded before triggers were persisted. */
+  trigger: RunTrigger | null;
   startedAt: string;
   finishedAt: string | null;
   cards?: MessageCard[];
@@ -357,7 +370,9 @@ export interface MemoryEntry {
   updatedAt: string;
 }
 
-export const SKILL_MAX_LENGTH = 10_000;
+/** Hard cap on a skill's instruction body; read on demand via skill_read, so
+ *  sized for a long self-contained playbook, not for per-turn prompt cost. */
+export const SKILL_MAX_LENGTH = 20_000;
 
 export interface Skill {
   name: string;
@@ -511,7 +526,19 @@ export type ServerEventTopic =
   | "leads"
   | "whatsapp"
   | "accounts"
+  | "seen"
   | "notification";
+
+/**
+ * What the user has already seen on Home. `keys` are per-item marks
+ * ("todo:<id>", "run:<id>", "outbound:<id>", "draft:<accountId>:<draftId>");
+ * anything created after `floor` without a mark renders as new. The floor is
+ * set once at migration time so pre-existing items never flash as new.
+ */
+export interface SeenState {
+  floor: string;
+  keys: string[];
+}
 
 export interface RunNotification {
   runId: string;

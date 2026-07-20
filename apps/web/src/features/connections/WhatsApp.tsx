@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { ArmedToggleRow } from "@/features/connections/AccountPermissions";
 import { api } from "@/lib/api";
+import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 
 /**
@@ -41,6 +42,11 @@ export function useWhatsAppStatus(): {
   const refresh = React.useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["whatsapp"] });
   }, [queryClient]);
+  // The Business transport is a Pipedream account, so its comings and goings
+  // arrive on the "accounts" topic, not "whatsapp".
+  useServerEvents(["accounts"], () => {
+    void queryClient.invalidateQueries({ queryKey: ["whatsapp"] });
+  });
   return { status: status ?? null, refresh };
 }
 
@@ -232,6 +238,46 @@ export function WhatsAppAccountRow({
         busy={removing}
         onConfirm={() => void unlink()}
       />
+    </ListRow>
+  );
+}
+
+/**
+ * The messaging row for a Business-only setup (Cloud API account via
+ * Pipedream, no personal link). Removal happens on the account's generic row;
+ * this one carries the channel identity and the permissions editor.
+ */
+export function WhatsAppBusinessRow({
+  status,
+  onTogglePermissions,
+}: {
+  status: WhatsAppStatus;
+  onTogglePermissions: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ListRow className="relative">
+      <div className="flex min-w-0 items-center gap-3">
+        {rowIcon}
+        <p className="min-w-0 truncate text-sm font-medium">WhatsApp Business</p>
+        {status.business.name && (
+          <p className="min-w-0 truncate font-mono text-xs text-muted-foreground">
+            {status.business.name}
+          </p>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Badge variant="success">{t("whatsapp.businessBadge")}</Badge>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onTogglePermissions}
+          aria-label={t("connections.permissions.edit")}
+          data-tooltip={t("connections.permissions.edit")}
+        >
+          <Settings />
+        </Button>
+      </div>
     </ListRow>
   );
 }

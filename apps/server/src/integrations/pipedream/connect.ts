@@ -313,6 +313,19 @@ export async function deleteAccount(accountId: string): Promise<void> {
 }
 
 /**
+ * One account's stored credentials — key-based apps (e.g. WhatsApp Business)
+ * expose their custom auth fields here, which native integrations use to call
+ * the provider API directly instead of through the proxy.
+ */
+export async function getAccountCredentials(
+  accountId: string,
+): Promise<Record<string, string | undefined>> {
+  const { pd } = await getClient();
+  const account = await pd.accounts.retrieve(accountId, { includeCredentials: true });
+  return (account.credentials ?? {}) as Record<string, string | undefined>;
+}
+
+/**
  * Authenticated request through Pipedream's Connect proxy (it injects the
  * account's OAuth credentials). Used where prebuilt components fall short: their
  * draft/send need a paid workspace for attachments; the proxy is on all plans.

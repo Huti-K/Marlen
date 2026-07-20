@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconChip } from "@/components/ui/icon-chip";
 import { ListRow } from "@/components/ui/list-row";
+import { NewDot } from "@/features/home/seen";
 import { api, isNotFound } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { cn, errorMessage } from "@/lib/utils";
@@ -23,12 +24,15 @@ export function OutboundRow({
   dateLabel,
   onChanged,
   onError,
+  isNew,
 }: {
   draft: OutboundDraft;
   dateLabel: (iso: string) => string;
   /** Called after a send/discard succeeds, so the list refetches without waiting on the event debounce. */
   onChanged: () => void;
   onError: (message: string | null) => void;
+  /** Drafted since the user last looked — fronts the title with the new dot. */
+  isNew?: boolean;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -88,7 +92,10 @@ export function OutboundRow({
             <MessageSquare />
           </IconChip>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{title}</p>
+            <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+              {isNew && <NewDot />}
+              {title}
+            </p>
             <p className="truncate text-xs text-muted-foreground">
               {channelLabel} · {dateLabel(draft.createdAt)}
               {!open && <span className="text-muted-foreground/70"> · {draft.body}</span>}

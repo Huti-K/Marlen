@@ -1,5 +1,5 @@
 import { getWhatsAppSendAccess } from "../../db/settings.js";
-import { dispatchWhatsApp } from "../../integrations/whatsapp/session.js";
+import { sendWhatsApp } from "../../integrations/whatsapp/dispatch.js";
 import { registerOutboundChannel } from "./registry.js";
 
 /**
@@ -10,5 +10,5 @@ import { registerOutboundChannel } from "./registry.js";
 registerOutboundChannel("whatsapp", {
   label: "WhatsApp",
   isArmed: () => getWhatsAppSendAccess(),
-  send: async (draft) => dispatchWhatsApp(draft.target, draft.body),
+  send: async (draft) => sendWhatsApp(draft.target, draft.body),
 });
