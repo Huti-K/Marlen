@@ -12,6 +12,26 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.3.6",
+    date: "2026-07-20",
+    notes: {
+      en: [
+        "A ready update now waits in the sidebar instead of floating over your work. It opens the changelog first, so you can see what changes before you restart.",
+        "The assistant no longer writes a second draft for a thread that already has an unsent one. Repeating an instruction, or catching up on a schedule that was missed while the app was closed, refines the existing draft instead of stacking another next to it.",
+        "An account connected before you signed in to an AI now learns your writing voice on the next start. It used to stay silently unlearned.",
+        "Switching between pages fades instead of snapping, and a message you send settles into its sent line in place rather than disappearing the way a discarded one does.",
+        "Clearer German throughout the app, in plainer words.",
+      ],
+      de: [
+        "Ein bereitstehendes Update wartet jetzt in der Seitenleiste, statt über der Arbeit zu schweben. Es öffnet zuerst die Änderungen, damit Sie vor dem Neustart sehen, was sich ändert.",
+        "Der Assistent schreibt keinen zweiten Entwurf mehr für einen Verlauf, in dem schon ein ungesendeter liegt. Eine wiederholte Anweisung, oder ein Zeitplan, der bei geschlossener App ausgefallen ist, überarbeitet den vorhandenen Entwurf, statt einen weiteren danebenzulegen.",
+        "Ein Konto, das vor der KI-Anmeldung verbunden wurde, lernt Ihren Schreibstil jetzt beim nächsten Start. Vorher blieb es stillschweigend ungelernt.",
+        "Der Wechsel zwischen Seiten blendet über, statt zu springen, und eine gesendete Nachricht geht an Ort und Stelle in ihre gesendete Zeile über, statt zu verschwinden wie eine verworfene.",
+        "Klareres Deutsch in der ganzen App, in einfacheren Worten.",
+      ],
+    },
+  },
+  {
     version: "0.3.5",
     date: "2026-07-20",
     notes: {
