@@ -555,4 +555,10 @@ export const SCHEMA_STEPS: readonly string[] = [
     );
     INSERT INTO seen_marks (key, seen_at) VALUES ('__floor__', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
   `,
+  // 31: outbound drafts remember the conversation that wrote them, so Home's
+  // refine button reopens that chat instead of starting cold. Null on drafts
+  // that predate the link; those fall back to a prefilled fresh chat.
+  `
+    ALTER TABLE outbound_drafts ADD COLUMN conversation_id TEXT;
+  `,
 ];

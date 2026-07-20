@@ -52,7 +52,9 @@ export async function buildAgent(
   // WhatsApp tools: local-mirror reads (personal link only) plus a draft-first
   // send tool (autosend gated at call time by the Settings grant). Empty while
   // neither a personal link nor a Business account exists.
-  const whatsappTools = caps.whatsapp.linked ? buildWhatsAppTools(caps.whatsapp.mirror) : [];
+  const whatsappTools = caps.whatsapp.linked
+    ? buildWhatsAppTools(caps.whatsapp.mirror, sessionId)
+    : [];
   // SECURITY: every session gets the agent-home-confined file tools, but an
   // unattended run reads attacker-controllable mail with nobody watching, so
   // it gets the read-only set and the whole-filesystem grants are never

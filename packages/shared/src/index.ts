@@ -508,6 +508,8 @@ export interface OutboundDraft {
   body: string;
   status: OutboundStatus;
   sentRef: string | null;
+  /** The conversation that drafted it, so the row can reopen it to refine. */
+  conversationId: string | null;
   createdAt: string;
   updatedAt: string;
 }

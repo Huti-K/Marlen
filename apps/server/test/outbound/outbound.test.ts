@@ -125,6 +125,33 @@ describe("outbound drafts", () => {
     expect(open.find((d) => d.id === id)?.body).toBe("Zweiter Wurf");
   });
 
+  it("a hand-edited body is what the channel dispatches, and a sent draft is no longer editable", async () => {
+    const { id } = await store.createOutboundDraft({
+      channel: "test-channel",
+      target: "491700000006@s.whatsapp.net",
+      targetLabel: "Testkontakt",
+      body: "Vom Agenten formuliert",
+    });
+
+    const patch = await app.inject({
+      method: "PATCH",
+      url: `/api/outbound/${id}`,
+      payload: { body: "Von Hand überschrieben" },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect((await listOpen()).find((d) => d.id === id)?.body).toBe("Von Hand überschrieben");
+
+    await app.inject({ method: "POST", url: `/api/outbound/${id}/send` });
+    expect(sends.find((d) => d.id === id)?.body).toBe("Von Hand überschrieben");
+
+    const late = await app.inject({
+      method: "PATCH",
+      url: `/api/outbound/${id}`,
+      payload: { body: "Zu spät" },
+    });
+    expect(late.statusCode).toBe(400);
+  });
+
   it("discard removes the draft from the open list", async () => {
     const { id } = await store.createOutboundDraft({
       channel: "test-channel",

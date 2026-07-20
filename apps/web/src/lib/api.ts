@@ -221,6 +221,8 @@ export const api = {
     get<OutboundDraft[]>(`/api/outbound${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   sendOutbound: (id: string) =>
     http<{ ok: boolean }>("POST", `/api/outbound/${encodeURIComponent(id)}/send`),
+  updateOutbound: (id: string, patch: { body?: string }) =>
+    http<{ ok: boolean }>("PATCH", `/api/outbound/${encodeURIComponent(id)}`, patch),
   discardOutbound: (id: string) =>
     http<{ ok: boolean }>("DELETE", `/api/outbound/${encodeURIComponent(id)}`),
   outboundStatus: (id: string) =>

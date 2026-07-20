@@ -1,5 +1,5 @@
 import { OUTBOUND_CHANNEL_LABELS, type OutboundDraft } from "@trailin/shared";
-import { ChevronRight, MessageSquare, Send, Trash2 } from "lucide-react";
+import { ChevronRight, MessageSquare, Send, Sparkles, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { DraftActionDialog, useDraftActions } from "@/components/draftActions";
@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconChip } from "@/components/ui/icon-chip";
 import { ListRow } from "@/components/ui/list-row";
+import { Textarea } from "@/components/ui/textarea";
+import { revealChat, sendChatCommand } from "@/features/chat/controller";
 import { NewDot } from "@/features/home/seen";
 import { api, isNotFound } from "@/lib/api";
 import { toast } from "@/lib/toast";
@@ -15,9 +17,9 @@ import { cn, errorMessage } from "@/lib/utils";
 /**
  * One outbound message awaiting approval (WhatsApp today) in the attention
  * list — the channel counterpart of the email DraftRow, on the same
- * arm→confirm→execute machinery. The body is read-only; refinement happens in
- * chat. Sending dispatches through POST /api/outbound/:id/send — the click is
- * the authorization.
+ * arm→confirm→execute machinery, and editable in place the same way. Sending
+ * dispatches through POST /api/outbound/:id/send — the click is the
+ * authorization.
  */
 export function OutboundRow({
   draft,
@@ -36,14 +38,42 @@ export function OutboundRow({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
+  // Editable body: `bodyDraft` is the live field value, `savedBody` the
+  // last-persisted baseline it's compared against for the dirty flag.
+  const [bodyDraft, setBodyDraft] = React.useState(draft.body);
+  const [savedBody, setSavedBody] = React.useState(draft.body);
+  const [saving, setSaving] = React.useState(false);
   // True right after a send — a quiet terminal line until the "outbound"
   // server event removes the row from the open list.
   const [sent, setSent] = React.useState(false);
 
+  const dirty = bodyDraft !== savedBody;
+
+  const save = async () => {
+    setSaving(true);
+    onError(null);
+    try {
+      await api.updateOutbound(draft.id, { body: bodyDraft });
+      setSavedBody(bodyDraft);
+      toast.success(t("common.saved"));
+      onChanged();
+    } catch (err) {
+      // Keep the typed text — only the banner reflects the failure.
+      onError(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const actions = useDraftActions({
+    // Flushes any unsaved edits first: the channel sends the stored body.
     send: async () => {
       onError(null);
       try {
+        if (dirty) {
+          await api.updateOutbound(draft.id, { body: bodyDraft });
+          setSavedBody(bodyDraft);
+        }
         await api.sendOutbound(draft.id);
         setSent(true);
         toast.success(t("home.outboundSentToast"));
@@ -106,6 +136,31 @@ export function OutboundRow({
           <Button
             variant="ghost"
             size="icon-xs"
+            className="hover:bg-accent/10 hover:text-accent"
+            onClick={(e) => {
+              e.stopPropagation();
+              revealChat();
+              if (draft.conversationId) {
+                // The agent wrote this draft — reopen that conversation, with
+                // its context and draft card, instead of starting cold.
+                sendChatCommand({ kind: "open", conversationId: draft.conversationId });
+              } else {
+                // Drafted before the conversation link existed: a fresh chat
+                // with a prefilled ask is the best we can do.
+                sendChatCommand({
+                  kind: "prefill",
+                  text: t("drafts.refinePrompt", { subject: title }),
+                });
+              }
+            }}
+            title={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
+            aria-label={draft.conversationId ? t("drafts.refineInChat") : t("drafts.refine")}
+          >
+            <Sparkles />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => actions.arm("send")}
             disabled={actions.busy}
             loading={actions.busy && actions.pending === "send"}
@@ -140,9 +195,35 @@ export function OutboundRow({
 
       {open && (
         <div className="px-2.5 pb-3">
-          <p className="whitespace-pre-wrap pl-8 text-sm leading-relaxed text-foreground/90">
-            {draft.body}
-          </p>
+          <div className="flex flex-col gap-2 pl-8 pt-1">
+            <Textarea
+              value={bodyDraft}
+              onChange={(e) => setBodyDraft(e.target.value)}
+              rows={Math.max(3, bodyDraft.split("\n").length)}
+              disabled={actions.busy}
+              className="resize-none text-sm leading-relaxed text-foreground/90"
+            />
+            {dirty && (
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setBodyDraft(savedBody)}
+                  disabled={saving || actions.busy}
+                >
+                  {t("common.cancel")}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => void save()}
+                  disabled={actions.busy}
+                  loading={saving}
+                >
+                  {saving ? t("common.saving") : t("drafts.save")}
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

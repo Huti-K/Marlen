@@ -17,6 +17,8 @@ export interface OutboundDraftInput {
   target: string;
   targetLabel?: string;
   body: string;
+  /** The conversation drafting it, so Home can reopen it to refine. */
+  conversationId?: string;
 }
 
 export async function createOutboundDraft(input: OutboundDraftInput): Promise<OutboundDraft> {
@@ -29,6 +31,7 @@ export async function createOutboundDraft(input: OutboundDraftInput): Promise<Ou
     body: input.body,
     status: "open",
     sentRef: null,
+    conversationId: input.conversationId ?? null,
     createdAt: now,
     updatedAt: now,
   };

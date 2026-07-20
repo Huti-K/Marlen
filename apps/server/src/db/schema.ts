@@ -203,6 +203,8 @@ export const outboundDrafts = sqliteTable("outbound_drafts", {
     .notNull()
     .default("open"),
   sentRef: text("sent_ref"),
+  /** The conversation that drafted it; null for drafts predating the link. */
+  conversationId: text("conversation_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
