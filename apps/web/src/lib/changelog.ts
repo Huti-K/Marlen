@@ -12,6 +12,24 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.3.4",
+    date: "2026-07-20",
+    notes: {
+      en: [
+        "WhatsApp messages waiting for approval can be edited by hand on the start page, the way email drafts already could.",
+        "Every draft has a refine button that reopens the chat it was written in, so the assistant keeps the full context instead of starting cold.",
+        "Lists no longer jump. A message you send or discard fades out and the rows below slide up to close the gap, and a to-do you tick leaves the same way.",
+        "The assistant no longer uses dashes in its replies.",
+      ],
+      de: [
+        "WhatsApp-Nachrichten, die auf Freigabe warten, lassen sich auf der Startseite von Hand bearbeiten, so wie es bei E-Mail-Entwürfen schon möglich war.",
+        "Jeder Entwurf hat einen Knopf zum Verfeinern, der den Chat wieder öffnet, in dem er geschrieben wurde, damit der Assistent den vollen Zusammenhang behält.",
+        "Listen springen nicht mehr. Eine gesendete oder verworfene Nachricht blendet sich aus, die Zeilen darunter rücken weich nach oben, und ein abgehaktes To-do verschwindet genauso.",
+        "Der Assistent verwendet in seinen Antworten keine Gedankenstriche mehr.",
+      ],
+    },
+  },
+  {
     version: "0.3.3",
     date: "2026-07-20",
     notes: {
