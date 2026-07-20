@@ -70,8 +70,6 @@
       <a class="btn disabled" data-os="windows" href="#">Download für Windows <small>.exe</small></a>
       <a class="btn disabled" data-os="mac" href="#">Download für macOS <small>.dmg</small></a>
     </div>
-    <p class="note" id="macnote" hidden>macOS: Beim ersten Start Rechtsklick → „Öffnen" bzw. Systemeinstellungen → Datenschutz &amp; Sicherheit → „Dennoch öffnen" (die App ist noch nicht notariell beglaubigt).</p>
-    <p class="note">Die App aktualisiert sich nach der Installation automatisch.</p>
   </div>
 
   <footer>
@@ -118,7 +116,6 @@
         btn.parentElement.prepend(btn);
       }
     }
-    document.getElementById("macnote").hidden = os !== "mac";
   }
   load();
 </script>
