@@ -7,7 +7,7 @@
     "expandChat": "Chat ausklappen",
     "collapseChat": "Chat einklappen",
     "updateAvailable": "Update bereit",
-    "updateRestart": "Jetzt neu starten"
+    "updateRestart": "Trailin neu starten & aktualisieren"
   },
   "changelog": {
     "open": "Änderungen",
@@ -18,7 +18,7 @@
   "views": {
     "chat": {
       "title": "Chat",
-      "description": "Stellen Sie Fragen zu Ihrem Posteingang oder lassen Sie den Assistenten Entwürfe schreiben, E-Mails beschriften oder aufräumen."
+      "description": "Stellen Sie Fragen zu Ihrem Postfach oder lassen Sie den Assistenten Entwürfe schreiben, E-Mails mit Labels versehen oder aufräumen."
     },
     "home": {
       "title": "Start",
@@ -26,15 +26,15 @@
     },
     "leads": {
       "title": "Leads",
-      "description": "Alle Interessenten, die der Assistent verfolgt – von der ersten Anfrage bis zum Abschluss."
+      "description": "Alle Interessenten, die der Assistent verfolgt, von der ersten Anfrage bis zum Abschluss."
     },
     "automations": {
       "title": "Automatisierungen",
-      "description": "Lässt den Assistenten nach einem festen Zeitplan mit einer festen Anweisung laufen."
+      "description": "Der Assistent führt eine feste Anweisung nach Zeitplan aus."
     },
     "knowledge": {
       "title": "Wissen",
-      "description": "Dokumente und Erinnerungen für Ihren Assistenten."
+      "description": "Dokumente und Notizen für Ihren Assistenten."
     },
     "settings": {
       "title": "Einstellungen",
@@ -55,25 +55,25 @@
     "expand": "Ausklappen",
     "collapse": "Einklappen",
     "dismiss": "Schließen",
-    "loading": "Wird geladen…",
-    "saving": "Wird gespeichert…",
+    "loading": "Lädt…",
+    "saving": "Speichert…",
     "saved": "Gespeichert",
-    "retry": "Erneut versuchen",
+    "retry": "Nochmal versuchen",
     "signIn": "Anmelden",
     "signOut": "Abmelden",
-    "submit": "Absenden",
+    "submit": "Senden",
     "noResults": "Keine Treffer",
     "noResultsBody": "Hier passt nichts zu „{{query}}“.",
     "clearSearch": "Suche zurücksetzen"
   },
   "errors": {
-    "network": "Der Server ist nicht erreichbar. Prüfen Sie, ob er läuft, und versuchen Sie es erneut.",
-    "timeout": "Der Server hat zu lange nicht geantwortet. Bitte versuchen Sie es erneut.",
-    "unavailable": "Der Server ist gerade nicht verfügbar. Bitte versuchen Sie es gleich noch einmal.",
-    "server": "Auf dem Server ist etwas schiefgelaufen. Bitte versuchen Sie es erneut.",
-    "notFound": "Das wurde nicht gefunden. Möglicherweise wurde es entfernt.",
+    "network": "Der Server ist nicht erreichbar. Prüfen Sie, ob er läuft.",
+    "timeout": "Der Server antwortet nicht. Bitte nochmal versuchen.",
+    "unavailable": "Der Server ist gerade nicht verfügbar. Bitte gleich nochmal versuchen.",
+    "server": "Auf dem Server ist etwas schiefgelaufen. Bitte nochmal versuchen.",
+    "notFound": "Nicht gefunden. Vielleicht wurde es gelöscht.",
     "forbidden": "Dafür fehlt Ihnen die Berechtigung.",
-    "request": "Das hat nicht funktioniert. Bitte versuchen Sie es erneut.",
+    "request": "Das hat nicht geklappt. Bitte nochmal versuchen.",
     "openSettings": "Einstellungen öffnen"
   },
   "chat": {
@@ -81,13 +81,13 @@
     "history": "Verlauf",
     "noConversations": "Noch keine Unterhaltungen.",
     "untitled": "(ohne Titel)",
-    "thinking": "Denkt nach...",
-    "working": "Agent arbeitet",
-    "emptyTitle": "Fragen Sie Ihren Posteingang alles",
-    "emptyBody": "Der Assistent kann in Ihren verbundenen Konten suchen, E-Mails beschriften und Entwürfe schreiben.",
+    "thinking": "Denkt nach…",
+    "working": "Der Assistent arbeitet",
+    "emptyTitle": "Fragen Sie alles zu Ihrem Postfach",
+    "emptyBody": "Der Assistent durchsucht Ihre verbundenen Konten, versieht E-Mails mit Labels und schreibt Entwürfe.",
     "placeholder": "Schreiben Sie Ihrem E-Mail-Assistenten…",
     "send": "Nachricht senden",
-    "resize": "Chat-Fenster in der Breite anpassen",
+    "resize": "Breite des Chat-Bereichs anpassen",
     "searchPlaceholder": "Unterhaltungen durchsuchen…",
     "noSearchResults": "Keine Treffer.",
     "collapseHistory": "Verlauf einklappen",
@@ -102,10 +102,10 @@
     "rename": "Umbenennen",
     "delete": "Löschen",
     "deleteConfirmTitle": "Diese Unterhaltung löschen?",
-    "deleteConfirmBody": "Dies löscht die Unterhaltung und alle ihre Nachrichten endgültig.",
+    "deleteConfirmBody": "Die Unterhaltung und alle Nachrichten sind dann weg.",
     "systemPrompt": {
       "title": "System-Prompt",
-      "search": "Prompt durchsuchen...",
+      "search": "Prompt durchsuchen…",
       "matches_one": "{{count}} Treffer",
       "matches_other": "{{count}} Treffer",
       "copy": "Kopieren",
@@ -144,26 +144,26 @@
         "bcc": "Bcc:",
         "open": "Im Postfach öffnen",
         "send": "Senden",
-        "sendConfirm": "Diesen Entwurf jetzt senden? Er wird genau so verschickt, wie er geschrieben ist.",
+        "sendConfirm": "Diesen Entwurf jetzt senden? Er geht genau so raus, wie er dasteht.",
         "discard": "Verwerfen",
         "discardConfirm": "Diesen Entwurf verwerfen? Er wird aus Ihrem Mail-Konto entfernt.",
         "keep": "Als Entwurf behalten",
         "kept": "Als Entwurf behalten",
         "sentLabel": "Gesendet",
         "discardedLabel": "Verworfen",
-        "goneLabel": "Dieser Entwurf existiert nicht mehr"
+        "goneLabel": "Diesen Entwurf gibt es nicht mehr"
       },
       "messageDraft": {
         "badge": "{{channel}}-Entwurf",
         "sentLabel": "Gesendet",
-        "sendConfirm": "Diese Nachricht jetzt senden? Sie wird genau so verschickt, wie sie geschrieben ist.",
+        "sendConfirm": "Diese Nachricht jetzt senden? Sie geht genau so raus, wie sie dasteht.",
         "discardConfirm": "Diese Nachricht verwerfen?"
       },
       "attachments": {
         "title": "Anhänge",
         "count_one": "{{count}} Datei",
         "count_other": "{{count}} Dateien",
-        "empty": "Keine Anhänge an dieser Nachricht.",
+        "empty": "Diese Nachricht hat keine Anhänge.",
         "open": "Öffnen",
         "download": "Herunterladen"
       },
@@ -171,21 +171,21 @@
         "label": "Briefing",
         "itemCount_one": "{{count}} Eintrag",
         "itemCount_other": "{{count}} Einträge",
-        "empty": "Du musst dich gerade um nichts kümmern.",
+        "empty": "Gerade gibt es nichts zu tun.",
         "draftReady": "Entwurf bereit",
         "draftReply": "Antwort entwerfen",
         "reviewDraft": "Entwurf prüfen",
         "askAbout": "Dazu nachfragen",
         "showMore_one": "{{count}} weitere anzeigen",
         "showMore_other": "{{count}} weitere anzeigen",
-        "draftReplyPrompt": "Entwirf eine Antwort auf {{sender}}s E-Mail \"{{subject}}\" in {{account}} (Thread {{threadId}}). Im Briefing zusammengefasst als: {{gist}}",
-        "draftReplyPromptNoAccount": "Entwirf eine Antwort auf {{sender}}s E-Mail \"{{subject}}\" (Thread {{threadId}}). Im Briefing zusammengefasst als: {{gist}}",
-        "reviewDraftPrompt": "Zeig mir den Entwurf, den du für {{sender}}s E-Mail \"{{subject}}\" (Thread {{threadId}}, Entwurf {{draftId}}) geschrieben hast, damit ich ihn prüfen kann.",
-        "askAboutPrompt": "Im heutigen Briefing hast du {{sender}}s E-Mail \"{{subject}}\" (Thread {{threadId}}) markiert, \"{{gist}}\". Worum geht es dabei, und muss ich etwas tun?",
+        "draftReplyPrompt": "Entwirf eine Antwort auf {{sender}}s E-Mail „{{subject}}“ in {{account}} (Thread {{threadId}}). Im Briefing zusammengefasst als: {{gist}}",
+        "draftReplyPromptNoAccount": "Entwirf eine Antwort auf {{sender}}s E-Mail „{{subject}}“ (Thread {{threadId}}). Im Briefing zusammengefasst als: {{gist}}",
+        "reviewDraftPrompt": "Zeig mir den Entwurf, den du für {{sender}}s E-Mail „{{subject}}“ (Thread {{threadId}}, Entwurf {{draftId}}) geschrieben hast, damit ich ihn prüfen kann.",
+        "askAboutPrompt": "Im heutigen Briefing hast du {{sender}}s E-Mail „{{subject}}“ (Thread {{threadId}}) markiert, „{{gist}}“. Worum geht es dabei, und muss ich etwas tun?",
         "groups": {
           "urgent": "Dringend",
           "reply": "Antwort ausstehend",
-          "action": "Erfordert Handeln",
+          "action": "Zu tun",
           "fyi": "Zur Kenntnis"
         },
         "stats": {
@@ -201,32 +201,32 @@
       }
     },
     "showcase": {
-      "intro": "Hier ist ein Beispiel für alles, was ich im Chat anzeigen kann, Tool-Aktivität, jede Karte, eine formatierte Antwort und der Denk-Zustand.",
-      "toolsNote": "Während Tools laufen, erscheint jedes als Chip: fertig, noch aktiv oder fehlgeschlagen."
+      "intro": "Hier sehen Sie alles, was ich im Chat zeigen kann: Tool-Aktivität, jede Kartenart, eine formatierte Antwort und den Denk-Zustand.",
+      "toolsNote": "Jedes Tool zeigt sich einzeln: fertig, noch aktiv oder fehlgeschlagen."
     },
     "attachmentViewer": {
       "openInBrowser": "Im Browser öffnen",
-      "save": "In Bibliothek speichern",
-      "saved": "„{{name}}“ in deiner Bibliothek gespeichert."
+      "save": "In der Bibliothek speichern",
+      "saved": "„{{name}}“ in Ihrer Bibliothek gespeichert."
     }
   },
   "search": {
     "openButton": "Suchen",
     "title": "Suche",
-    "placeholder": "Chats, Übersichten, Entwürfe, Dokumente, Erinnerungen durchsuchen…",
-    "hint": "Durchsuchen Sie Ihre Chats, Übersichten, Entwürfe, Dokumente und Erinnerungen.",
-    "shortcuts": "Gehe zu",
+    "placeholder": "Chats, Briefings, Entwürfe, Dokumente und Notizen durchsuchen…",
+    "hint": "Durchsuchen Sie Ihre Chats, Briefings, Entwürfe, Dokumente und Notizen.",
+    "shortcuts": "Direkt zu",
     "noResults": "Keine Ergebnisse für „{{q}}“.",
-    "noResultsHint": "Prüfen Sie die Schreibweise oder versuchen Sie ein kürzeres Wort.",
+    "noResultsHint": "Schreibweise prüfen oder ein kürzeres Wort versuchen.",
     "hintNavigate": "Navigieren",
     "hintOpen": "Öffnen",
     "hintClose": "Schließen",
     "groups": {
-      "run": "Übersichten",
+      "run": "Briefings",
       "chat": "Chats",
       "draft": "Entwürfe",
       "document": "Dokumente",
-      "memory": "Erinnerungen"
+      "memory": "Notizen"
     }
   },
   "whatsapp": {
@@ -235,12 +235,12 @@
     "pairIntro": "Scannen Sie den QR-Code mit Ihrem Handy: WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät verknüpfen. Ihre Chats werden lokal auf diesem Computer gespiegelt und verlassen ihn nie.",
     "pairQrAlt": "WhatsApp-Kopplungs-QR-Code",
     "pairQrHint": "Der Code aktualisiert sich automatisch, solange die Kopplung offen ist.",
-    "pairGenerating": "QR-Code wird erzeugt …",
+    "pairGenerating": "QR-Code wird erzeugt…",
     "pairExpired": "Der QR-Code ist abgelaufen, bevor er gescannt wurde.",
     "pairRetry": "Neuen QR-Code erzeugen",
     "pairedToast": "WhatsApp verknüpft.",
     "statusConnected": "Verbunden",
-    "statusConnecting": "Verbindet …",
+    "statusConnecting": "Verbindet…",
     "statusOffline": "Getrennt",
     "unlink": "WhatsApp trennen",
     "unlinkConfirm": "Dieses Gerät trennen und die lokal gespiegelten Chats löschen? Ihr WhatsApp-Konto und die Chats auf Ihrem Handy bleiben unberührt."
@@ -248,21 +248,21 @@
   "onoffice": {
     "crmLabel": "CRM",
     "setupTitle": "onOffice verbinden",
-    "setupIntro": "Legen Sie in onOffice einen API-Benutzer an, erzeugen Sie ein Zugriffstoken und tragen Sie Token und Secret unten ein. Sie verbleiben auf diesem Computer und werden nie in ein Backup aufgenommen.",
+    "setupIntro": "Legen Sie in onOffice einen API-Benutzer an, erzeugen Sie ein Zugriffstoken und tragen Sie Token und Secret unten ein. Beide bleiben auf diesem Computer und landen nie in einem Backup.",
     "openApiDocs": "onOffice-API-Doku",
     "token": "API-Token",
     "secret": "API-Secret",
     "keepPlaceholder": "Leer lassen, um den gespeicherten Wert zu behalten",
     "save": "Speichern",
     "removeSaved": "Zugangsdaten entfernen",
-    "removeSavedConfirm": "Die gespeicherten onOffice-Zugangsdaten von diesem Computer entfernen? Der Assistent verliert den Zugriff auf Ihr CRM, bis Sie sie erneut hinterlegen.",
+    "removeSavedConfirm": "Die gespeicherten onOffice-Zugangsdaten löschen? Der Assistent kommt dann nicht mehr an Ihr CRM, bis Sie sie neu eintragen.",
     "edit": "Zugangsdaten bearbeiten"
   },
   "connections": {
     "customToggle": "Eigenes Pipedream-Projekt verwenden",
     "customToggleOn": "E-Mail läuft über das unten konfigurierte Pipedream-Projekt.",
     "builtinInUse": "E-Mail läuft über das eingebaute Pipedream von Trailin.",
-    "builtinMissing": "Diese Version enthält kein eingebautes Pipedream, aktivieren Sie dies und fügen Sie unten Ihre eigenen Zugangsdaten hinzu.",
+    "builtinMissing": "Diese Version hat kein eingebautes Pipedream. Schalten Sie das hier ein und tragen Sie unten Ihre eigenen Zugangsdaten ein.",
     "addAccount": "Neues Konto hinzufügen",
     "searchProviders": "Alle Apps durchsuchen… (Gmail, Zoho, IMAP, Notion, …)",
     "noProvidersFound": "Keine Apps für „{{q}}“ gefunden.",
@@ -270,12 +270,12 @@
     "moreAppsHeading": "Beliebte Integrationen",
     "crmHeading": "CRM",
     "messagingHeading": "Messaging",
-    "anyAppHint": "Das sind nur einige, suchen Sie oben, um eine von über 2.000 Apps zu verbinden, von anderen Mail-Diensten bis Kalender, Notizen und Chat.",
+    "anyAppHint": "Das sind nur einige. Suchen Sie oben, dann finden Sie über 2.000 Apps, von anderen Mail-Diensten über Kalender und Notizen bis Chat.",
     "setupTitle": "Einmalige Einrichtung: Trailin mit Pipedream verbinden",
-    "setupIntro": "Trailin nutzt <pd>Pipedream</pd>, einen kostenlosen Dienst, um Ihre E-Mail-Konten sicher zu verbinden, so viele Sie möchten, auch mehrere vom selben Anbieter. Dafür werden drei Werte aus Ihrem eigenen Pipedream-Workspace benötigt, die Sie einmalig kopieren:",
+    "setupIntro": "Trailin verbindet Ihre E-Mail-Konten über <pd>Pipedream</pd>, einen kostenlosen Dienst. Verbinden Sie so viele Konten, wie Sie wollen, auch mehrere vom selben Anbieter. Dafür brauchen Sie drei Werte aus Ihrem Pipedream-Workspace:",
     "setupStep1": "Erstellen Sie ein kostenloses Pipedream-Konto.",
-    "setupStep2": "Erstellen Sie unter Settings → API einen OAuth-Client und kopieren Sie dessen Client ID und Client Secret unten hinein.",
-    "setupStep3": "Erstellen Sie ein Projekt (beliebiger Name) und fügen Sie dessen URL, oder die proj_…-ID, unten ein.",
+    "setupStep2": "Erstellen Sie unter Settings → API einen OAuth-Client und tragen Sie dessen Client ID und Client Secret unten ein.",
+    "setupStep3": "Erstellen Sie ein Projekt (Name beliebig) und tragen Sie unten dessen URL oder die proj_…-ID ein.",
     "openPipedream": "pipedream.com öffnen",
     "openApiSettings": "API-Einstellungen öffnen",
     "openProjects": "Projekte öffnen",
@@ -289,62 +289,62 @@
     "emailAccounts": "Verbundene Konten",
     "permissions": {
       "edit": "Berechtigungen",
-      "hint": "Lesen ist immer erlaubt, der Assistent kann dieses Konto lesen und durchsuchen. Alles Weitere braucht eine eigene Freigabe:",
-      "hintEmail": "Lesen ist immer erlaubt, der Assistent kann dieses Konto lesen und durchsuchen sowie Entwürfe vorbereiten. Alles Weitere braucht eine eigene Freigabe:",
+      "hint": "Lesen ist immer erlaubt. Alles Weitere braucht eine eigene Freigabe:",
+      "hintEmail": "Lesen und Entwürfe sind immer erlaubt. Alles Weitere braucht eine eigene Freigabe:",
       "write": {
         "title": "Anlegen & Ändern",
-        "on": "Darf auf Ihre Anweisung in diesem Konto anlegen und ändern.",
-        "off": "Kann in diesem Konto nichts anlegen oder ändern.",
-        "offEmail": "Kann dieses Postfach nicht verändern, Entwürfe anlegen ist immer erlaubt.",
+        "on": "Darf hier Einträge anlegen und ändern, wenn Sie es sagen.",
+        "off": "Kann hier nichts anlegen oder ändern.",
+        "offEmail": "Ändert nichts im Postfach. Entwürfe sind immer erlaubt.",
         "confirmTitle": "Der KI Anlegen & Ändern als {{account}} erlauben?",
-        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung in diesem Konto anlegen und ändern. Senden und Löschen bleiben eigene Schalter. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmBody": "Der Assistent legt dann in diesem Konto Einträge an und ändert sie, wenn Sie es sagen. Senden und Löschen bleiben eigene Schalter. Jederzeit abschaltbar.",
         "confirmCta": "Anlegen & Ändern erlauben"
       },
       "send": {
         "title": "Senden",
-        "on": "Darf auf Ihre Anweisung Nachrichten aus diesem Konto senden.",
+        "on": "Darf Nachrichten aus diesem Konto senden, wenn Sie es sagen.",
         "off": "Kann aus diesem Konto nichts senden.",
-        "offEmail": "Kann nichts senden, ausgehende E-Mails bleiben als Entwürfe zur Durchsicht.",
+        "offEmail": "Sendet nichts. Ausgehende E-Mails bleiben Entwürfe.",
         "confirmTitle": "Der KI das Senden als {{account}} erlauben?",
-        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung Nachrichten als {{account}} senden. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmBody": "Der Assistent sendet dann Nachrichten als {{account}}, wenn Sie es sagen. Jederzeit abschaltbar.",
         "confirmCta": "Senden erlauben"
       },
       "delete": {
         "title": "Löschen",
-        "on": "Darf auf Ihre Anweisung in diesem Konto löschen.",
+        "on": "Darf hier Einträge löschen, wenn Sie es sagen.",
         "off": "Kann in diesem Konto nichts löschen.",
         "confirmTitle": "Der KI das Löschen als {{account}} erlauben?",
-        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung in diesem Konto löschen. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmBody": "Der Assistent löscht dann Einträge in diesem Konto, wenn Sie es sagen. Jederzeit abschaltbar.",
         "confirmCta": "Löschen erlauben"
       },
       "onoffice": {
-        "title": "Automationen dürfen anlegen",
-        "rowOn": "Automationen dürfen CRM-Datensätze anlegen (Kontakte, Termine, Aufgaben, Verknüpfungen), nie ändern, löschen oder senden.",
-        "rowOff": "Automationen lesen das CRM nur; Datensätze werden im Chat angelegt, mit Ihrer Bestätigung.",
-        "confirmTitle": "Automationen das Anlegen von onOffice-Datensätzen erlauben?",
-        "confirmBody": "Geplante Läufe können dann selbstständig Kontakte, Termine, Aufgaben und Verknüpfungen in Ihrem Live-CRM anlegen, Ihre Kollegen sehen diese Datensätze. Ändern, Löschen und Senden bleiben dem Chat vorbehalten. Sie können dies jederzeit wieder deaktivieren.",
+        "title": "Automatisierungen dürfen anlegen",
+        "rowOn": "Automatisierungen dürfen CRM-Datensätze anlegen (Kontakte, Termine, Aufgaben, Verknüpfungen), aber nie ändern, löschen oder senden.",
+        "rowOff": "Automatisierungen lesen das CRM nur. Datensätze legt der Chat an, mit Ihrer Bestätigung.",
+        "confirmTitle": "Automatisierungen das Anlegen von onOffice-Datensätzen erlauben?",
+        "confirmBody": "Geplante Läufe legen dann selbst Kontakte, Termine, Aufgaben und Verknüpfungen in Ihrem echten CRM an, Ihre Kollegen sehen diese Datensätze. Ändern, Löschen und Senden bleiben dem Chat vorbehalten. Jederzeit abschaltbar.",
         "confirmCta": "Anlegen erlauben"
       },
       "onofficeWrites": {
         "title": "Ändern, Löschen & Senden",
-        "rowOn": "Darf auf Ihre Anweisung im Chat CRM-Datensätze ändern oder löschen und über das CRM senden.",
-        "rowOff": "Der Chat kann das CRM lesen und Datensätze anlegen; Ändern, Löschen und Senden bleiben aus, bis Sie es aktivieren.",
+        "rowOn": "Darf im Chat CRM-Datensätze ändern, löschen und über das CRM senden, wenn Sie es sagen.",
+        "rowOff": "Der Chat liest das CRM und legt Datensätze an. Ändern, Löschen und Senden bleiben aus, bis Sie das hier einschalten.",
         "confirmTitle": "Der KI Ändern, Löschen und Senden in onOffice erlauben?",
-        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung im Chat Live-CRM-Datensätze ändern und löschen sowie über onOffice senden. Geplante Läufe erhalten diese Werkzeuge nie. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmBody": "Der Assistent ändert und löscht dann im Chat echte CRM-Datensätze und sendet über onOffice, wenn Sie es sagen. Geplante Läufe bekommen diese Werkzeuge nie. Jederzeit abschaltbar.",
         "confirmCta": "CRM-Änderungen erlauben"
       },
       "whatsappSend": {
         "title": "Automatisch senden",
-        "rowOn": "WhatsApp-Entwürfe werden automatisch gesendet, auch aus Automationen, die ausdrücklich senden sollen.",
+        "rowOn": "WhatsApp-Entwürfe werden automatisch gesendet, auch aus Automatisierungen, die ausdrücklich senden sollen.",
         "rowOff": "WhatsApp-Nachrichten werden als Entwurf abgelegt und erst nach Ihrer Freigabe gesendet.",
         "confirmTitle": "WhatsApp-Nachrichten automatisch senden?",
-        "confirmBody": "Sobald aktiviert, werden WhatsApp-Nachrichten sofort gesendet, wenn eine Anweisung oder Automation ausdrücklich das Senden verlangt, ohne Entwurf zur Durchsicht. Ohne diese Freigabe bleibt jede Nachricht ein Entwurf mit Senden-Knopf. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmBody": "WhatsApp-Nachrichten gehen dann sofort raus, sobald eine Anweisung oder Automatisierung senden will, ohne Entwurf zur Durchsicht. Ohne diese Freigabe bleibt jede Nachricht ein Entwurf mit Senden-Knopf. Jederzeit abschaltbar.",
         "confirmCta": "Automatisch senden erlauben"
       }
     },
-    "noAccounts": "Noch keine E-Mail-Konten verbunden. Nutzen Sie die Schaltflächen oben, Sie können mehrere Konten pro Anbieter verbinden.",
-    "finishConnecting": "Schließen Sie die Verbindung im gerade geöffneten Browser-Tab ab, das Konto erscheint hier automatisch, sobald es verknüpft ist.",
-    "unhealthy": "Gestört",
+    "noAccounts": "Noch keine E-Mail-Konten verbunden. Nutzen Sie die Knöpfe oben. Pro Anbieter geht auch mehr als ein Konto.",
+    "finishConnecting": "Schließen Sie die Verbindung im neuen Browser-Tab ab. Das Konto erscheint dann automatisch hier.",
+    "unhealthy": "Problem",
     "disconnect": "Trennen",
     "disconnectConfirm": "Dieses Konto trennen?",
     "projectFooter": "Pipedream-Projekt <code>{{projectId}}</code> · {{environment}} · {{source}}",
@@ -355,15 +355,15 @@
     "advanced": "Erweitert",
     "advancedBuiltin": "Eingebautes Pipedream",
     "advancedCustom": "Eigenes Pipedream-Projekt",
-    "learnVoiceStarted": "Dein Schreibstil von {{name}} wird gelernt – er erscheint in Kürze in den Einstellungen.",
+    "learnVoiceStarted": "Ihr Schreibstil wird aus {{name}} gelernt. Er erscheint gleich in den Einstellungen.",
     "voiceLearning": "Stil wird gelernt…",
     "voiceLearnFailed": "Stil-Lernen fehlgeschlagen",
     "voiceLearnRetry": "Schreibstil erneut lernen"
   },
   "home": {
-    "setupBanner": "Trailin ist noch nicht fertig eingerichtet, der Assistent erreicht Ihre E-Mails noch nicht.",
+    "setupBanner": "Trailin ist noch nicht fertig eingerichtet. Der Assistent erreicht Ihre E-Mails noch nicht.",
     "setupBannerCta": "Einrichtung abschließen",
-    "offlineBanner": "Ihr E-Mail-Anbieter ist gerade nicht erreichbar, prüfen Sie Ihre Verbindung.",
+    "offlineBanner": "Ihr E-Mail-Anbieter ist gerade nicht erreichbar. Prüfen Sie Ihre Verbindung.",
     "missedBanner_one": "1 Automatisierung lief nicht, während die App geschlossen war.",
     "missedBanner_other": "{{count}} Automatisierungen liefen nicht, während die App geschlossen war.",
     "missedRun": "Jetzt ausführen",
@@ -373,23 +373,23 @@
     "newCount_other": "{{count}} neue Einträge",
     "markAllSeen": "Alles gesehen",
     "triggerCatchUp": "Nachgeholt",
-    "triggerCatchUpDetail": "Nachgeholter Lauf für den Termin am {{when}}, deckt alles seit dem vorherigen Lauf ab.",
+    "triggerCatchUpDetail": "Nachgeholter Lauf für den Termin am {{when}}. Deckt alles seit dem letzten Lauf ab.",
     "triggerTodo": "Aus To-do",
-    "triggerTodoDetail": "Gestartet, als Sie das To-do \"{{title}}\" erledigt haben.",
+    "triggerTodoDetail": "Gestartet, als Sie das To-do „{{title}}“ erledigt haben.",
     "triggerMail": "Neue Mail",
     "triggerMailDetail": "Gestartet durch neue Mail in {{accounts}}.",
     "attentionTitle": "Zu erledigen",
     "attentionEmpty": "Alles erledigt. Neue Aufgaben und Freigaben erscheinen hier.",
     "approvalsGroup": "Zur Freigabe",
-    "suggestionsWaiting_one": "{{count}} neuer Automations-Vorschlag zum Prüfen",
-    "suggestionsWaiting_other": "{{count}} neue Automations-Vorschläge zum Prüfen",
+    "suggestionsWaiting_one": "{{count}} neuer Vorschlag zum Prüfen",
+    "suggestionsWaiting_other": "{{count}} neue Vorschläge zum Prüfen",
     "approvalsAllAccounts": "Alle Konten",
     "approvalsFilterAccount": "Nach Konto filtern",
     "approvalsShowMore_one": "1 weitere anzeigen",
     "approvalsShowMore_other": "{{count}} weitere anzeigen",
     "showLess": "Weniger anzeigen",
     "outboundSentToast": "Nachricht gesendet.",
-    "todosOverdue": "Verpasst",
+    "todosOverdue": "Überfällig",
     "todosToday": "Heute",
     "todosTomorrow": "Morgen",
     "todosAnytime": "Jederzeit",
@@ -408,16 +408,16 @@
     "todosBodyPlaceholder": "Notiz hinzufügen…",
     "todosLinkedRun": "Beim Erledigen startet: {{name}}",
     "todosLinkedLabel": "Beim Erledigen starten",
-    "todosLinkedNone": "Keine Automation",
-    "todosLinkedGeneric": "Automation",
+    "todosLinkedNone": "Keine Automatisierung",
+    "todosLinkedGeneric": "Automatisierung",
     "todosDone_one": "1 erledigt",
     "todosDone_other": "{{count}} erledigt",
     "todosRestore": "Wieder öffnen",
     "resultsTitle": "Neue Ergebnisse",
     "activityTitle": "Aktivität",
     "activityEmptyTitle": "Noch nichts hier",
-    "activityEmptyBody": "Stellen Sie Ihren Posteingang auf Autopilot: Eine feste Anweisung läuft nach Zeitplan und berichtet hier.",
-    "activityNoRunsBody": "Ihre Automatisierungen haben noch keine Ergebnisse, führen Sie eine jetzt aus oder warten Sie auf den Zeitplan.",
+    "activityEmptyBody": "Lassen Sie Ihr Postfach für sich arbeiten: Eine feste Anweisung läuft nach Zeitplan und berichtet hier.",
+    "activityNoRunsBody": "Noch keine Ergebnisse. Führen Sie eine Automatisierung aus oder warten Sie auf den nächsten Termin.",
     "activityNothingToday": "Heute noch nichts.",
     "activityShowEarlier_one": "{{count}} früheren Lauf anzeigen",
     "activityShowEarlier_other": "{{count}} frühere Läufe anzeigen",
@@ -439,19 +439,19 @@
     "discard": "Entwurf verwerfen",
     "discardConfirm": "Diesen Entwurf verwerfen? Er wird aus Ihrem Mail-Konto entfernt.",
     "send": "Senden",
-    "sendConfirm": "Diesen Entwurf jetzt senden? Er wird genau so verschickt, wie er geschrieben ist.",
+    "sendConfirm": "Diesen Entwurf jetzt senden? Er geht genau so raus, wie er dasteht.",
     "sent": "Gesendet",
     "sentToast": "Entwurf gesendet.",
     "emptyBodyText": "(leerer Inhalt)",
     "subject": "Betreff",
-    "refine": "Mit KI verfeinern",
-    "refineInChat": "Im zugehörigen Chat verfeinern",
-    "refinePrompt": "Bitte überarbeite den Entwurf \"{{subject}}\"",
+    "refine": "Mit KI überarbeiten",
+    "refineInChat": "Im zugehörigen Chat überarbeiten",
+    "refinePrompt": "Bitte überarbeite den Entwurf „{{subject}}“",
     "save": "Speichern"
   },
   "threadHistory": {
-    "show": "Verlauf anzeigen",
-    "hide": "Verlauf ausblenden",
+    "show": "Frühere Nachrichten anzeigen",
+    "hide": "Frühere Nachrichten ausblenden",
     "empty": "Keine früheren Nachrichten in dieser Konversation.",
     "to": "An:",
     "cc": "Cc:",
@@ -463,9 +463,9 @@
     "save": "Speichern",
     "create": "Erstellen",
     "formTitle": "Neue Automatisierung",
-    "formHint": "Geben Sie dem Assistenten eine feste Anweisung und wählen Sie, wann sie läuft.",
+    "formHint": "Geben Sie eine feste Anweisung und wählen Sie, wann sie läuft.",
     "name": "Name",
-    "namePlaceholder": "Morgen-Übersicht",
+    "namePlaceholder": "Morgenbriefing",
     "schedule": "Zeitplan",
     "frequency": {
       "daily": "Jeden Tag",
@@ -478,7 +478,7 @@
     "month": "Monat",
     "day": "Tag",
     "customDaysRequired": "Wählen Sie mindestens einen Tag.",
-    "dateOnceHint": "Läuft einmal an diesem Datum und schaltet sich danach automatisch aus.",
+    "dateOnceHint": "Läuft einmal an diesem Datum und schaltet sich dann aus.",
     "manualHint": "Läuft nie von selbst, nur wenn Sie „Jetzt ausführen“ drücken.",
     "advancedToggle": "Erweitert: als Cron bearbeiten",
     "simpleToggle": "Zurück zum einfachen Zeitplan",
@@ -490,25 +490,25 @@
       "date": "{{date}} · {{time}}",
       "manual": "Auf Abruf"
     },
-    "cronInvalid": "Sieht nicht wie ein Standard-Cron-Ausdruck mit 5 Feldern aus, wird beim Erstellen geprüft.",
+    "cronInvalid": "Sieht nicht nach einem Cron-Ausdruck mit 5 Feldern aus. Wird beim Erstellen geprüft.",
     "cronHint": "<c>0 8 * * 1-5</c> läuft werktags um 08:00 Uhr.",
     "instruction": "Anweisung für den Assistenten",
     "instructionPlaceholder": "Fasse die ungelesenen E-Mails der letzten 24 Stunden zusammen…",
-    "showInActivity": "In der Aktivität des Assistenten anzeigen",
-    "showInActivityHint": "Läufe dieser Automatisierung in der Aktivität des Assistenten auf der Startseite anzeigen.",
+    "showInActivity": "In der Aktivität anzeigen",
+    "showInActivityHint": "Zeigt die Läufe dieser Automatisierung in der Aktivität auf der Startseite.",
     "runOnNewMail": "Bei neuer E-Mail sofort ausführen",
     "runOnNewMailHint": "Läuft zusätzlich zum Zeitplan sofort, wenn neue E-Mails eingehen.",
     "notifyOnCompletion": "Nach jedem Lauf benachrichtigen",
-    "notifyOnCompletionHint": "Zeigt eine Desktop-Benachrichtigung, wenn ein Lauf abgeschlossen ist.",
+    "notifyOnCompletionHint": "Zeigt eine Desktop-Benachrichtigung, wenn ein Lauf fertig ist.",
     "pin": "Oben auf der Startseite anzeigen",
     "pinned": "Auf der Startseite angeheftet",
     "emptyTitle": "Noch keine Automatisierungen",
     "emptyBody": "Schreiben Sie eine feste Anweisung und wählen Sie, wann sie läuft.",
     "paused": "pausiert",
-    "hiddenFromActivity": "Nicht in Aktivität",
+    "hiddenFromActivity": "Nicht in der Aktivität",
     "runNow": "Jetzt ausführen",
     "delete": "Löschen",
-    "deleteConfirm": "Automatisierung \"{{name}}\" löschen?",
+    "deleteConfirm": "Automatisierung „{{name}}“ löschen?",
     "recentRuns": "Letzte Ausführungen",
     "noRuns": "Noch keine Ausführungen.",
     "runStatus": {
@@ -518,7 +518,7 @@
     },
     "suggestions": {
       "title": "Vorgeschlagene Automatisierungen",
-      "hint": "Muster aus Ihren letzten Chats, übernehmen Sie einen Vorschlag, um ihn zu planen, oder verwerfen Sie ihn dauerhaft.",
+      "hint": "Muster aus Ihren letzten Chats. Übernehmen zum Einplanen, oder dauerhaft verwerfen.",
       "accept": "Automatisierung hinzufügen",
       "dismiss": "Verwerfen",
       "showInstruction": "Anweisung anzeigen"
@@ -528,14 +528,14 @@
     "new": "Neuer Lead",
     "create": "Anlegen",
     "formTitle": "Neuer Lead",
-    "formHint": "Interessenten von Hand erfassen – E-Mail-Anfragen werden automatisch abgelegt.",
+    "formHint": "Interessenten von Hand erfassen. E-Mail-Anfragen werden automatisch abgelegt.",
     "email": "E-Mail-Adresse",
     "name": "Name",
     "phone": "Telefon",
     "interest": "Interessiert an",
     "interestPlaceholder": "3-Zimmer-Wohnung in Mitte, bis 600.000 €…",
     "notes": "Notizen",
-    "mergedNote": "{{email}} war schon erfasst – die Angaben wurden zusammengeführt.",
+    "mergedNote": "{{email}} war schon erfasst. Die Angaben wurden zusammengeführt.",
     "filters": {
       "all": "Alle"
     },
@@ -564,34 +564,34 @@
     "lastOutbound": "Kontaktiert {{time}}",
     "noOutbound": "Noch nicht kontaktiert",
     "emptyTitle": "Noch keine Leads",
-    "emptyBody": "Zeigt eine E-Mail Interesse, trägt der Assistent den Absender hier ein – oder Sie legen selbst einen an.",
+    "emptyBody": "Zeigt eine E-Mail Interesse, trägt der Assistent den Absender hier ein. Oder Sie legen selbst einen an.",
     "emptyFilteredTitle": "Keine Leads mit diesem Status",
     "emptyFilteredBody": "Wählen Sie einen anderen Filter.",
     "delete": "Löschen",
-    "deleteConfirm": "Lead „{{email}}“ löschen? Zugehörige Automatisierungen werden mitgelöscht."
+    "deleteConfirm": "Lead „{{email}}“ löschen? Automatisierungen dazu werden mitgelöscht."
   },
   "library": {
     "upload": "Dateien hochladen",
     "openFolder": "Ordner öffnen",
-    "uploading": "Wird hochgeladen…",
+    "uploading": "Lädt hoch…",
     "uploaded_one": "{{count}} Datei hinzugefügt",
     "uploaded_other": "{{count}} Dateien hinzugefügt",
     "dropTitle": "Dateien hier ablegen",
     "error": "Fehler",
     "delete": "Löschen",
-    "deleteConfirm": "\"{{title}}\" löschen? Die Datei wird auch aus dem Ordner entfernt.",
+    "deleteConfirm": "„{{title}}“ löschen? Die Datei wird auch aus dem Ordner entfernt.",
     "sectionCount_one": "{{count}} Abschnitt",
     "sectionCount_other": "{{count}} Abschnitte",
     "showMore_one": "1 weitere anzeigen",
     "showMore_other": "{{count}} weitere anzeigen",
-    "deleteFolderConfirm": "Der Ordner \"{{title}}\" und alle enthaltenen Dateien werden gelöscht.",
+    "deleteFolderConfirm": "Der Ordner „{{title}}“ und alle enthaltenen Dateien werden gelöscht.",
     "deleteManyConfirm_one": "{{count}} Eintrag wird gelöscht, Ordner samt Inhalt.",
     "deleteManyConfirm_other": "{{count}} Einträge werden gelöscht, Ordner samt Inhalt."
   },
   "storage": {
     "nav": {
       "folder": "Alle Dateien",
-      "recent": "Zuletzt"
+      "recent": "Zuletzt geändert"
     },
     "folders": "Ordner",
     "breadcrumbs": "Pfad",
@@ -616,8 +616,8 @@
       "modified": "Geändert"
     },
     "tree": {
-      "expand": "Aufklappen",
-      "collapse": "Zuklappen"
+      "expand": "Ausklappen",
+      "collapse": "Einklappen"
     },
     "empty": {
       "folder": "Dieser Ordner ist leer.",
@@ -639,8 +639,8 @@
       "newTitle": "Neue Datei",
       "namePlaceholder": "Dateiname",
       "kinds": {
-        "note": "Notiz",
-        "memory": "Erinnerung",
+        "note": "Vermerk",
+        "memory": "Notiz",
         "skill": "Skill",
         "folder": "Ordner"
       }
@@ -658,23 +658,23 @@
     "aiDone": "Angemeldet, verwendet {{model}}.",
     "stepEmailTitle": "E-Mail-Konto verbinden",
     "stepEmailDescription": "Verbinden Sie Gmail oder Outlook, damit der Assistent Ihre Post sehen kann. Weitere Konten können Sie später hinzufügen.",
-    "pipedreamMissingBody": "Diese Version enthält keine eingebaute E-Mail-Brücke, Trailin verbindet sich stattdessen über Ihr eigenes kostenloses Pipedream-Projekt. Richten Sie es einmalig direkt hier ein und verbinden Sie dann Ihre Konten:",
+    "pipedreamMissingBody": "Diese Version hat keine eingebaute E-Mail-Brücke. Trailin verbindet sich stattdessen über Ihr eigenes kostenloses Pipedream-Projekt. Einmal hier einrichten, dann Konten verbinden:",
     "advancedLink": "Erweitert: eigenes Pipedream-Projekt verwenden",
     "allSetTitle": "Alles bereit",
     "allSetBody": "Der Assistent kann jetzt Ihre Post lesen, Antworten entwerfen und Ihre Fragen beantworten.",
-    "allSetReadOnly": "Trailin startet schreibgeschützt: Der Assistent entwirft und antwortet, sendet, ändert oder löscht aber nichts, bis Sie es pro Konto erlauben, über das Schild-Symbol am Konto in den Einstellungen.",
+    "allSetReadOnly": "Trailin startet schreibgeschützt: Der Assistent entwirft und antwortet, sendet und löscht aber nichts. Das erlauben Sie je Konto über das Schild-Symbol in den Einstellungen.",
     "openApp": "Trailin öffnen",
     "skip": "Später, ich sehe mich erst um",
     "offlineTitle": "Server nicht erreichbar",
-    "offlineBody": "Die Verbindung zum Trailin-Server wird alle paar Sekunden erneut geprüft, es geht automatisch weiter, sobald er wieder erreichbar ist."
+    "offlineBody": "Die Verbindung zum Trailin-Server wird alle paar Sekunden geprüft. Es geht von selbst weiter, sobald er wieder da ist."
   },
   "settings": {
     "sections": {
       "ai": {
         "title": "KI & Modell",
-        "description": "Die KI, die Ihre Post liest und beantwortet. Melden Sie sich mit einem vorhandenen Abo an (Claude, Copilot, ChatGPT) oder nutzen Sie einen API-Schlüssel, Ihre Anmeldung bleibt auf diesem Computer.",
+        "description": "Die KI, die Ihre Post liest und beantwortet. Melden Sie sich mit einem vorhandenen Abo an (Claude, Copilot, ChatGPT) oder nutzen Sie einen API-Schlüssel. Ihre Anmeldung bleibt auf diesem Computer.",
         "chipReady": "Bereit",
-        "chipSignIn": "Anmeldung erforderlich"
+        "chipSignIn": "Anmeldung nötig"
       },
       "accounts": {
         "title": "Konten",
@@ -702,7 +702,7 @@
       },
       "quickActions": {
         "title": "Schnellaktionen",
-        "description": "Was Buttons wie \"Antwort entwerfen\" tun: die Anfrage sofort senden oder ins Eingabefeld legen, damit Sie sie vorher anpassen können.",
+        "description": "Was Schaltflächen wie „Antwort entwerfen“ tun: die Anfrage sofort senden oder ins Eingabefeld legen, damit Sie sie vorher anpassen können.",
         "send": "Sofort senden",
         "prefill": "Vor dem Senden bearbeiten"
       }
@@ -721,7 +721,7 @@
     },
     "backup": {
       "label": "Sicherung",
-      "description": "Ein Abbild der lokalen Datenbank, Chats, Entwürfe, Erinnerungen und Automatisierungen, aber nicht die Zugangsdaten Ihrer verbundenen Konten.",
+      "description": "Ein Abbild der lokalen Datenbank: Chats, Entwürfe, Notizen und Automatisierungen. Die Zugangsdaten Ihrer Konten sind nicht dabei.",
       "cta": "Herunterladen"
     },
     "about": {
@@ -737,12 +737,12 @@
       "upToDate": "Sie sind auf dem neuesten Stand",
       "downloading": "Version {{version}} wird geladen…",
       "downloaded": "Version {{version}} bereit zur Installation",
-      "unavailable": "Die Updatesuche ist in diesem Build nicht verfügbar",
+      "unavailable": "Diese Version kann nicht nach Updates suchen",
       "checkFailed": "Updates konnten nicht geprüft werden"
     },
     "provider": "Anbieter",
     "model": "Modell",
-    "signInFirst": "Melden Sie sich oben bei einem Anbieter an und wählen Sie dann hier dessen Modell.",
+    "signInFirst": "Erst oben bei einem Anbieter anmelden, dann hier sein Modell wählen.",
     "usingModel": "Verwendet <model>{{model}}</model>",
     "loadingProviders": "Anbieter werden geladen…",
     "addApiKey": "API-Schlüssel hinzufügen",
@@ -765,33 +765,33 @@
     "loginInputPlaceholder": "Code / Weiterleitungs-URL einfügen, falls der Vorgang nicht automatisch abschließt…",
     "fileAccess": {
       "title": "Dateizugriff",
-      "description": "Was der Assistent mit Dateien außerhalb seines eigenen Trailin-Ordners tun darf. Dieser Ordner (Memory, Skills, Ihre Dokumentbibliothek) ist für ihn immer zugänglich.",
+      "description": "Was der Assistent mit Dateien außerhalb seines Trailin-Ordners darf. In seinen eigenen Ordner (Notizen, Skills, Bibliothek) kommt er immer.",
       "chipOff": "Kein Zugriff",
       "read": {
         "title": "Dateien lesen",
         "badge": "Lesen",
-        "on": "Darf auf Ihre Anweisung Ordner auflisten, Dateien finden, Inhalte durchsuchen (grep) und Dateien lesen.",
+        "on": "Darf Ordner auflisten, Dateien finden, Inhalte durchsuchen (grep) und lesen, wenn Sie es sagen.",
         "off": "Kann nur Dateien in seinem eigenen Trailin-Ordner lesen.",
         "confirmTitle": "Der KI das Lesen von Dateien erlauben?",
-        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung überall auf diesem Computer Ordner auflisten, Dateien finden, Inhalte durchsuchen (grep) und Dateien lesen, Downloads, Dokumente und alles, was Ihr Konto sehen kann. In einer E-Mail versteckte Anweisungen könnten versuchen, ihn private Dateien lesen zu lassen, er ist angewiesen, Dateiinhalte nie ohne Ihre Zustimmung weiterzugeben. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmBody": "Der Assistent darf dann überall auf diesem Computer Ordner auflisten, Dateien finden, durchsuchen (grep) und lesen, also Downloads, Dokumente und alles, was Ihr Konto sieht. In E-Mails versteckte Anweisungen könnten ihn auf private Dateien ansetzen. Er gibt Dateiinhalte nie ohne Ihr Okay weiter. Jederzeit abschaltbar.",
         "confirmCta": "Lesen erlauben"
       },
       "write": {
         "title": "Dateien schreiben",
         "badge": "Schreiben",
-        "on": "Darf auf Ihre Anweisung neue Dateien anlegen (write) und bestehende bearbeiten (edit).",
+        "on": "Darf neue Dateien anlegen (write) und bestehende bearbeiten (edit), wenn Sie es sagen.",
         "off": "Kann nur Dateien in seinem eigenen Trailin-Ordner anlegen und ändern.",
         "confirmTitle": "Der KI das Schreiben von Dateien erlauben?",
-        "confirmBody": "Sobald aktiviert, kann der Assistent auf Ihre Anweisung überall auf diesem Computer neue Dateien anlegen (write) und bestehende bearbeiten (edit). In einer E-Mail versteckte Anweisungen könnten ungewollte Änderungen anstoßen. Sie können dies jederzeit wieder deaktivieren.",
+        "confirmBody": "Der Assistent darf dann überall auf diesem Computer neue Dateien anlegen (write) und bestehende bearbeiten (edit). In E-Mails versteckte Anweisungen könnten ungewollte Änderungen anstoßen. Jederzeit abschaltbar.",
         "confirmCta": "Schreiben erlauben"
       },
       "bash": {
         "title": "Befehle ausführen",
         "badge": "Befehle",
-        "on": "Darf auf Ihre Anweisung Shell-Befehle als Sie ausführen (bash).",
+        "on": "Darf Shell-Befehle als Sie ausführen (bash), wenn Sie es sagen.",
         "off": "Kann keine Befehle ausführen.",
         "confirmTitle": "Der KI das Ausführen von Befehlen erlauben?",
-        "confirmBody": "Sobald aktiviert, kann der Assistent echte Shell-Befehle als Sie ausführen, mit allem, was Ihr Benutzerkonto darf. In einer empfangenen E-Mail versteckte Anweisungen könnten versuchen, schädliche Befehle anzustoßen. Aktivieren Sie dies nur, wenn Sie dieses Risiko verstehen. Sie können es jederzeit wieder deaktivieren.",
+        "confirmBody": "Der Assistent führt dann echte Shell-Befehle als Sie aus, mit allem, was Ihr Benutzerkonto darf. In E-Mails versteckte Anweisungen könnten schädliche Befehle anstoßen. Nur einschalten, wenn Sie das Risiko kennen. Jederzeit abschaltbar.",
         "confirmCta": "Befehle erlauben"
       }
     }
