@@ -153,12 +153,14 @@ export function WhatsAppPairingCard({
   );
 }
 
-/** Connection state chip on the connected row. */
+/**
+ * Connection state chip on the connected row. A healthy socket renders nothing,
+ * so the row stays as quiet as every other account; only a socket that is
+ * reconnecting or down earns a chip.
+ */
 function ConnectionBadge({ status }: { status: WhatsAppStatus }) {
   const { t } = useTranslation();
-  if (status.connection === "open") {
-    return <Badge variant="success">{t("whatsapp.statusConnected")}</Badge>;
-  }
+  if (status.connection === "open") return null;
   if (status.connection === "connecting") {
     return (
       <Badge variant="muted">

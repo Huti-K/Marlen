@@ -13,26 +13,9 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import {
-  type AccountColor,
-  type AccountDrafts,
-  type Automation,
-  type EmailDraft,
-  OUTBOUND_CHANNEL_LABELS,
-  type OutboundDraft,
-  type Todo,
-} from "@marlen/shared";
+import type { AccountColor, AccountDrafts, Automation, EmailDraft, Todo } from "@marlen/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronRight,
-  CircleCheck,
-  Clock,
-  ListTodo,
-  Mail,
-  MessageSquare,
-  Sparkles,
-  TriangleAlert,
-} from "lucide-react";
+import { ChevronRight, CircleCheck, Clock, ListTodo, Sparkles, TriangleAlert } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -223,19 +206,15 @@ export function AttentionSection({
   }
 
   const outbound = outboundQuery.data ?? [];
-  const outboundByChannel = new Map<string, OutboundDraft[]>();
-  for (const d of outbound) {
-    outboundByChannel.set(d.channel, [...(outboundByChannel.get(d.channel) ?? []), d]);
-  }
   const emailGroups = drafts ?? [];
   const visibleEmailGroups = emailGroups
     .filter((a) => accountFilter === "all" || a.accountId === accountFilter)
     .filter((a) => a.drafts.length > 0 || a.error);
   const approvalsCount = outbound.length + emailGroups.reduce((n, a) => n + a.drafts.length, 0);
   const hasApprovals = approvalsCount > 0 || drafts === null || emailGroups.some((a) => a.error);
-  // Subheads only when more than one block shares the zone.
-  const showSubheads =
-    outboundByChannel.size + emailGroups.filter((a) => a.drafts.length > 0).length > 1;
+  // With one mailbox connected a color says nothing, so the dots and the filter
+  // that reads as their legend both appear only from the second one on.
+  const manyAccounts = emailGroups.length > 1;
 
   const dateLabel = (iso: string) => dateTimeLabel(iso, lang);
 
@@ -326,20 +305,30 @@ export function AttentionSection({
     </GroupBlock>
   );
 
+  // One flat list of approvals: every row already names its own channel and
+  // recipient, so the zone needs no per-channel or per-account heading — the
+  // account chips carry the colors, and each row wears the matching dot.
   const approvalsZone = hasApprovals && (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <GroupLabel>{t("home.approvalsGroup")}</GroupLabel>
-        {emailGroups.length > 1 && (
+        {manyAccounts && (
           <Select
             id="draft-account"
             value={accountFilter}
             onChange={setAccountFilter}
             aria-label={t("home.approvalsFilterAccount")}
-            className="ml-auto w-auto"
+            className="ml-auto w-auto max-w-64"
             options={[
               { value: "all", label: t("home.approvalsAllAccounts") },
-              ...emailGroups.map((a) => ({ value: a.accountId, label: a.account })),
+              // The dot per option is the legend for the dots the rows wear.
+              ...emailGroups.map((a) => ({
+                value: a.accountId,
+                label: a.account,
+                mark: (
+                  <AccountDot color={accountColor(colors, a.accountId)} className="mr-2 h-2 w-2" />
+                ),
+              })),
             ]}
           />
         )}
@@ -347,49 +336,34 @@ export function AttentionSection({
       {drafts === null ? (
         <LoadingRow />
       ) : (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
           {accountFilter === "all" &&
-            [...outboundByChannel.entries()].map(([channel, rows]) => (
-              <div key={channel} className="flex flex-col gap-2">
-                {showSubheads && (
-                  <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    {OUTBOUND_CHANNEL_LABELS[channel] ?? channel}
-                    <span className="text-muted-foreground/70">· {rows.length}</span>
-                  </h3>
+            outbound.map((draft, i) => (
+              <SeenOnInteract
+                key={draft.id}
+                seen={seen}
+                itemKey={outboundSeenKey(draft.id)}
+                createdAt={draft.createdAt}
+                className="animate-in-up"
+                style={stagger(i)}
+              >
+                {(isNew) => (
+                  <OutboundRow
+                    draft={draft}
+                    dateLabel={dateLabel}
+                    isNew={isNew}
+                    onChanged={() => void queryClient.invalidateQueries({ queryKey: ["outbound"] })}
+                    onError={setRowError}
+                  />
                 )}
-                <div className="flex flex-col gap-2">
-                  {rows.map((draft, i) => (
-                    <SeenOnInteract
-                      key={draft.id}
-                      seen={seen}
-                      itemKey={outboundSeenKey(draft.id)}
-                      createdAt={draft.createdAt}
-                      className="animate-in-up"
-                      style={stagger(i)}
-                    >
-                      {(isNew) => (
-                        <OutboundRow
-                          draft={draft}
-                          dateLabel={dateLabel}
-                          isNew={isNew}
-                          onChanged={() =>
-                            void queryClient.invalidateQueries({ queryKey: ["outbound"] })
-                          }
-                          onError={setRowError}
-                        />
-                      )}
-                    </SeenOnInteract>
-                  ))}
-                </div>
-              </div>
+              </SeenOnInteract>
             ))}
           {visibleEmailGroups.map((account) => (
             <AccountDraftGroup
               key={account.accountId}
               account={account}
               color={accountColor(colors, account.accountId)}
-              showSubhead={showSubheads}
+              markAccount={manyAccounts}
               dateLabel={dateLabel}
               focusDraft={focusDraft?.accountId === account.accountId ? focusDraft : null}
               onChanged={onDraftsChanged}
@@ -406,7 +380,7 @@ export function AttentionSection({
     <section className="flex flex-col gap-3">
       <SectionTitle
         icon={ListTodo}
-        tone="tint-warning"
+        tone="tint-neutral"
         title={t("home.attentionTitle")}
         count={loaded ? count : null}
         expanded={expanded}
@@ -462,11 +436,11 @@ export function AttentionSection({
   );
 }
 
-/** One email account's drafts: optional account subhead, capped rows behind a disclosure. */
+/** One email account's drafts: capped rows behind a disclosure. */
 function AccountDraftGroup({
   account,
   color,
-  showSubhead,
+  markAccount,
   dateLabel,
   focusDraft,
   onChanged,
@@ -475,7 +449,8 @@ function AccountDraftGroup({
 }: {
   account: AccountDrafts;
   color?: string;
-  showSubhead: boolean;
+  /** Marks each row with this account's dot — set only when the list holds more than one inbox. */
+  markAccount: boolean;
   dateLabel: (iso: string) => string;
   /** Set when the palette targeted a draft in THIS account — unfold and expand it. */
   focusDraft: { accountId: string; draftId: string } | null;
@@ -495,14 +470,6 @@ function AccountDraftGroup({
 
   return (
     <div className="flex flex-col gap-2">
-      {showSubhead && (
-        <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <AccountDot className="h-2.5 w-2.5" color={color} />
-          <Mail className="h-3.5 w-3.5" />
-          {account.account}
-          <span className="text-muted-foreground/70">· {account.drafts.length}</span>
-        </h3>
-      )}
       {account.error ? (
         <ErrorBanner>{account.error}</ErrorBanner>
       ) : (
@@ -519,6 +486,7 @@ function AccountDraftGroup({
               {(isNew) => (
                 <DraftRow
                   accountId={account.accountId}
+                  account={markAccount ? { name: account.account, color } : undefined}
                   draft={draft}
                   dateLabel={dateLabel}
                   onDeleted={onChanged}

@@ -221,7 +221,8 @@ export interface AutomationSuggestion {
  * what the run concerns (a catch-up run shows the slot it covered).
  */
 export type RunTrigger =
-  | { kind: "todo"; todoId: string; title: string }
+  /** body carries the specifics the title omits; empty when the todo had none. */
+  | { kind: "todo"; todoId: string; title: string; body: string }
   | { kind: "mail"; accountNames: string[] }
   | { kind: "catchUp"; dueAt: string };
 

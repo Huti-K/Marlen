@@ -10,6 +10,7 @@ import {
 } from "@/components/draftActions";
 import { Button } from "@/components/ui/button";
 import { ExpandButton } from "@/components/ui/disclosure-toggle";
+import { HoverActions } from "@/components/ui/hover-actions";
 import { IconChip } from "@/components/ui/icon-chip";
 import { SentRow } from "@/components/ui/list-row";
 import { Textarea } from "@/components/ui/textarea";
@@ -120,7 +121,7 @@ export function OutboundRow({
   }
 
   return (
-    <div className="surface surface-hover rounded-lg" style={rowTransition(draft.id)}>
+    <div className="surface surface-hover group rounded-lg" style={rowTransition(draft.id)}>
       <div className="flex w-full items-center gap-2 px-2.5 py-2.5">
         <button
           type="button"
@@ -142,7 +143,11 @@ export function OutboundRow({
           </div>
         </button>
         <div className="flex shrink-0 items-center gap-1">
-          <RefineInChatButton conversationId={draft.conversationId} subject={title} />
+          {/* Refining is secondary to the row's own decision — it stays out of
+              the way until the row is hovered. */}
+          <HoverActions className="gap-1">
+            <RefineInChatButton conversationId={draft.conversationId} subject={title} />
+          </HoverActions>
           <Button
             variant="ghost"
             size="icon-xs"

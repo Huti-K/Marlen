@@ -1,5 +1,5 @@
 import type { OnOfficeStatus } from "@marlen/shared";
-import { Building2, Check, ExternalLink, LogOut, Pencil, Plus, Settings, X } from "lucide-react";
+import { Building2, Check, ExternalLink, LogOut, Plus, Settings, X } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -59,12 +59,10 @@ export function OnOfficePickerButton({ onClick }: { onClick: () => void }) {
 /** Connected onOffice row in the accounts list, with edit + disconnect (only when app-saved). */
 export function OnOfficeAccountRow({
   status,
-  onEdit,
   onTogglePermissions,
   onDisconnected,
 }: {
   status: OnOfficeStatus;
-  onEdit: () => void;
   onTogglePermissions: () => void;
   onDisconnected: () => Promise<void>;
 }) {
@@ -93,11 +91,6 @@ export function OnOfficeAccountRow({
         <p className="min-w-0 truncate text-sm font-medium">onOffice</p>
       </div>
       <div className="flex items-center gap-2">
-        {editable && (
-          <Button variant="ghost" size="icon-sm" onClick={onEdit} title={t("onoffice.edit")}>
-            <Pencil />
-          </Button>
-        )}
         <Button
           variant="ghost"
           size="icon-sm"
@@ -229,9 +222,14 @@ export function OnOfficeForm({
   return (
     <Card padding="md" className="animate-in-up flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
+        {/* Connecting needs the how-to; editing saved credentials does not. */}
         <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium">{t("onoffice.setupTitle")}</p>
-          <p className="text-xs text-muted-foreground">{t("onoffice.setupIntro")}</p>
+          <p className="text-sm font-medium">
+            {status.configured ? t("onoffice.edit") : t("onoffice.setupTitle")}
+          </p>
+          {!status.configured && (
+            <p className="text-xs text-muted-foreground">{t("onoffice.setupIntro")}</p>
+          )}
         </div>
         {onClose && (
           <IconButton onClick={onClose} aria-label={t("common.close")}>
@@ -240,14 +238,16 @@ export function OnOfficeForm({
         )}
       </div>
 
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-fit"
-        onClick={() => openExternal("https://apidoc.onoffice.de/")}
-      >
-        <ExternalLink /> {t("onoffice.openApiDocs")}
-      </Button>
+      {!status.configured && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          onClick={() => openExternal("https://apidoc.onoffice.de/")}
+        >
+          <ExternalLink /> {t("onoffice.openApiDocs")}
+        </Button>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField id="oo-token" label={t("onoffice.token")}>

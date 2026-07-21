@@ -561,4 +561,11 @@ export const SCHEMA_STEPS: readonly string[] = [
   `
     ALTER TABLE outbound_drafts ADD COLUMN conversation_id TEXT;
   `,
+  // 32: a todo trigger now carries the todo's body, so the run it fires sees the
+  // specifics the title omits. Backfill the field on stored triggers to keep the
+  // persisted JSON matching RunTrigger.
+  `
+    UPDATE automation_runs SET trigger = json_insert(trigger, '$.body', '')
+    WHERE trigger IS NOT NULL AND json_extract(trigger, '$.kind') = 'todo';
+  `,
 ];

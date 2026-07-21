@@ -44,7 +44,8 @@ clean call sites; when you add one, add it to this list.
 - **App logos:** `AppIcon` — provider logo with mail-glyph fallback.
 - **Agent avatar:** `AgentAvatar` (`features/chat/AgentAvatar.tsx`) — the
   assistant's round mark chip fronting assistant turns and the empty chat;
-  `active` breathes its bloom while the turn is live.
+  `active` breathes its bloom while the turn is live. It sits above the turn's
+  prose, which is a plain full-width block: only the user's message is a bubble.
 - **Icon tiles:** `IconChip` — the tinted square fronting section titles and
   palette rows; it sizes the icon.
 - **Section titles:** `SectionTitle` (`ui/section-header.tsx`) for every
@@ -110,7 +111,9 @@ Anchored floating panels (select menus, color picker) use `.surface-pop`, not
   skip-link. Not a CTA fill.
 - **Type tints on icon chips**, one tone per type, chip only, never the row
   background: accent = email draft, emerald = outbound message, amber =
-  needs-attention, neutral = schedule/log. Section title chips reuse them.
+  needs-attention, neutral = schedule/log/to-dos. Section title chips reuse
+  them but are never amber: a section stays neutral even when its rows are
+  overdue — urgency reads from the rows, not from the heading.
 - **Semantic colors are muted pastels**, status only: emerald = success, amber =
   attention/paused, red = destructive/error. Pale fill + darker text (see `Badge`).
 - Body text is cool charcoal (`foreground`), never pure black; secondary is

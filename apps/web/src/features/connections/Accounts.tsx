@@ -695,7 +695,6 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                 <div className="animate-in-up flex flex-col gap-1.5">
                   <OnOfficeAccountRow
                     status={onOffice}
-                    onEdit={() => setOnOfficeFormOpen(true)}
                     onTogglePermissions={() => setOnOfficePermsOpen((open) => !open)}
                     onDisconnected={async () => {
                       await refreshOnOffice();
@@ -703,7 +702,20 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                     }}
                   />
                   {onOfficePermsOpen && (
-                    <OnOfficePermissionsEditor status={onOffice} onChanged={refreshOnOffice} />
+                    <>
+                      {/* Credentials live behind the same gear as the grants, so
+                          the row carries one settings action like every other. */}
+                      {onOffice.source === "settings" && (
+                        <OnOfficeForm
+                          status={onOffice}
+                          onSaved={async () => {
+                            await refreshOnOffice();
+                            onChanged?.();
+                          }}
+                        />
+                      )}
+                      <OnOfficePermissionsEditor status={onOffice} onChanged={refreshOnOffice} />
+                    </>
                   )}
                 </div>
               </div>

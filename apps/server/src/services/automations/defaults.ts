@@ -73,6 +73,8 @@ const SUPERSEDED_INSTRUCTION_HASHES: Record<string, readonly string[]> = {
     "e2a47a74653ca955ea376ba5da9731c8ae21a8e22c8602be73930facf33d7fc3",
     "399fdc4a2c5fce9ee3cc95618ee56576158053d4a0ba2f482bea56cbdf5db773",
     "4c31b690979bff36728ab4a71ea1353a74853bb2cece4c05421d8fdfc5748c22",
+    "da4ec24ac0fb5f1f944a39a6324ce44648c4513bfb182dfb1a7523013aa54d05",
+    "29a781ab5b91979f37e1874fb411114414a3e07b3cd393b2aa9a2c0ac559dd82",
   ],
 };
 

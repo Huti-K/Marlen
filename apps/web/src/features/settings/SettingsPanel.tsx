@@ -27,9 +27,12 @@ import { Select } from "@/components/ui/select";
 import { SettingRow } from "@/components/ui/setting-row";
 import { Spinner } from "@/components/ui/spinner";
 import { ConnectionsPanel } from "@/features/connections/ConnectionsPanel";
+import { useOnOfficeStatus } from "@/features/connections/OnOffice";
+import { useWhatsAppStatus } from "@/features/connections/WhatsApp";
 import { AboutPanel } from "@/features/settings/About";
 import { FileAccessSection } from "@/features/settings/FileAccessSection";
 import { Providers } from "@/features/settings/Providers";
+import { useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { type QuickActionMode, useQuickActionMode } from "@/lib/quickActions";
@@ -41,6 +44,9 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
   const { t } = useTranslation();
   const [providers, setProviders] = React.useState<LlmProviderInfo[] | null>(null);
   const [status, setStatus] = React.useState<AppStatus | null>(null);
+  const { accounts } = useAccountColors();
+  const { status: onOffice } = useOnOfficeStatus();
+  const { status: whatsApp } = useWhatsAppStatus();
 
   const refresh = React.useCallback(async () => {
     try {
@@ -62,6 +68,12 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
     [providers],
   );
 
+  // The chip counts what the section lists: mail and the other Pipedream apps,
+  // plus the two native connections (onOffice, WhatsApp). `emailAccounts` is
+  // the setup gate's narrower question and would undercount here.
+  const connectedCount =
+    accounts.length + (onOffice?.configured ? 1 : 0) + (whatsApp?.linked ? 1 : 0);
+
   // Transient outages (Pipedream configured but the account count came back
   // unknown) show no chip at all — it's not a setup problem worth flagging.
   const accountsChip = (() => {
@@ -74,10 +86,10 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
       );
     }
     if (!status.emailAccountsKnown) return null;
-    if (status.emailAccounts > 0) {
+    if (connectedCount > 0) {
       return (
         <Badge variant="success">
-          <Check /> {t("settings.sections.accounts.chipConnected", { count: status.emailAccounts })}
+          <Check /> {t("settings.sections.accounts.chipConnected", { count: connectedCount })}
         </Badge>
       );
     }

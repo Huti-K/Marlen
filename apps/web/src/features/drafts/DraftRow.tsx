@@ -9,9 +9,11 @@ import {
   useDraftActions,
 } from "@/components/draftActions";
 import { ThreadHistory } from "@/components/ThreadHistory";
+import { AccountDot } from "@/components/ui/account-dot";
 import { Button } from "@/components/ui/button";
 import { ExpandButton } from "@/components/ui/disclosure-toggle";
 import { LoadingRow } from "@/components/ui/feedback";
+import { HoverActions } from "@/components/ui/hover-actions";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Input } from "@/components/ui/input";
 import { SentRow } from "@/components/ui/list-row";
@@ -25,6 +27,7 @@ import { errorMessage, rowTransition, withViewTransition } from "@/lib/utils";
 /** One draft — click to read the full content right here, edit its body in place. */
 export function DraftRow({
   accountId,
+  account,
   draft,
   dateLabel,
   onDeleted,
@@ -34,6 +37,8 @@ export function DraftRow({
   isNew,
 }: {
   accountId: string;
+  /** Set only when more than one inbox is in the list — marks the row with its account's dot. */
+  account?: { name: string; color?: string };
   draft: EmailDraft;
   dateLabel: (iso: string) => string;
   onDeleted: () => void;
@@ -175,7 +180,7 @@ export function DraftRow({
   return (
     <div
       ref={rowRef}
-      className="surface surface-hover scroll-mt-4 rounded-lg"
+      className="surface surface-hover group scroll-mt-4 rounded-lg"
       style={rowTransition(draft.id)}
     >
       <div className="flex w-full items-center gap-2 px-2.5 py-2.5">
@@ -184,6 +189,12 @@ export function DraftRow({
           onClick={() => void toggle()}
           className="flex flex-1 min-w-0 items-center gap-2 text-left"
         >
+          {account && (
+            <span className="shrink-0" data-tooltip={account.name}>
+              <AccountDot color={account.color} className="block h-2 w-2" />
+              <span className="sr-only">{account.name}</span>
+            </span>
+          )}
           <IconChip size="sm">
             <Mail />
           </IconChip>
@@ -201,8 +212,12 @@ export function DraftRow({
           </div>
         </button>
         <div className="flex shrink-0 items-center gap-1">
-          <OpenExternalButton url={draft.webUrl} label={t("drafts.open")} />
-          <RefineInChatButton conversationId={draft.conversationId} subject={draft.subject} />
+          {/* Navigating away and refining are secondary to the row's own
+              decision — they stay out of the way until the row is hovered. */}
+          <HoverActions className="gap-1">
+            <OpenExternalButton url={draft.webUrl} label={t("drafts.open")} />
+            <RefineInChatButton conversationId={draft.conversationId} subject={draft.subject} />
+          </HoverActions>
           <Button
             variant="ghost"
             size="icon-xs"

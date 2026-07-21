@@ -67,7 +67,7 @@
 
   /* Muted semantic pastels (text tones; backgrounds mixed at call site). */
   --success: oklch(0.5725 0.125 165);
-  --warning: oklch(0.639 0.1375 80);
+  --warning: oklch(0.62 0.1375 60);
   --destructive: oklch(0.5725 0.2125 37);
   --destructive-foreground: oklch(0.9905 0.005 265);
 
@@ -120,7 +120,7 @@
   --accent-soft: oklch(0.6587 0.2104 286.13);
 
   --success: oklch(0.734 0.1375 168);
-  --warning: oklch(0.81 0.1375 88);
+  --warning: oklch(0.78 0.1375 68);
   --destructive: oklch(0.658 0.225 37);
   --destructive-foreground: oklch(0.9905 0.004 255);
 
@@ -636,11 +636,13 @@
   border-radius: 50%;
 }
 /* The shipped brand asset as a mask over currentColor: the mark tracks
-   /logo.svg while rendering in the chip's foreground color. */
+   /logo.svg while rendering in the chip's foreground color. Bump ?v= when
+   logo.svg changes: Chromium can keep serving a cached mask image across
+   hard reloads, pinning the old mark. */
 .agent-avatar-mark {
   background-color: currentColor;
-  -webkit-mask: url("/logo.svg") no-repeat center / contain;
-  mask: url("/logo.svg") no-repeat center / contain;
+  -webkit-mask: url("/logo.svg?v=2") no-repeat center / contain;
+  mask: url("/logo.svg?v=2") no-repeat center / contain;
 }
 .agent-avatar::before {
   content: "";

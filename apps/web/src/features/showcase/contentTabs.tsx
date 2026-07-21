@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { Markdown } from "@/components/ui/markdown";
 import { Section } from "@/components/ui/section-header";
 import { Spinner } from "@/components/ui/spinner";
+import { AgentAvatar } from "@/features/chat/AgentAvatar";
 import { StorageBrowser, type StorageNode } from "@/features/storage/StorageBrowser";
 import { cn } from "@/lib/utils";
 import {
@@ -171,7 +172,7 @@ export function ContentTab() {
     <>
       <Section
         title="Agent chat"
-        description="Bubbles, tool activity, the thinking state, and every structured card the agent can return. Same fixtures as the /showcase chat command."
+        description="The user bubble, the assistant's full-width answer, tool activity, the thinking state, and every structured card the agent can return. Same fixtures as the /showcase chat command."
       >
         <ChatTranscript />
       </Section>
@@ -209,8 +210,8 @@ export function StorageTab() {
 }
 
 /**
- * A static replay of a chat turn — same markup ChatPanel uses, so bubbles,
- * tool chips and cards all re-theme with the Theme Lab sliders. The briefing
+ * A static replay of a chat turn — same markup ChatPanel uses, so the user
+ * bubble, tool chips and cards all re-theme with the Theme Lab sliders. The briefing
  * card's row actions still post into the real chat panel; the panel forces
  * prefill mode while this page is mounted so nothing fires a live agent turn.
  */
@@ -235,7 +236,7 @@ function ChatTranscript() {
 function AssistantTurn({ turn }: { turn: ShowcaseTurn }) {
   const { t } = useTranslation();
   const text = turn.contentKey ? t(turn.contentKey as never) : turn.content;
-  const hasBubble = Boolean(text || turn.toolCalls?.length || turn.thinking);
+  const hasBody = Boolean(text || turn.toolCalls?.length || turn.thinking);
 
   return (
     <div className="flex flex-col items-start gap-2">
@@ -250,28 +251,31 @@ function AssistantTurn({ turn }: { turn: ShowcaseTurn }) {
         </div>
       ) : null}
 
-      {hasBubble && (
-        <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5 text-sm text-foreground">
-          {turn.toolCalls?.length ? (
-            <div className={cn("flex flex-wrap gap-1.5", text && "mb-2")}>
-              {turn.toolCalls.map((call) => (
-                <Badge
-                  key={call.name}
-                  variant={call.isError ? "destructive" : call.done ? "success" : "muted"}
-                >
-                  <Wrench className="h-3 w-3" />
-                  {call.name}
-                  {!call.done && <Spinner className="h-3 w-3" />}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
+      {hasBody && (
+        <div className="flex w-full flex-col gap-1.5">
+          <AgentAvatar active={turn.thinking} />
+          <div className="min-w-0 text-sm text-foreground">
+            {turn.toolCalls?.length ? (
+              <div className={cn("flex flex-wrap gap-1.5", text && "mb-2")}>
+                {turn.toolCalls.map((call) => (
+                  <Badge
+                    key={call.name}
+                    variant={call.isError ? "destructive" : call.done ? "success" : "muted"}
+                  >
+                    <Wrench className="h-3 w-3" />
+                    {call.name}
+                    {!call.done && <Spinner className="h-3 w-3" />}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
 
-          {text ? (
-            <Markdown content={text} />
-          ) : turn.thinking ? (
-            <span className="animate-pulse text-muted-foreground">{t("chat.thinking")}</span>
-          ) : null}
+            {text ? (
+              <Markdown content={text} />
+            ) : turn.thinking ? (
+              <span className="animate-pulse text-muted-foreground">{t("chat.thinking")}</span>
+            ) : null}
+          </div>
         </div>
       )}
     </div>

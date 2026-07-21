@@ -33,7 +33,12 @@ export async function applyTodoUpdate(id: string, update: TodoUpdate): Promise<T
   if (todo?.linkedAutomationId && before?.status !== "done" && todo.status === "done") {
     const automationId = todo.linkedAutomationId;
     // requestRun queues (never drops) and hands the run the todo it fired for.
-    requestRun(automationId, { kind: "todo", todoId: todo.id, title: todo.title }).catch((error) =>
+    requestRun(automationId, {
+      kind: "todo",
+      todoId: todo.id,
+      title: todo.title,
+      body: todo.body,
+    }).catch((error) =>
       log.error(error, `linked automation ${automationId} for todo ${todo.id} failed`),
     );
   }

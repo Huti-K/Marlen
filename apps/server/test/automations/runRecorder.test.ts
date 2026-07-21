@@ -64,11 +64,18 @@ describe("automation run prompt context", () => {
 
   it("hands a chained run the todo that fired it", async () => {
     const run = await runRecorder.executeAutomationRun("auto-1", {
-      trigger: { kind: "todo", todoId: "todo-9", title: "Erreicht: Unterlagen an Familie Berger" },
+      trigger: {
+        kind: "todo",
+        todoId: "todo-9",
+        title: "Erreicht: Unterlagen an Familie Berger",
+        body: "Exposé Seestraße 4 fehlt noch.\nRückruf ab 16 Uhr.",
+      },
     });
     expect(run.succeeded).toBe(true);
     const prompt = prompts.at(-1) ?? "";
     expect(prompt).toContain('completed the linked todo "Erreicht: Unterlagen an Familie Berger"');
     expect(prompt).toContain("todo-9");
+    // The body carries what the title leaves out, so the run has to see it.
+    expect(prompt).toContain("Exposé Seestraße 4 fehlt noch.\nRückruf ab 16 Uhr.");
   });
 });

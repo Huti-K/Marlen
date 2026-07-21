@@ -249,7 +249,6 @@
     "pairExpired": "Der QR-Code ist abgelaufen, bevor er gescannt wurde.",
     "pairRetry": "Neuen QR-Code erzeugen",
     "pairedToast": "WhatsApp verknüpft.",
-    "statusConnected": "Verbunden",
     "statusConnecting": "Verbindet…",
     "statusOffline": "Getrennt",
     "unlink": "WhatsApp trennen",

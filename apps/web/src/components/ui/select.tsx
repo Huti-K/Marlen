@@ -42,7 +42,8 @@ export function Select({
   id: string;
   value: string;
   onChange: (value: string) => void;
-  options: { value: string; label: string }[];
+  /** `mark` is a leading glyph for the option row (an account dot, an app icon). */
+  options: { value: string; label: string; mark?: React.ReactNode }[];
   className?: string;
   /** Shown when nothing is selected yet; defaults to a localized "Select…". */
   placeholder?: string;
@@ -260,6 +261,7 @@ export function Select({
                         : "text-foreground",
                   )}
                 >
+                  {option.mark}
                   <span className="flex-1 truncate">{option.label}</span>
                   {isSelected && <Check className="ml-2 h-4 w-4 shrink-0" />}
                 </div>

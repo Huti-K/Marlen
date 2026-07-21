@@ -108,7 +108,14 @@ export async function executeAutomationRun(
         `This run was triggered by new inbound mail in: ${trigger.accountNames.join(", ")}. Start from that mailbox's newest messages instead of sweeping every account.`,
       );
     }
-    const instructionMessage = `Scheduled automation "${automation.name}". ${context.join(" ")} Execute this instruction now and report the outcome:\n\n${automation.instruction}`;
+    // The todo's body holds the specifics its title deliberately omits, so it
+    // trails the instruction as its own labelled block rather than being
+    // inlined into a sentence: bodies are multi-line.
+    const todoNotes =
+      trigger?.kind === "todo" && trigger.body
+        ? `\n\nNotes from the completed todo "${trigger.title}":\n${trigger.body}`
+        : "";
+    const instructionMessage = `Scheduled automation "${automation.name}". ${context.join(" ")} Execute this instruction now and report the outcome:\n\n${automation.instruction}${todoNotes}`;
 
     // The run id is the conversation id, so drafts created by this run link back
     // to its transcript. The turn runner writes the conversation and message

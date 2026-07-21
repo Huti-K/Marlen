@@ -285,9 +285,8 @@ export function ChatPanel({
                 )}
               >
                 {/* Cards sit on the chat canvas as their own outlined blocks
-                    (CardShell carries the hairline), not wrapped in a bubble —
-                    full-width, since tool results (threads, tables, briefings)
-                    need more room than a reply bubble allows. */}
+                    (CardShell carries the hairline), full-width like the
+                    assistant's prose. */}
                 {m.cards.length > 0 && (
                   <div className="flex w-full flex-col gap-2">
                     {m.cards.map((c) => (
@@ -309,18 +308,18 @@ export function ChatPanel({
                   <div
                     className={cn(
                       "flex w-full gap-2",
-                      m.role === "user" ? "justify-end" : "items-end",
+                      m.role === "user" ? "justify-end" : "flex-col gap-1.5",
                     )}
                   >
-                    {/* The avatar anchors the bubble's tail corner; its bloom
-                        lights while this turn is still streaming. */}
+                    {/* The avatar tops the turn; its bloom lights while this
+                        turn is still streaming. */}
                     {m.role === "assistant" && <AgentAvatar active={m.streaming} />}
                     <div
                       className={cn(
                         "text-sm",
                         m.role === "user"
                           ? "bubble-accent max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-accent-foreground"
-                          : "min-w-0 max-w-[85%] rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5 text-foreground",
+                          : "min-w-0 text-foreground",
                       )}
                     >
                       {m.systemPrompt ? (

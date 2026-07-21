@@ -25,3 +25,6 @@ REFACTOR.md
 
 # Per-customer install bundles (agent-home layout + setup skill) — private, not for the public repo
 setup-template/
+
+# Local demo-inbox seeding tool (IMAP-appends fixture mail into a test Gmail) — not for the public repo
+demo-seed/

@@ -12,6 +12,28 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.3.8",
+    date: "2026-07-21",
+    notes: {
+      en: [
+        "The morning briefing now also picks up mail from the last 7 days you never read, and says how long each one has been sitting. If an earlier run already drafted a reply, it points you at that draft instead of writing a second one.",
+        "When a reply is about a time, the assistant checks a connected calendar first and only proposes slots you are free for. With no calendar connected it leaves the times to you.",
+        "Completing a to-do that starts an automation now hands the run your note on it, not just the title.",
+        "The home page reads quieter. The approvals list dropped its duplicate headings, every draft carries its account's color, and the actions other than send and discard appear when you hover a row.",
+        "Replies in chat now read as plain text under the assistant's mark, instead of sitting in a grey bubble.",
+        "A new brand mark, the app icon included. Settings counts every connection in the accounts chip, not just mailboxes, and WhatsApp only shows a status when something is wrong.",
+      ],
+      de: [
+        "Das Morgenbriefing sieht jetzt auch die ungelesenen Mails der letzten 7 Tage durch und sagt bei jeder, wie lange sie schon liegt. Hat ein früherer Lauf dafür schon einen Entwurf geschrieben, verweist es auf diesen, statt einen zweiten zu verfassen.",
+        "Geht es in einer Antwort um einen Termin, prüft der Assistent zuerst einen verbundenen Kalender und schlägt nur Zeiten vor, zu denen Sie frei sind. Ohne verbundenen Kalender bleiben die Zeiten Ihnen überlassen.",
+        "Ein erledigtes To-do, das eine Automatisierung startet, gibt dem Lauf jetzt auch Ihre Notiz mit, nicht nur den Titel.",
+        "Die Startseite ist ruhiger. Die Freigabe-Liste hat ihre doppelten Überschriften verloren, jeder Entwurf trägt die Farbe seines Kontos, und alles außer Senden und Verwerfen erscheint erst, wenn Sie über eine Zeile fahren.",
+        "Antworten im Chat stehen jetzt als normaler Text unter dem Zeichen des Assistenten, statt in einer grauen Blase.",
+        "Ein neues Markenzeichen, auch als App-Symbol. In den Einstellungen zählt die Konten-Anzeige jetzt alle Verbindungen, nicht nur Postfächer, und WhatsApp zeigt einen Status nur noch, wenn etwas nicht stimmt.",
+      ],
+    },
+  },
+  {
     version: "0.3.7",
     date: "2026-07-20",
     notes: {
