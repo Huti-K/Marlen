@@ -87,6 +87,9 @@ function serverEnv(port: number): Record<string, string> {
     NODE_ENV: "production",
     HOST: "127.0.0.1",
     PORT: String(port),
+    // The running app version, for the agent's self-description (core/version.ts);
+    // dev servers fall back to the newest changelog entry.
+    MARLEN_APP_VERSION: app.getVersion(),
     DATABASE_PATH: path.join(dataRoot, "data", "marlen.db"),
     // The agent home lives under userData like the DB, so it survives updates
     // (electron-updater replaces the app bundle, not userData). The old ~/Trailin

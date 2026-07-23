@@ -32,13 +32,18 @@ export interface EmailThreadMessage {
 }
 
 export interface DraftPreview {
-  draftId: string;
+  /** The mailbox draft id; absent while the draft is only a proposal. */
+  draftId?: string;
+  /** The chat proposal this card fronts; keeping it creates the mailbox draft. */
+  proposalId?: string;
   threadId?: string;
   subject: string;
   to: string[];
   cc?: string[];
   bcc?: string[];
   body: string;
+  /** The account signature appended below the body on send; shown, never part of the editable body. */
+  signatureText?: string;
   webUrl?: string;
   attachments?: { filename: string; size?: number }[];
 }

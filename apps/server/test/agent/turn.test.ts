@@ -254,4 +254,35 @@ describe("an agent turn", () => {
     const assistant = rows.find((row) => row.role === "assistant");
     expect(assistant?.content).toContain("This turn failed: model exploded");
   });
+
+  it("caps a rate-limited turn with a plain-language row, not the raw provider error", async () => {
+    turnRecorder._setSessionsForTest({
+      ...unusedSessions,
+      pooled: async () =>
+        fakeSession(async () => {
+          throw new Error(
+            '429 {"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account\'s rate limit."}}',
+          );
+        }),
+    });
+
+    const turn = turnRecorder.beginTurn("conv-rate-limit");
+    await expect(
+      turn.run({
+        prompt: "hello",
+        session: "pooled",
+        conversation: { type: "chat", title: "hello" },
+        log: silentLog,
+      }),
+    ).rejects.toThrow("rate_limit_error");
+
+    const { db, schema } = dbModule;
+    const rows = await db
+      .select()
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, "conv-rate-limit"));
+    const assistant = rows.find((row) => row.role === "assistant");
+    expect(assistant?.content).toContain("rate limit");
+    expect(assistant?.content).not.toContain("rate_limit_error");
+  });
 });

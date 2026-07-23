@@ -14,9 +14,12 @@ import type {
   ConnectedAccount,
   ConnectTokenResponse,
   Conversation,
+  DraftProposalStatusResult,
+  EmailDraftDetail,
   EmailRef,
   EmailThreadMessage,
   FileAccessSettings,
+  KeepDraftProposalResult,
   Language,
   Lead,
   LeadStatus,
@@ -264,9 +267,21 @@ export const api = {
   drafts: (opts?: { refresh?: boolean }) =>
     get<AccountDrafts[]>(`/api/drafts${opts?.refresh ? "?refresh=1" : ""}`),
   draftDetail: (accountId: string, draftId: string) =>
-    get<{ body: string; cc: string; bcc: string }>(
+    get<EmailDraftDetail>(
       `/api/drafts/${encodeURIComponent(accountId)}/${encodeURIComponent(draftId)}`,
     ),
+  // Keeping is what creates the real mailbox draft from a chat proposal;
+  // send: true dispatches it right after (the click is the authorization).
+  keepProposal: (proposalId: string, opts?: { send?: boolean }) =>
+    http<KeepDraftProposalResult>(
+      "POST",
+      `/api/draft-proposals/${encodeURIComponent(proposalId)}/keep`,
+      opts ?? {},
+    ),
+  discardProposal: (proposalId: string) =>
+    http<{ ok: boolean }>("DELETE", `/api/draft-proposals/${encodeURIComponent(proposalId)}`),
+  proposalStatus: (proposalId: string) =>
+    get<DraftProposalStatusResult>(`/api/draft-proposals/${encodeURIComponent(proposalId)}/status`),
   deleteDraft: (accountId: string, draftId: string) =>
     http<{ ok: boolean }>(
       "DELETE",

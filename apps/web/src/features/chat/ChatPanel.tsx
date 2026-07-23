@@ -16,6 +16,7 @@ import { RefChips } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
 import { onChatCommand } from "@/features/chat/controller";
 import { HistoryList } from "@/features/chat/HistoryList";
+import { RateLimitNotice } from "@/features/chat/RateLimitNotice";
 import type { DisplayMessage } from "@/features/chat/runState";
 import { useChatRuns } from "@/features/chat/useChatRuns";
 import { useAccountColors } from "@/lib/accounts";
@@ -337,7 +338,7 @@ export function ChatPanel({
                             (m.content || m.toolCalls.length > 0) && "mt-2",
                           )}
                         >
-                          {m.error}
+                          {m.errorKind === "rate_limit" ? <RateLimitNotice /> : m.error}
                         </div>
                       )}
                     </div>

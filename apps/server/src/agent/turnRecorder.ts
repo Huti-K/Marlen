@@ -4,12 +4,13 @@ import { emitServerEvent } from "../core/events.js";
 import { moduleLogger, type TurnLogger } from "../core/logger.js";
 import { errorMessage } from "../core/utils/util.js";
 import { type EnsureConversationInput, ensureConversation } from "../db/conversationStore.js";
+import { linkDraftProposalConversation } from "../db/draftProposalStore.js";
 import { linkDraftConversation } from "../db/draftStore.js";
 import { db, schema, sqlite } from "../db/index.js";
 import { serializeRefs } from "./emailRefs.js";
 import { applyConversationFocus, focusFromCard, focusFromRefs } from "./focus.js";
 import { buildTurnPrompt } from "./prompt.js";
-import type { RunHandlers } from "./run.js";
+import { isRateLimitFailure, type RunHandlers } from "./run.js";
 import { type AgentSession, createEphemeralSession, getOrCreateSession } from "./sessionCache.js";
 
 /**
@@ -55,6 +56,13 @@ function collectTurnActivity(conversationId: string): {
         .catch((err: unknown) => {
           log.warn({ err, conversationId }, "linking the turn's draft to its conversation failed");
         });
+    } else if (card.kind === "email_draft" && card.draft.proposalId) {
+      // Keeping copies this link onto the mailbox draft, so Home's refine
+      // button reopens the chat that composed it. No emit: proposals are not
+      // on Home, and keeping happens at human speed.
+      linkDraftProposalConversation(card.draft.proposalId, conversationId).catch((err: unknown) => {
+        log.warn({ err, conversationId }, "linking the turn's proposal to its chat failed");
+      });
     }
 
     // Cards move the conversation's focus (focus.ts); fire-and-forget for the
@@ -169,6 +177,28 @@ export interface Turn {
 const inFlight = new Set<string>();
 
 /**
+ * Whether a conversation currently has a turn running. The approval lists
+ * (routes/drafts.ts, routes/outbound.ts) hold a draft back while its
+ * conversation's turn runs — the turn may still rewrite it — so only the
+ * final version is presented for sending.
+ */
+export function isTurnInFlight(conversationId: string): boolean {
+  return inFlight.has(conversationId);
+}
+
+/**
+ * Release the turn guard, then re-announce both draft topics: drafts linked
+ * to this conversation were withheld from the approval lists while the turn
+ * ran (isTurnInFlight), and without these emits nothing would tell the UI to
+ * refetch and surface them.
+ */
+function endTurn(conversationId: string): void {
+  inFlight.delete(conversationId);
+  emitServerEvent("drafts");
+  emitServerEvent("outbound");
+}
+
+/**
  * Acquire the in-flight guard for a conversation. Synchronous and separate
  * from Turn.run() so the chat route can answer a collision with a 409 before
  * reply.hijack() takes the response away from Fastify. Throws instead of
@@ -202,7 +232,7 @@ export function beginTurn(conversationId: string): Turn {
       } catch (error) {
         // No session acquired: nothing to close, no user row written, so just
         // release the guard.
-        inFlight.delete(conversationId);
+        endTurn(conversationId);
         throw error;
       }
 
@@ -284,8 +314,14 @@ export function beginTurn(conversationId: string): Turn {
             await recordOutcome("This reply was cancelled before it finished.");
             throw new Error("turn cancelled: the signal was aborted before the turn finished");
           }
-          // Failed: the agent threw on its own.
-          await recordOutcome(`This turn failed: ${errorMessage(error)}`);
+          // Failed: the agent threw on its own. A rate-limit rejection gets a
+          // plain-language row; the raw provider JSON helps nobody in a transcript.
+          const failure = errorMessage(error);
+          await recordOutcome(
+            isRateLimitFailure(failure)
+              ? "This turn was stopped by the AI provider's rate limit. Wait a moment and send your message again, or switch providers in Settings."
+              : `This turn failed: ${failure}`,
+          );
           throw error;
         }
 
@@ -307,7 +343,7 @@ export function beginTurn(conversationId: string): Turn {
             opts.log.warn({ err: error }, "closing the run's MCP sessions failed");
           });
         }
-        inFlight.delete(conversationId);
+        endTurn(conversationId);
       }
     },
   };

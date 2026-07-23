@@ -212,10 +212,13 @@
   ::selection {
     background: color-mix(in oklch, var(--accent) 22%, transparent);
   }
-  /* On solid accent fills (user bubble, CTA) the accent-tint selection is
-     invisible — highlight with the foreground ink instead. */
+  /* On solid accent fills (the user's .bubble-accent chat bubble, .bg-accent
+     CTAs) the accent-tint selection is invisible — highlight with the
+     foreground ink instead. */
   .bg-accent ::selection,
-  .bg-accent::selection {
+  .bg-accent::selection,
+  .bubble-accent ::selection,
+  .bubble-accent::selection {
     background: color-mix(in oklch, var(--accent-foreground) 30%, transparent);
   }
   /* Quiet, thin scrollbars — no track line. */

@@ -568,4 +568,25 @@ export const SCHEMA_STEPS: readonly string[] = [
     UPDATE automation_runs SET trigger = json_insert(trigger, '$.body', '')
     WHERE trigger IS NOT NULL AND json_extract(trigger, '$.kind') = 'todo';
   `,
+  // 33: chat draft proposals. An interactive create-draft no longer writes a
+  // provider draft; it files a proposal the user keeps (card button or agent
+  // keep_draft), which is when the real mailbox draft is created.
+  `
+    CREATE TABLE draft_proposals (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      thread_id TEXT,
+      conversation_id TEXT,
+      subject TEXT NOT NULL DEFAULT '',
+      to_addrs TEXT NOT NULL DEFAULT '[]',
+      cc_addrs TEXT NOT NULL DEFAULT '[]',
+      bcc_addrs TEXT NOT NULL DEFAULT '[]',
+      body TEXT NOT NULL DEFAULT '',
+      attachment_doc_ids TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'proposed',
+      provider_draft_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `,
 ];

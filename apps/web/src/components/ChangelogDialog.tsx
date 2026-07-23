@@ -1,8 +1,8 @@
+import { CHANGELOG, changelogNotes } from "@marlen/shared";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { CHANGELOG, changelogNotes } from "@/lib/changelog";
 import { desktopBridge } from "@/lib/desktop";
 
 /**

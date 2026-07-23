@@ -7,6 +7,7 @@ export const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 export interface MessagePart {
   filename?: string;
   mimeType?: string;
+  headers?: { name: string; value: string }[];
   body?: { data?: string; attachmentId?: string; size?: number };
   parts?: MessagePart[];
 }

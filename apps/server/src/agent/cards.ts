@@ -92,11 +92,24 @@ function coerceDraftAttachment(value: unknown): { filename: string; size?: numbe
   };
 }
 
-/** Validates a raw draft-shaped value. draftId/subject/body are required; everything else is dropped when malformed rather than failing the whole draft. */
+/** Validates a raw draft-shaped value. subject/body plus one id (mailbox draft or proposal) are required; everything else is dropped when malformed rather than failing the whole draft. */
 export function coerceDraftPreview(value: unknown): DraftPreview | undefined {
   if (!isRecord(value)) return undefined;
-  const { draftId, threadId, subject, to, cc, bcc, body, webUrl, attachments } = value;
-  if (!isString(draftId) || !isString(subject) || !isString(body)) return undefined;
+  const {
+    draftId,
+    proposalId,
+    threadId,
+    subject,
+    to,
+    cc,
+    bcc,
+    body,
+    signatureText,
+    webUrl,
+    attachments,
+  } = value;
+  if (!isString(subject) || !isString(body)) return undefined;
+  if (!isString(draftId) && !isString(proposalId)) return undefined;
   const ccList = toStringArray(cc);
   const bccList = toStringArray(bcc);
   const attachmentList = Array.isArray(attachments)
@@ -105,13 +118,15 @@ export function coerceDraftPreview(value: unknown): DraftPreview | undefined {
         .filter((a): a is { filename: string; size?: number } => a !== undefined)
     : undefined;
   return {
-    draftId,
+    ...(isString(draftId) ? { draftId } : {}),
+    ...(isString(proposalId) ? { proposalId } : {}),
     ...(isString(threadId) ? { threadId } : {}),
     subject,
     to: toStringArray(to) ?? [],
     ...(ccList ? { cc: ccList } : {}),
     ...(bccList ? { bcc: bccList } : {}),
     body,
+    ...(isString(signatureText) && signatureText.trim() ? { signatureText } : {}),
     ...(isString(webUrl) ? { webUrl } : {}),
     ...(attachmentList && attachmentList.length > 0 ? { attachments: attachmentList } : {}),
   };

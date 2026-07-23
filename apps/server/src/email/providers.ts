@@ -11,6 +11,20 @@ export interface DraftAttachment {
   content: Buffer;
 }
 
+/**
+ * One image an HTML body references via `cid:`. Providers embed it inline
+ * (multipart/related part, isInline Graph attachment) rather than as a file
+ * attachment: receiving clients block or strip data: URIs, so embedded images
+ * only render when sent this way.
+ */
+export interface InlineImage {
+  /** `cid:` reference target, without angle brackets. */
+  contentId: string;
+  filename: string;
+  mimeType: string;
+  content: Buffer;
+}
+
 export interface CreateDraftInput {
   to: string[];
   cc?: string[];
@@ -22,6 +36,8 @@ export interface CreateDraftInput {
   bodyFormat?: "text" | "html";
   threadId?: string;
   attachments?: DraftAttachment[];
+  /** Images the html body references via cid:; meaningless without bodyFormat "html". */
+  inlineImages?: InlineImage[];
 }
 
 export interface UpdateDraftPatch {
@@ -29,6 +45,8 @@ export interface UpdateDraftPatch {
   /** Format of `body`; meaningless without it. */
   bodyFormat?: "text" | "html";
   subject?: string;
+  /** Full replacement set of cid images for the new body; providers drop inline parts not in it. Meaningless without `body`. */
+  inlineImages?: InlineImage[];
 }
 
 export const DRAFTS_LIST_LIMIT = 15;
@@ -49,9 +67,10 @@ export interface DraftProvider {
   /** Optional: absent means "not supported for this account" and the route replies 400, provider-neutral. */
   updateDraft?(account: ConnectedAccount, draftId: string, patch: UpdateDraftPatch): Promise<void>;
   /**
-   * Optional: dispatch a draft as-is. Human-initiated only (the Send button):
-   * the agent has no tool for it, and write-arming isn't consulted, so the
-   * click is the authorization.
+   * Optional: dispatch a draft as-is. Reached only via a human's Send click
+   * (its own authorization; write-arming isn't consulted) or the agent's
+   * explicitly requested autosend paths (create-draft/keep_draft send=true),
+   * which are gated on the account's send grant.
    */
   sendDraft?(account: ConnectedAccount, draftId: string): Promise<SendDraftResult>;
 }

@@ -32,6 +32,8 @@ export const env = {
   // reachable from the LAN out of the box. Set HOST=0.0.0.0 to expose it deliberately.
   host: optional("HOST") ?? "127.0.0.1",
   isProduction: process.env.NODE_ENV === "production",
+  // Set by the desktop shell to the packaged app version; unset in dev (see core/version.ts).
+  appVersion: optional("MARLEN_APP_VERSION"),
   /** pino level: fatal | error | warn | info | debug | trace | silent. */
   logLevel: optional("LOG_LEVEL") ?? "info",
   // Opt-in file sink for logs (rotated daily / at 10MB, 14 kept); unset = stdout only.

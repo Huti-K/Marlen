@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { OutboundDraft } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
+import { isTurnInFlight } from "../agent/turnRecorder.js";
 import { badRequest, notFound } from "../core/errors.js";
 import {
   getOutboundDraft,
@@ -25,7 +26,14 @@ export const outboundRoutes: FastifyPluginAsyncTypebox = async (app) => {
     "/api/outbound",
     { schema: { querystring: listQuery } },
     async (req): Promise<OutboundDraft[]> => {
-      return listOutboundDrafts(req.query.status);
+      // Same hold as email drafts (routes/drafts.ts): an open draft whose
+      // conversation still has a turn running may yet be rewritten, so it is
+      // withheld until the turn ends (endTurn re-emits "outbound").
+      const drafts = await listOutboundDrafts(req.query.status);
+      return drafts.filter(
+        (draft) =>
+          draft.status !== "open" || !draft.conversationId || !isTurnInFlight(draft.conversationId),
+      );
     },
   );
 

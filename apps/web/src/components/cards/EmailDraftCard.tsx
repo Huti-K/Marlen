@@ -20,7 +20,7 @@ type EmailDraftData = Extract<AgentCard, { kind: "email_draft" }>;
  *  that resolves fast enough that a separate loading state isn't worth it.
  *  `gone` is a 404 hit while sending/discarding: the draft vanished upstream
  *  outside this card's own action. */
-type DraftCardStatus = "open" | "sent" | "discarded" | "gone";
+type DraftCardStatus = "open" | "kept" | "sent" | "discarded" | "gone";
 
 /** localStorage flag for a card manually collapsed via Keep — cleared by
  *  clicking the collapsed line back open. */
@@ -32,21 +32,39 @@ function keepStorageKey(draftId: string): string {
 export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: string }) {
   const { t } = useTranslation();
   const { account, draft } = card;
-  const webUrl = draft.webUrl;
   const accountId = account?.accountId;
-  // Without a known account there's nowhere to send/discard against — the
+  // A proposal card: the draft exists only in Marlen until kept. Cards with a
+  // draftId front a real mailbox draft (created by keeping, an automation, or
+  // the pre-proposal era).
+  const proposalId = draft.draftId ? undefined : draft.proposalId;
+  // Without an id to act on (or, for mailbox drafts, a known account) the
   // card falls back to a read-only preview.
-  const canAct = Boolean(accountId);
-  const keepKey = keepStorageKey(draft.draftId);
+  const canAct = Boolean(proposalId || (accountId && draft.draftId));
+  const keepKey = keepStorageKey(draft.draftId ?? draft.proposalId ?? "");
 
   // The action's own outcome; wins over the fetched status so the card flips
   // immediately. The "drafts" topic keeps the query side fresh when the draft
   // is actioned elsewhere (e.g. approved from Home).
   const [localStatus, setLocalStatus] = React.useState<DraftCardStatus | null>(null);
-  const [kept, setKept] = React.useState(() => canAct && localStorage.getItem(keepKey) === "1");
+  // localStorage "kept" is the pre-proposal acknowledgement for mailbox-draft
+  // cards; a proposal's kept state is server truth via its status.
+  const [kept, setKept] = React.useState(
+    () => !proposalId && canAct && localStorage.getItem(keepKey) === "1",
+  );
+  // The mailbox link learned from keeping; the stored proposal card has none.
+  const [keptWebUrl, setKeptWebUrl] = React.useState<string | null>(null);
+  const [keeping, setKeeping] = React.useState(false);
+  const webUrl = keptWebUrl ?? draft.webUrl;
+
   const statusQuery = useQuery({
-    queryKey: ["drafts", "status", accountId, draft.draftId],
-    queryFn: () => api.draftStatus(accountId as string, draft.draftId),
+    queryKey: ["drafts", "status", accountId, proposalId ?? draft.draftId],
+    queryFn: async (): Promise<{ status: DraftCardStatus }> => {
+      if (proposalId) {
+        const result = await api.proposalStatus(proposalId);
+        return { status: result.status === "proposed" ? "open" : result.status };
+      }
+      return api.draftStatus(accountId as string, draft.draftId as string);
+    },
     enabled: canAct && !kept,
     // 404 (no snapshot — the draft wasn't agent-written) or any other
     // failure: treat as unknown, keep live actions.
@@ -54,9 +72,25 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
   });
   const status: DraftCardStatus = localStatus ?? statusQuery.data?.status ?? "open";
 
-  const keep = () => {
-    localStorage.setItem(keepKey, "1");
-    setKept(true);
+  // Keeping a proposal is what creates the real mailbox draft (it then also
+  // waits on Home); on a mailbox-draft card it only acknowledges the card.
+  const keep = async () => {
+    if (!proposalId) {
+      localStorage.setItem(keepKey, "1");
+      setKept(true);
+      return;
+    }
+    setKeeping(true);
+    try {
+      const result = await api.keepProposal(proposalId);
+      if (result.webUrl) setKeptWebUrl(result.webUrl);
+      setLocalStatus("kept");
+    } catch (err) {
+      if (isNotFound(err)) setLocalStatus("gone");
+      else toast.error(err);
+    } finally {
+      setKeeping(false);
+    }
   };
 
   const reopen = () => {
@@ -66,8 +100,14 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
 
   const actions = useDraftActions({
     send: async () => {
-      if (!accountId) return;
       try {
+        if (proposalId) {
+          const result = await api.keepProposal(proposalId, { send: true });
+          if (result.webUrl) setKeptWebUrl(result.webUrl);
+          setLocalStatus(result.sent ? "sent" : "kept");
+          return;
+        }
+        if (!accountId || !draft.draftId) return;
         await api.sendDraft(accountId, draft.draftId);
         setLocalStatus("sent");
       } catch (err) {
@@ -76,8 +116,13 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
       }
     },
     discard: async () => {
-      if (!accountId) return;
       try {
+        if (proposalId) {
+          await api.discardProposal(proposalId);
+          setLocalStatus("discarded");
+          return;
+        }
+        if (!accountId || !draft.draftId) return;
         await api.deleteDraft(accountId, draft.draftId);
         setLocalStatus("discarded");
       } catch (err) {
@@ -139,6 +184,15 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
             {t("chat.cards.draft.kept")}
           </button>
         </div>
+      ) : status === "kept" ? (
+        // A kept proposal became a real mailbox draft: terminal here, it now
+        // lives in the approval list on Home (and the mailbox).
+        <div className="px-4 pb-4 pt-0.5">
+          <span className="flex w-fit items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <BookmarkCheck className="h-3.5 w-3.5 shrink-0" />
+            {t("chat.cards.draft.kept")}
+          </span>
+        </div>
       ) : status === "sent" ? (
         <div className="px-4 pb-4 pt-0.5">
           <Badge variant="success">{t("chat.cards.draft.sentLabel")}</Badge>
@@ -169,6 +223,14 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
 
           <CardBodyText text={draft.body} />
 
+          {/* The signature the server appends on send — shown so the card reads
+              like the outgoing mail, visually set off as the fixed block it is. */}
+          {draft.signatureText && (
+            <p className="whitespace-pre-line border-t border-border/60 pt-2 text-sm leading-relaxed text-muted-foreground">
+              {draft.signatureText}
+            </p>
+          )}
+
           {draft.attachments && draft.attachments.length > 0 && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-2xs text-muted-foreground tabular-nums">
               {draft.attachments.map((attachment) => (
@@ -187,7 +249,13 @@ export function EmailDraftCard({ card, color }: { card: EmailDraftData; color?: 
 
           {canAct && (
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={keep} disabled={actions.busy}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void keep()}
+                disabled={actions.busy || keeping}
+                loading={keeping}
+              >
                 {t("chat.cards.draft.keep")}
               </Button>
               <Button

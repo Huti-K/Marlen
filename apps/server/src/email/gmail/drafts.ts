@@ -10,6 +10,7 @@ import {
   DRAFTS_LIST_LIMIT,
   type DraftAttachment,
   type DraftProvider,
+  type InlineImage,
   type SendDraftResult,
   type UpdateDraftPatch,
 } from "../providers.js";
@@ -138,6 +139,38 @@ function bodyPartLines(body: string, format: "text" | "html" = "text"): string[]
   ];
 }
 
+/** One cid-referenced inline image as MIME part lines inside the multipart/related body. */
+function inlineImagePartLines(image: InlineImage): string[] {
+  assertSafeHeaderValue("inline image content id", image.contentId);
+  assertSafeHeaderValue("inline image filename", image.filename);
+  const ascii = image.filename.replace(/[\\"]/g, "").replace(/[^\x20-\x7e]/g, "_");
+  return [
+    `Content-Type: ${image.mimeType}; name="${ascii}"`,
+    `Content-ID: <${image.contentId}>`,
+    `Content-Disposition: inline; filename="${ascii}"`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    image.content.toString("base64"),
+  ];
+}
+
+/** The html body plus its cid images as multipart/related, so receiving clients resolve the references. */
+function relatedBodyLines(
+  body: string,
+  bodyFormat: "text" | "html" | undefined,
+  inlineImages: InlineImage[],
+): string[] {
+  const boundary = `rel-${randomUUID()}`;
+  return [
+    `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"`,
+    "",
+    `--${boundary}`,
+    ...bodyPartLines(body, bodyFormat),
+    ...inlineImages.flatMap((image) => [`--${boundary}`, ...inlineImagePartLines(image)]),
+    `--${boundary}--`,
+  ];
+}
+
 /** One attachment as MIME part lines: an ASCII `filename` fallback plus RFC 5987/6266 `filename*`, so names like "Exposé.pdf" survive. */
 function attachmentPartLines(attachment: DraftAttachment): string[] {
   // A CR/LF in a filename would smuggle extra MIME headers, same as a recipient (see assertSafeHeaderValue).
@@ -169,6 +202,7 @@ function buildRawMessage(input: {
   bodyFormat?: "text" | "html";
   extraHeaders?: string[];
   attachments?: DraftAttachment[];
+  inlineImages?: InlineImage[];
 }): string {
   assertSafeHeaderValue("To", input.to);
   if (input.cc) assertSafeHeaderValue("Cc", input.cc);
@@ -183,24 +217,23 @@ function buildRawMessage(input: {
     "MIME-Version: 1.0",
   ];
 
+  const bodyLines = input.inlineImages?.length
+    ? relatedBodyLines(input.body, input.bodyFormat, input.inlineImages)
+    : bodyPartLines(input.body, input.bodyFormat);
   const lines =
     input.attachments && input.attachments.length > 0
-      ? [...headerLines, ...multipartMixedLines(input.body, input.bodyFormat, input.attachments)]
-      : [...headerLines, ...bodyPartLines(input.body, input.bodyFormat)];
+      ? [...headerLines, ...multipartMixedLines(bodyLines, input.attachments)]
+      : [...headerLines, ...bodyLines];
   return Buffer.from(lines.join("\r\n"), "utf8").toString("base64url");
 }
 
-function multipartMixedLines(
-  body: string,
-  bodyFormat: "text" | "html" | undefined,
-  attachments: DraftAttachment[],
-): string[] {
+function multipartMixedLines(bodyLines: string[], attachments: DraftAttachment[]): string[] {
   const boundary = `part-${randomUUID()}`;
   return [
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "",
     `--${boundary}`,
-    ...bodyPartLines(body, bodyFormat),
+    ...bodyLines,
     ...attachments.flatMap((attachment) => [`--${boundary}`, ...attachmentPartLines(attachment)]),
     `--${boundary}--`,
   ];
@@ -260,6 +293,7 @@ async function createGmailDraft(
     body: input.body,
     ...(input.bodyFormat ? { bodyFormat: input.bodyFormat } : {}),
     ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+    ...(input.inlineImages?.length ? { inlineImages: input.inlineImages } : {}),
     ...(threadingHeaders
       ? {
           extraHeaders: [
@@ -302,6 +336,11 @@ async function fetchDraftAttachments(
 ): Promise<DraftAttachment[]> {
   const parts: { filename: string; mimeType: string; data?: string; attachmentId?: string }[] = [];
   forEachAttachmentPart(payload, (part, filename) => {
+    // cid-referenced inline images (the signature's) are rebuilt from the
+    // update's own inlineImages; re-embedding them here would turn them into
+    // regular file attachments with dangling cid references.
+    const header = headerLookup(part);
+    if (header("Content-ID") && /^inline/i.test(header("Content-Disposition"))) return;
     parts.push({
       filename,
       mimeType: part.mimeType ?? "application/octet-stream",
@@ -392,6 +431,9 @@ async function updateGmailDraft(
     // The fetched fallback body is stripped to plain text, so the format only
     // ever applies to a caller-supplied body.
     ...(input.body !== undefined && input.bodyFormat ? { bodyFormat: input.bodyFormat } : {}),
+    ...(input.body !== undefined && input.inlineImages?.length
+      ? { inlineImages: input.inlineImages }
+      : {}),
     extraHeaders: current.extraHeaders,
     ...(current.attachments.length > 0 ? { attachments: current.attachments } : {}),
   });

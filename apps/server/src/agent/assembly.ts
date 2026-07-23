@@ -3,6 +3,7 @@ import type { Message } from "@earendil-works/pi-ai";
 import { moduleLogger } from "../core/logger.js";
 import { loadOnOfficeTools } from "../integrations/onoffice/tools.js";
 import { buildWhatsAppTools } from "../integrations/whatsapp/tools.js";
+import { appHelpTool } from "./appHelpTool.js";
 import { automationManageTools, automationReadTools } from "./automationTools.js";
 import { composeBriefingTool } from "./briefingTool.js";
 import type { SessionCapabilities } from "./capabilities.js";
@@ -10,7 +11,7 @@ import { presentChartTool } from "./chartTool.js";
 import { presentChoicesTool } from "./choicesTool.js";
 import { compactedMessages } from "./compaction.js";
 import { buildDelegateTool } from "./delegate.js";
-import { listDraftsTool } from "./draftTools.js";
+import { keepDraftTool, listDraftsTool } from "./draftTools.js";
 import type { EmailToolset } from "./emailToolset.js";
 import { buildFileTools } from "./fileTools.js";
 import { recordCompactionMarker } from "./history.js";
@@ -68,6 +69,9 @@ export async function buildAgent(
       thinkingLevel: resolveThinkingLevel(model),
       tools: [
         listDraftsTool,
+        // Keeping a proposed draft is the user's explicit approval, so the
+        // tool exists only where a user is present to give it.
+        ...(caps.interactive ? [keepDraftTool] : []),
         ...toolset.tools,
         ...onOfficeTools,
         ...whatsappTools,
@@ -80,6 +84,9 @@ export async function buildAgent(
         // into every later session's system prompt. Same surface delegate
         // workers get.
         ...(caps.interactive ? buildKnowledgeTools() : buildKnowledgeReadTools()),
+        // Read-only self-description (app guide + changelog), so questions about
+        // the app are answered from shipped docs instead of model priors.
+        appHelpTool,
         // SECURITY: automation management is interactive-only. An automation's
         // instruction is a standing prompt executed unattended every tick, so
         // mail content can't plant or alter one. Past-run reads are inert.

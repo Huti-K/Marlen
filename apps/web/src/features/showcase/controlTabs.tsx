@@ -4,6 +4,7 @@
  * delete with the folder.
  */
 
+import { CHANGELOG } from "@marlen/shared";
 import { Bell, Check, Inbox, Mail, Sparkles, Trash2, TriangleAlert, X } from "lucide-react";
 import * as React from "react";
 import { RunStatusBadge } from "@/components/RunStatusBadge";
@@ -29,7 +30,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api";
-import { CHANGELOG } from "@/lib/changelog";
 import { openSearch } from "@/lib/nav";
 import { toast } from "@/lib/toast";
 import { cn, MOD_LABEL } from "@/lib/utils";

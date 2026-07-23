@@ -103,6 +103,11 @@
     "delete": "Delete",
     "deleteConfirmTitle": "Delete this conversation?",
     "deleteConfirmBody": "This permanently deletes the conversation and its messages.",
+    "rateLimited": {
+      "message": "Your AI provider turned this request away because the account's rate limit was reached. Wait a moment and send your message again.",
+      "switch": "Switch to {{provider}}",
+      "switched": "Switched to {{provider}}. Send your message again."
+    },
     "systemPrompt": {
       "title": "System prompt",
       "search": "Search prompt...",
@@ -356,12 +361,19 @@
     },
     "signature": {
       "title": "Email signature",
-      "hint": "Paste your signature here, straight from Gmail or Outlook. Formatting, links and images are kept, and the assistant puts it under every email it drafts from this account.",
+      "hint": "Paste your signature straight from Gmail or Outlook, or write and format it here. The preview shows it the way recipients will see it, and the assistant puts it under every email it drafts from this account.",
       "save": "Save signature",
       "saved": "Signature saved.",
       "removed": "Signature removed.",
       "clear": "Clear",
-      "loadFailed": "The signature could not be loaded."
+      "loadFailed": "The signature could not be loaded.",
+      "bold": "Bold",
+      "italic": "Italic",
+      "link": "Insert link",
+      "linkPlaceholder": "https://example.com",
+      "linkApply": "Apply",
+      "image": "Insert image",
+      "imageTooLarge": "The image is too large, up to 300 KB works."
     },
     "noAccounts": "No email accounts connected yet. Use the buttons above, you can connect several accounts per provider.",
     "finishConnecting": "Complete the connection in the browser tab that just opened, the account appears here automatically once it's linked.",

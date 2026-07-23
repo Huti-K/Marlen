@@ -8,6 +8,7 @@ import { parseStoredRefs } from "../agent/emailRefs.js";
 import { applyConversationFocus, clearConversationFocus } from "../agent/focus.js";
 import { parseStoredToolCalls } from "../agent/history.js";
 import { buildSystemPrompt } from "../agent/prompt.js";
+import { isRateLimitFailure } from "../agent/run.js";
 import { disposeSession } from "../agent/sessionCache.js";
 import { beginTurn, type Turn, TurnInFlightError } from "../agent/turnRecorder.js";
 import { badRequest, conflict, requireRow } from "../core/errors.js";
@@ -279,7 +280,12 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
       // turn.run() already closed out the transcript; this only notifies a
       // still-connected client. stream.send is a no-op once the stream has ended.
       req.log.error(error, "chat failed");
-      send({ type: "error", message: errorMessage(error) });
+      const message = errorMessage(error);
+      send(
+        isRateLimitFailure(message)
+          ? { type: "error", message, kind: "rate_limit" }
+          : { type: "error", message },
+      );
     } finally {
       runningConversations.delete(conversationId);
       emitServerEvent("conversations");

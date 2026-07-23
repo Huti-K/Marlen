@@ -52,7 +52,11 @@ export function DraftRow({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
-  const [detail, setDetail] = React.useState<{ body: string; cc: string } | null>(null);
+  const [detail, setDetail] = React.useState<{
+    body: string;
+    cc: string;
+    signature?: string;
+  } | null>(null);
   // Editable body/subject state: the `*Draft` values are the live field
   // values, `saved*` are the last-persisted baselines they're compared
   // against for the dirty flag. Subject starts from the list row's value —
@@ -285,6 +289,14 @@ export function DraftRow({
                   disabled={actions.busy}
                   className="field-sizing-content min-h-32 resize-none text-sm leading-relaxed text-foreground/90"
                 />
+                {/* The account signature rides below the editable prose: the
+                    server detached it from the body and re-appends it on save,
+                    so it is shown but never editable here. */}
+                {detail.signature && (
+                  <p className="whitespace-pre-line border-t border-border/60 pt-2 text-sm leading-relaxed text-muted-foreground">
+                    {detail.signature}
+                  </p>
+                )}
                 {dirty && (
                   <EditSaveActions
                     saving={saving}

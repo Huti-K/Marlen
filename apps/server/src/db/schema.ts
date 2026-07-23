@@ -59,6 +59,32 @@ export const agentDrafts = sqliteTable(
 );
 
 /**
+ * A chat-composed draft that exists only in Marlen until the user keeps it:
+ * the interactive create-draft tool writes one of these instead of a provider
+ * draft. Keeping (card button or the agent's keep_draft) creates the real
+ * mailbox draft and records its id here; agent_drafts snapshots start there.
+ */
+export const draftProposals = sqliteTable("draft_proposals", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  threadId: text("thread_id"),
+  conversationId: text("conversation_id"),
+  subject: text("subject").notNull().default(""),
+  toAddrs: text("to_addrs").notNull().default("[]"),
+  ccAddrs: text("cc_addrs").notNull().default("[]"),
+  bccAddrs: text("bcc_addrs").notNull().default("[]"),
+  body: text("body").notNull().default(""),
+  attachmentDocIds: text("attachment_doc_ids").notNull().default("[]"),
+  status: text("status", { enum: ["proposed", "kept", "sent", "discarded"] })
+    .notNull()
+    .default("proposed"),
+  /** The mailbox draft this proposal became; set when kept. */
+  providerDraftId: text("provider_draft_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/**
  * Append-only body/subject history of an agent draft: version 1 is the created
  * draft, later rows are in-app rewrites (author "agent") or UI edits (author
  * "user"). The learning loop diffs sent text against the last agent version.

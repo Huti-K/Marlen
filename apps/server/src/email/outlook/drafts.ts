@@ -11,7 +11,11 @@ import {
 } from "../providers.js";
 import { snippetFrom, stripHtml } from "../textUtils.js";
 import { isConsumerOutlookAccount, outlookWebRoot, withOutlookLoginHint } from "../webLinks.js";
-import { addOutlookAttachments } from "./draftAttachments.js";
+import {
+  addOutlookAttachments,
+  addOutlookInlineImages,
+  syncOutlookInlineImages,
+} from "./draftAttachments.js";
 import {
   addressListOf,
   fetchConversationMessages,
@@ -208,6 +212,9 @@ async function createOutlookDraft(
 
   // Graph can't attach in the create call; a failure propagates, but the finally still invalidates since the draft exists either way.
   try {
+    if (input.inlineImages?.length) {
+      await addOutlookInlineImages(account, draftId, input.inlineImages);
+    }
     if (input.attachments?.length) {
       await addOutlookAttachments(account, draftId, input.attachments);
     }
@@ -240,6 +247,11 @@ async function updateOutlookDraft(
   }
 
   await proxyRequest(account.id, "patch", `${GRAPH_API}/messages/${draftId}`, { body });
+
+  // A replaced body carries fresh cid references, so the inline set syncs with it.
+  if (patch.body !== undefined && patch.inlineImages) {
+    await syncOutlookInlineImages(account, draftId, patch.inlineImages);
+  }
 
   draftsMutated(account.id);
 }

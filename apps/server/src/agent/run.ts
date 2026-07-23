@@ -42,6 +42,13 @@ const RETRY_BASE_DELAY_MS = 2_000;
 const CONTEXT_OVERFLOW_PATTERN =
   /prompt is too long|maximum context length|context window|input token count exceeds/i;
 
+/** Provider throttle rejections (429s); waiting or switching provider is the remedy. */
+const RATE_LIMIT_PATTERN = /rate.?limit|too many requests|\b429\b/i;
+
+export function isRateLimitFailure(message: string): boolean {
+  return RATE_LIMIT_PATTERN.test(message);
+}
+
 /** True when the errored turn already streamed visible text; a retry would repeat it. */
 function streamedVisibleText(message: AssistantMessage): boolean {
   return message.content.some((block) => block.type === "text" && block.text.trim() !== "");

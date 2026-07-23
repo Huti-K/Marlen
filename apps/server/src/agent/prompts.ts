@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { appVersion } from "../core/version.js";
 
 /**
  * LLM prompt prose, loaded eagerly from the .md files in prompts/ so a missing
@@ -24,8 +25,10 @@ function withTells(text: string): string {
 
 export const prompts = {
   /** The base system prompt; buildSystemPrompt appends the conditional sections. */
-  system: withTells(read("system")),
+  system: withTells(read("system")).replaceAll("{{app-version}}", appVersion),
   humanizer: withTells(read("humanizer")),
+  /** User-facing app documentation, served by app_help — not spliced into any prompt. */
+  appGuide: read("app-guide"),
   delegateWorker: read("delegate-worker"),
   compaction: read("compaction"),
   automationSuggest: read("automation-suggest"),

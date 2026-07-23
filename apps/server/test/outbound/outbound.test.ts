@@ -168,6 +168,60 @@ describe("outbound drafts", () => {
     ).toBe("discarded");
   });
 
+  it("withholds a draft while its conversation's turn runs and surfaces it at turn end", async () => {
+    const turnRecorder = await import("../../src/agent/turnRecorder.js");
+    let finishTurn!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finishTurn = resolve;
+    });
+    turnRecorder._setSessionsForTest({
+      pooled: async () => {
+        throw new Error("pooled session not expected in this test");
+      },
+      ephemeral: async () => ({
+        agent: null as never,
+        toolset: { tools: [], readTools: [], close: async () => {} },
+        inFlight: 0,
+        lastUsed: Date.now(),
+        runTurn: async () => {
+          await gate;
+          return "done";
+        },
+      }),
+    });
+    try {
+      const conversationId = "run-hold";
+      const turn = turnRecorder.beginTurn(conversationId);
+      const running = turn.run({
+        prompt: "Scheduled automation …",
+        session: "ephemeral",
+        conversation: { type: "automation", title: "Lead-Antwort" },
+        log: { info: () => {}, warn: () => {} },
+      });
+
+      // The agent drafts mid-turn; the run may still rewrite this draft, so
+      // the approval list must not present it yet.
+      const { id } = await store.createOutboundDraft({
+        channel: "test-channel",
+        target: "491700000007@s.whatsapp.net",
+        targetLabel: "Lead",
+        body: "Erste Fassung",
+        conversationId,
+      });
+      expect((await listOpen()).some((d) => d.id === id)).toBe(false);
+
+      // Turn end re-announces "outbound", and the final version is listed.
+      const emitted = await outboundEvents(async () => {
+        finishTurn();
+        await running;
+      });
+      expect(emitted.length).toBeGreaterThan(0);
+      expect((await listOpen()).some((d) => d.id === id)).toBe(true);
+    } finally {
+      turnRecorder._setSessionsForTest(null);
+    }
+  });
+
   it("400s a send on an unregistered channel and keeps the draft open", async () => {
     const { id } = await store.createOutboundDraft({
       channel: "carrier-pigeon",

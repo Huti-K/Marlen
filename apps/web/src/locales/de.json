@@ -103,6 +103,11 @@
     "delete": "Löschen",
     "deleteConfirmTitle": "Diese Unterhaltung löschen?",
     "deleteConfirmBody": "Die Unterhaltung und alle Nachrichten sind dann weg.",
+    "rateLimited": {
+      "message": "Ihr KI-Anbieter hat diese Anfrage abgelehnt, weil das Ratenlimit Ihres Kontos erreicht ist. Warten Sie einen Moment und senden Sie Ihre Nachricht erneut.",
+      "switch": "Zu {{provider}} wechseln",
+      "switched": "Zu {{provider}} gewechselt. Senden Sie Ihre Nachricht erneut."
+    },
     "systemPrompt": {
       "title": "System-Prompt",
       "search": "Prompt durchsuchen…",
@@ -356,12 +361,19 @@
     },
     "signature": {
       "title": "E-Mail-Signatur",
-      "hint": "Fügen Sie hier Ihre Signatur ein, direkt aus Gmail oder Outlook. Formatierung, Links und Bilder bleiben erhalten, und der Assistent setzt sie unter jede E-Mail, die er aus diesem Konto entwirft.",
+      "hint": "Fügen Sie Ihre Signatur direkt aus Gmail oder Outlook ein, oder schreiben und formatieren Sie sie hier. Die Vorschau zeigt sie so, wie Empfänger sie sehen, und der Assistent setzt sie unter jede E-Mail, die er aus diesem Konto entwirft.",
       "save": "Signatur speichern",
       "saved": "Signatur gespeichert.",
       "removed": "Signatur entfernt.",
       "clear": "Leeren",
-      "loadFailed": "Die Signatur konnte nicht geladen werden."
+      "loadFailed": "Die Signatur konnte nicht geladen werden.",
+      "bold": "Fett",
+      "italic": "Kursiv",
+      "link": "Link einfügen",
+      "linkPlaceholder": "https://beispiel.de",
+      "linkApply": "Übernehmen",
+      "image": "Bild einfügen",
+      "imageTooLarge": "Das Bild ist zu groß, bis 300 KB funktioniert."
     },
     "noAccounts": "Noch keine E-Mail-Konten verbunden. Nutzen Sie die Knöpfe oben. Pro Anbieter geht auch mehr als ein Konto.",
     "finishConnecting": "Schließen Sie die Verbindung im neuen Browser-Tab ab. Das Konto erscheint dann automatisch hier.",

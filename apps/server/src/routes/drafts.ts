@@ -1,8 +1,17 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import type { AccountDrafts, ConnectedAccount, EmailDraft } from "@marlen/shared";
+import type {
+  AccountDrafts,
+  ConnectedAccount,
+  DraftProposalStatusResult,
+  EmailDraft,
+  EmailDraftDetail,
+  KeepDraftProposalResult,
+} from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
+import { isTurnInFlight } from "../agent/turnRecorder.js";
 import { badRequest, notFound, toProviderError, upstreamError } from "../core/errors.js";
 import { errorMessage } from "../core/utils/util.js";
+import { getDraftProposal, settleDraftProposal } from "../db/draftProposalStore.js";
 import {
   appendDraftVersion,
   getDraftConversationLinks,
@@ -11,7 +20,10 @@ import {
 } from "../db/draftStore.js";
 import { listDraftsCached } from "../email/draftsCache.js";
 import { type DraftProvider, getDraftProvider } from "../email/providers.js";
+import { accountSignatureHtml, outgoingBody } from "../email/signature.js";
+import { detachSignature, stripHtml } from "../email/textUtils.js";
 import { listAccounts, pipedreamConfigured } from "../integrations/pipedream/connect.js";
+import { keepDraftProposal } from "../services/draftProposals.js";
 
 async function findDraftAccount(
   accountId: string,
@@ -23,6 +35,11 @@ async function findDraftAccount(
   return provider ? { account, provider } : null;
 }
 
+/**
+ * Attach each agent draft's conversation for the refine button. Every mailbox
+ * draft belongs in the approval list: automation-born ones directly, chat-born
+ * ones because they only exist once the user explicitly kept their proposal.
+ */
 async function attachConversationLinks(byAccount: AccountDrafts[]): Promise<AccountDrafts[]> {
   const draftIds = byAccount.flatMap((a) => a.drafts.map((d) => d.id));
   if (draftIds.length === 0) return byAccount;
@@ -45,6 +62,8 @@ const draftPatchBody = Type.Object({
   body: Type.Optional(Type.String()),
   subject: Type.Optional(Type.String()),
 });
+const proposalParams = Type.Object({ proposalId: Type.String() });
+const keepProposalBody = Type.Object({ send: Type.Optional(Type.Boolean()) });
 export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get(
     "/api/drafts",
@@ -78,19 +97,42 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
           }
         }),
       );
-      return attachConversationLinks(byAccount);
+      // A draft whose conversation still has a turn running may yet be
+      // rewritten by it; withhold it until the turn ends (endTurn re-emits
+      // "drafts"), so only final versions reach the approval list.
+      const linked = await attachConversationLinks(byAccount);
+      return linked.map((account) => ({
+        ...account,
+        drafts: account.drafts.filter(
+          (draft) => !draft.conversationId || !isTurnInFlight(draft.conversationId),
+        ),
+      }));
     },
   );
 
-  app.get("/api/drafts/:accountId/:draftId", { schema: { params: draftParams } }, async (req) => {
-    try {
-      const found = await findDraftAccount(req.params.accountId);
-      if (!found) throw notFound("account not found");
-      return await found.provider.getDraftDetail(found.account, req.params.draftId);
-    } catch (error) {
-      throw toProviderError(error, "draft not found");
-    }
-  });
+  // The signature is detached from the body so the UI edits prose only and
+  // renders the signature as the fixed block it is; a body that doesn't end
+  // with the configured signature (hand-written, or pre-configuration) is
+  // returned whole, with no signature field.
+  app.get(
+    "/api/drafts/:accountId/:draftId",
+    { schema: { params: draftParams } },
+    async (req): Promise<EmailDraftDetail> => {
+      try {
+        const found = await findDraftAccount(req.params.accountId);
+        if (!found) throw notFound("account not found");
+        const detail = await found.provider.getDraftDetail(found.account, req.params.draftId);
+        const signatureHtml = await accountSignatureHtml(found.account.id);
+        if (!signatureHtml) return detail;
+        const detached = detachSignature(detail.body, stripHtml(signatureHtml));
+        return detached
+          ? { ...detail, body: detached.body, signature: detached.signature }
+          : detail;
+      } catch (error) {
+        throw toProviderError(error, "draft not found");
+      }
+    },
+  );
 
   app.delete(
     "/api/drafts/:accountId/:draftId",
@@ -156,7 +198,57 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
     },
   );
 
-  // Saved exactly as typed; the humanizer runs only in the agent's create-draft tool.
+  /**
+   * Human-initiated only (the proposal card's Keep/Send buttons): like the
+   * draft send route, the click is the authorization, so send consults no
+   * grant. The agent's path is keep_draft, which does.
+   */
+  app.post(
+    "/api/draft-proposals/:proposalId/keep",
+    { schema: { params: proposalParams, body: keepProposalBody } },
+    async (req): Promise<KeepDraftProposalResult> => {
+      const outcome = await keepDraftProposal(req.params.proposalId, {
+        send: req.body.send === true,
+      });
+      return {
+        ok: true,
+        accountId: outcome.accountId,
+        draftId: outcome.draftId,
+        ...(outcome.webUrl ? { webUrl: outcome.webUrl } : {}),
+        sent: outcome.sent,
+      };
+    },
+  );
+
+  app.delete(
+    "/api/draft-proposals/:proposalId",
+    { schema: { params: proposalParams } },
+    async (req) => {
+      if (!(await settleDraftProposal(req.params.proposalId, "discarded"))) {
+        throw notFound("draft proposal not found or already settled");
+      }
+      return { ok: true };
+    },
+  );
+
+  app.get(
+    "/api/draft-proposals/:proposalId/status",
+    { schema: { params: proposalParams } },
+    async (req): Promise<DraftProposalStatusResult> => {
+      const proposal = await getDraftProposal(req.params.proposalId);
+      if (!proposal) throw notFound("draft proposal not found");
+      return {
+        status: proposal.status,
+        accountId: proposal.accountId,
+        ...(proposal.providerDraftId ? { draftId: proposal.providerDraftId } : {}),
+      };
+    },
+  );
+
+  // Saved exactly as typed; the humanizer runs only in the agent's create-draft
+  // tool. When the draft carried the account signature (the detail GET detached
+  // it, so the edited text is prose only), the new body is re-wrapped above the
+  // same signature — an in-app edit never strips, doubles, or de-styles it.
   app.patch(
     "/api/drafts/:accountId/:draftId",
     { schema: { params: draftParams, body: draftPatchBody } },
@@ -168,7 +260,20 @@ export const draftRoutes: FastifyPluginAsyncTypebox = async (app) => {
           throw badRequest("editing a draft is not supported for this account");
         }
         const { body, subject } = req.body;
-        await found.provider.updateDraft(found.account, req.params.draftId, { body, subject });
+        let bodyPatch: { body?: string } | ReturnType<typeof outgoingBody> = { body };
+        if (body !== undefined) {
+          const signatureHtml = await accountSignatureHtml(found.account.id);
+          if (signatureHtml) {
+            const current = await found.provider.getDraftDetail(found.account, req.params.draftId);
+            if (detachSignature(current.body, stripHtml(signatureHtml))) {
+              bodyPatch = outgoingBody(body, signatureHtml);
+            }
+          }
+        }
+        await found.provider.updateDraft(found.account, req.params.draftId, {
+          ...bodyPatch,
+          subject,
+        });
         // Best-effort: the provider save succeeded, so report success even if
         // appending the user-authored snapshot version fails.
         await appendDraftVersion(req.params.accountId, req.params.draftId, "user", {

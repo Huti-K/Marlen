@@ -139,7 +139,10 @@ export async function getOrCreateSession(conversationId: string): Promise<AgentS
 
   const creation = (async (): Promise<AgentSession> => {
     const caps = await sessionCapabilities(true);
-    const toolsetPromise = loadEmailTools({ providerWrites: caps.providerWrites });
+    const toolsetPromise = loadEmailTools({
+      providerWrites: caps.providerWrites,
+      interactive: caps.interactive,
+    });
     try {
       const [toolset, history] = await Promise.all([toolsetPromise, loadHistory(conversationId)]);
       const session = createAgentSession(
@@ -197,7 +200,10 @@ export async function disposeSession(conversationId: string): Promise<void> {
  */
 export async function createEphemeralSession(conversationId: string): Promise<AgentSession> {
   const caps = await sessionCapabilities(false);
-  const toolset = await loadEmailTools({ providerWrites: caps.providerWrites });
+  const toolset = await loadEmailTools({
+    providerWrites: caps.providerWrites,
+    interactive: caps.interactive,
+  });
   try {
     return createAgentSession(
       await buildAgent(toolset, [], caps, conversationId),

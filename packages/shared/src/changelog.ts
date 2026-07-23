@@ -7,10 +7,33 @@ export type ChangelogEntry = {
 };
 
 /**
- * Hand-maintained release notes shown in-app (the update card and Settings →
- * About → Changelog). Newest first; add an entry when cutting a tagged release.
+ * Hand-maintained release notes, shown in-app (the update card and Settings →
+ * About → Changelog) and readable by the agent (app_help). Newest first; add
+ * an entry when cutting a tagged release.
  */
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.4.0",
+    date: "2026-07-23",
+    notes: {
+      en: [
+        'A draft the assistant writes in chat is now only a proposal: nothing lands in your mail account until you press "Keep as draft" on its card, or ask the assistant to keep it. Keeping saves it to the account\'s Drafts folder and the approval list on Home; Send sends it right away; Discard leaves no trace. Automations still create real drafts for approval, as before.',
+        "One signature, everywhere. The signature you set for an account appears under the draft on its chat card and on Home, stays out of the text field while you edit, and is re-applied with its formatting and images when you save. The assistant never writes a signature block of its own.",
+        "The signature editor takes a signature pasted straight from Gmail or Outlook, keeps its formatting and images (up to 300 KB), and shows it the way recipients will see it.",
+        "The assistant knows the app it lives in: ask what Marlen can do, where a setting lives, or what changed in an update, and it answers from the built-in guide and this changelog instead of guessing.",
+        "When your AI provider hits its rate limit, the chat says so plainly and offers a one-click switch to another signed-in provider.",
+        "Selecting text in your own chat messages is visible again.",
+      ],
+      de: [
+        'Ein Entwurf, den der Assistent im Chat schreibt, ist jetzt zunächst nur ein Vorschlag: Nichts landet im Mail-Konto, bis Sie auf der Karte "Als Entwurf behalten" drücken oder den Assistenten darum bitten. Behalten speichert ihn im Entwürfe-Ordner des Kontos und in der Freigabe-Liste auf der Startseite, Senden verschickt ihn sofort, Verwerfen hinterlässt nichts. Automatisierungen legen ihre Entwürfe weiterhin direkt zur Freigabe an.',
+        "Eine Signatur, überall. Die für ein Konto hinterlegte Signatur steht unter dem Entwurf auf seiner Chat-Karte und auf der Startseite, bleibt beim Bearbeiten außerhalb des Textfelds und wird beim Speichern mit Formatierung und Bildern wieder angefügt. Der Assistent schreibt keinen eigenen Signaturblock mehr.",
+        "Der Signatur-Editor übernimmt eine direkt aus Gmail oder Outlook eingefügte Signatur mit Formatierung und Bildern (bis 300 KB) und zeigt sie so, wie Empfänger sie sehen.",
+        "Der Assistent kennt die App, in der er arbeitet: Fragen, was Marlen kann, wo eine Einstellung liegt oder was ein Update geändert hat, beantwortet er aus dem eingebauten Handbuch und diesem Changelog, statt zu raten.",
+        "Stößt Ihr KI-Anbieter an sein Anfrage-Limit, sagt der Chat das klar und bietet den Wechsel zu einem anderen angemeldeten Anbieter mit einem Klick an.",
+        "Markierter Text in Ihren eigenen Chat-Nachrichten ist wieder sichtbar.",
+      ],
+    },
+  },
   {
     version: "0.3.9",
     date: "2026-07-21",

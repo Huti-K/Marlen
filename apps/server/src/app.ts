@@ -39,6 +39,7 @@ import { searchRoutes } from "./routes/search.js";
 import { seenRoutes } from "./routes/seen.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { skillRoutes } from "./routes/skills.js";
+import { sttRoutes } from "./routes/stt.js";
 import { todosRoutes } from "./routes/todos.js";
 import { whatsAppRoutes } from "./routes/whatsapp.js";
 
@@ -101,6 +102,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(seenRoutes);
   await app.register(memoryRoutes);
   await app.register(skillRoutes);
+  await app.register(sttRoutes);
   await app.register(leadsRoutes);
   await app.register(learnRoutes);
   await app.register(libraryRoutes);

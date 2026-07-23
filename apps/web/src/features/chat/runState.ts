@@ -20,6 +20,8 @@ export interface DisplayMessage {
   streaming: boolean;
   thinking?: boolean;
   error?: string;
+  /** Set for classified provider failures; drives the tailored inline notice. */
+  errorKind?: "rate_limit";
   /** Local-only /sys result. */
   systemPrompt?: string;
   /** Emails the user pinned to this message (composer @-mentions or a card's "add to chat" action); user messages only. */
@@ -235,6 +237,7 @@ function reduceStreamEvent(
       return applyToRun(state, runId, (m) => ({
         ...m,
         error: event.message,
+        errorKind: event.kind,
         streaming: false,
         thinking: false,
       }));

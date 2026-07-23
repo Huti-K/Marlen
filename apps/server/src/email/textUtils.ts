@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
+import { EMAIL_BODY_FONT_FAMILY } from "@marlen/shared";
 import addrs from "email-addresses";
 import { type HtmlToTextOptions, htmlToText } from "html-to-text";
+import type { InlineImage } from "./providers.js";
 
 /** Keep link text but drop hrefs and images; keep heading case (html-to-text uppercases headings by default). */
 const STRIP_HTML_OPTIONS: HtmlToTextOptions = {
@@ -18,14 +21,60 @@ export function stripHtml(html: string): string {
   return htmlToText(html, STRIP_HTML_OPTIONS).trim();
 }
 
-/** Plain agent prose as an HTML body with the account's signature below, mirroring a mail client's signature placement. */
-export function htmlBodyWithSignature(body: string, signatureHtml: string): string {
+/** Unstyled HTML falls back to per-client serif defaults (Times in classic Outlook), so body and signature share one wrapper style. */
+const EMAIL_BODY_STYLE = `font-family:${EMAIL_BODY_FONT_FAMILY};font-size:14px;line-height:1.5`;
+
+const DATA_URI_IMG =
+  /(<img\b[^>]*?\bsrc\s*=\s*)(["'])data:(image\/[a-z0-9.+-]+);base64,([^"']*)\2/gi;
+
+/**
+ * Receiving clients (Outlook desktop, Gmail's message view) block or strip
+ * data: images, so each becomes a cid: reference resolved by an inline part.
+ * Content ids hash the bytes: identical images dedupe, and an unchanged
+ * signature keeps stable ids across draft updates.
+ */
+function extractInlineImages(html: string): { html: string; images: InlineImage[] } {
+  const byContentId = new Map<string, InlineImage>();
+  const replaced = html.replace(
+    DATA_URI_IMG,
+    (_match, prefix: string, quote: string, mimeType: string, base64: string) => {
+      const content = Buffer.from(base64, "base64");
+      const contentId = `${createHash("sha256").update(content).digest("hex").slice(0, 16)}@marlen`;
+      if (!byContentId.has(contentId)) {
+        const extension = mimeType.slice("image/".length).split("+")[0] || "img";
+        byContentId.set(contentId, {
+          contentId,
+          filename: `signature-${byContentId.size + 1}.${extension}`,
+          mimeType,
+          content,
+        });
+      }
+      return `${prefix}${quote}cid:${contentId}${quote}`;
+    },
+  );
+  return { html: replaced, images: [...byContentId.values()] };
+}
+
+/**
+ * Plain agent prose and the account's signature as one outgoing HTML body:
+ * escaped body above the signature (mirroring a mail client's placement), both
+ * in one styled wrapper, the signature's data-URI images extracted to cid
+ * references the caller must pass on as inlineImages.
+ */
+export function htmlBodyWithSignature(
+  body: string,
+  signatureHtml: string,
+): { html: string; images: InlineImage[] } {
   const escaped = body
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br>");
-  return `${escaped}<br><br>${signatureHtml}`;
+  const { html: signature, images } = extractInlineImages(signatureHtml);
+  return {
+    html: `<div style="${EMAIL_BODY_STYLE}">${escaped}<br><br>${signature}</div>`,
+    images,
+  };
 }
 
 /**
@@ -77,6 +126,37 @@ export function stripDuplicateSignoff(body: string, signatureText: string): stri
   const trimmed = lines.slice(0, end).join("\n").trimEnd();
   // A body that was nothing but sign-off is left alone rather than emptied.
   return trimmed || body;
+}
+
+/**
+ * Split a provider draft body into prose and the account signature it ends
+ * with, comparing whitespace-normalized non-empty lines so spacing differences
+ * from the HTML round-trip can't defeat the match. Null when the body does not
+ * end with the signature (a hand-written draft, or one from before the
+ * signature was configured) — the caller then treats the whole text as body
+ * and must not re-append the signature on save.
+ */
+export function detachSignature(
+  body: string,
+  signatureText: string,
+): { body: string; signature: string } | null {
+  const normalize = (line: string) => line.replace(/\s+/g, " ").trim();
+  const signatureLines = signatureText.split("\n").map(normalize).filter(Boolean);
+  if (signatureLines.length === 0) return null;
+
+  const lines = body.split("\n");
+  const content: { text: string; index: number }[] = [];
+  lines.forEach((raw, index) => {
+    const text = normalize(raw);
+    if (text) content.push({ text, index });
+  });
+  if (content.length < signatureLines.length) return null;
+
+  const tail = content.slice(-signatureLines.length);
+  if (!tail.every((entry, i) => entry.text === signatureLines[i])) return null;
+
+  const cutIndex = tail[0]?.index ?? 0;
+  return { body: lines.slice(0, cutIndex).join("\n").trimEnd(), signature: signatureText };
 }
 
 const SNIPPET_MAX_LENGTH = 140;

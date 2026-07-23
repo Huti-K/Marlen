@@ -1,6 +1,7 @@
 import type { AgentCard, EmailRef } from "./cards.js";
 
 export * from "./cards.js";
+export * from "./changelog.js";
 export * from "./onoffice.js";
 export * from "./whatsapp.js";
 
@@ -92,6 +93,9 @@ export interface AccountSignature {
   html: string;
 }
 
+/** Font stack outgoing HTML bodies are wrapped in; the signature editor previews with the same stack so saved and sent match. */
+export const EMAIL_BODY_FONT_FAMILY = "Arial, Helvetica, sans-serif";
+
 /** Reading is always allowed; an account with no record is read-only. */
 export interface AccountPermissions {
   accountId: string;
@@ -177,6 +181,11 @@ export interface ChatMessage {
   toolCalls?: ChatToolCall[];
   refs?: EmailRef[];
   error?: string;
+}
+
+/** POST /api/stt result: the recording's transcript. */
+export interface SttResult {
+  text: string;
 }
 
 export interface MessageCard {
@@ -305,6 +314,31 @@ export interface AccountDrafts {
   accountId: string;
   drafts: EmailDraft[];
   error?: string;
+}
+
+export interface EmailDraftDetail {
+  body: string;
+  cc: string;
+  bcc: string;
+  /** The account signature detached from the body; present only when the draft ends with it. */
+  signature?: string;
+}
+
+export type DraftProposalStatus = "proposed" | "kept" | "sent" | "discarded";
+
+export interface DraftProposalStatusResult {
+  status: DraftProposalStatus;
+  accountId: string;
+  /** The mailbox draft the proposal became; set once kept or sent. */
+  draftId?: string;
+}
+
+export interface KeepDraftProposalResult {
+  ok: true;
+  accountId: string;
+  draftId: string;
+  webUrl?: string;
+  sent: boolean;
 }
 
 export interface LlmProviderInfo {
@@ -588,4 +622,4 @@ export type ChatStreamEvent =
   | { type: "tool_end"; toolCallId: string; toolName: string; isError: boolean; result?: unknown }
   | { type: "card"; toolCallId: string; card: AgentCard }
   | { type: "done"; text: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; kind?: "rate_limit" };

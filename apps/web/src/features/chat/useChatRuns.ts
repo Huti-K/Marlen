@@ -1,5 +1,6 @@
 import type { EmailRef } from "@marlen/shared";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import {
   createInitialRunState,
   type DisplayMessage,
@@ -54,6 +55,7 @@ export function useChatRuns({
   onFocusComposer,
   pendingFocusAccountId,
 }: UseChatRunsOptions): UseChatRunsResult {
+  const { t } = useTranslation();
   // Mirrored to a ref so `send` (memoized, not re-created per keystroke) always
   // reads the latest header pick without widening its dependency list.
   const pendingFocusRef = React.useRef(pendingFocusAccountId);
@@ -179,7 +181,13 @@ export function useChatRuns({
               // the query bridge (lib/query.ts).
               return;
             }
-            if (event.type === "error") toast.error(event.message);
+            if (event.type === "error") {
+              // Rate limits toast the plain-language line; the raw provider
+              // error only helps for unclassified failures.
+              toast.error(
+                event.kind === "rate_limit" ? t("chat.rateLimited.message") : event.message,
+              );
+            }
             dispatch({ type: "stream", runId, event });
           },
         );
@@ -191,7 +199,7 @@ export function useChatRuns({
         requestAnimationFrame(() => onFocusComposer());
       }
     },
-    [dispatch, onFocusComposer],
+    [dispatch, onFocusComposer, t],
   );
 
   const openConversation = React.useCallback(

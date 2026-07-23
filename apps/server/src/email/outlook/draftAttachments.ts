@@ -1,7 +1,7 @@
 import type { ConnectedAccount } from "@marlen/shared";
 import { errorMessage } from "../../core/utils/util.js";
 import { proxyRequest } from "../../integrations/pipedream/connect.js";
-import type { DraftAttachment } from "../providers.js";
+import type { DraftAttachment, InlineImage } from "../providers.js";
 import { GRAPH_API } from "./message.js";
 
 /**
@@ -80,6 +80,50 @@ async function attachViaUploadSession(
       );
     }
   }
+}
+
+/** cid-referenced images from the body html, as isInline Graph attachments; always small (signature logos), so the single-POST path suffices. */
+export async function addOutlookInlineImages(
+  account: ConnectedAccount,
+  messageId: string,
+  images: InlineImage[],
+): Promise<void> {
+  for (const image of images) {
+    await proxyRequest(account.id, "post", `${GRAPH_API}/messages/${messageId}/attachments`, {
+      body: {
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name: image.filename,
+        contentType: image.mimeType,
+        contentBytes: image.content.toString("base64"),
+        isInline: true,
+        contentId: image.contentId,
+      },
+    });
+  }
+}
+
+/** Replace the draft's inline images with `images`: a body PATCH replaces the cid references, so inline attachments left behind would linger invisibly. */
+export async function syncOutlookInlineImages(
+  account: ConnectedAccount,
+  messageId: string,
+  images: InlineImage[],
+): Promise<void> {
+  const res = (await proxyRequest(
+    account.id,
+    "get",
+    `${GRAPH_API}/messages/${messageId}/attachments`,
+    { params: { $select: "id,isInline" } },
+  )) as { value?: { id?: string; isInline?: boolean }[] };
+  for (const attachment of res.value ?? []) {
+    if (attachment.isInline && attachment.id) {
+      await proxyRequest(
+        account.id,
+        "delete",
+        `${GRAPH_API}/messages/${messageId}/attachments/${attachment.id}`,
+      );
+    }
+  }
+  await addOutlookInlineImages(account, messageId, images);
 }
 
 /** Attach every file in order. On failure the already-attached files stay and the error names what's missing; the draft is never deleted here. */

@@ -54,6 +54,7 @@ mac:
     NSDesktopFolderUsageDescription: The assistant reads and writes files here only when you ask it to.
     NSDocumentsFolderUsageDescription: The assistant reads and writes files here only when you ask it to.
     NSDownloadsFolderUsageDescription: The assistant reads and writes files here only when you ask it to.
+    NSMicrophoneUsageDescription: Voice input in chat uses the microphone only while you are recording a message.
 
 win:
   target: nsis
