@@ -30,7 +30,7 @@ export function RateLimitNotice() {
         const models = new Map(settings.catalog.map((c) => [c.id, c.models]));
         setAlternatives(
           providers.flatMap((p) => {
-            const model = models.get(p.id)?.[0];
+            const model = models.get(p.id)?.[0]?.id;
             return p.auth !== null && p.id !== settings.provider && model
               ? [{ id: p.id, name: p.name, model }]
               : [];

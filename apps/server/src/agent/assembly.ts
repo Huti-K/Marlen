@@ -1,5 +1,6 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@marlen/shared";
 import { moduleLogger } from "../core/logger.js";
 import { loadOnOfficeTools } from "../integrations/onoffice/tools.js";
 import { buildWhatsAppTools } from "../integrations/whatsapp/tools.js";
@@ -17,7 +18,7 @@ import { buildFileTools } from "./fileTools.js";
 import { recordCompactionMarker } from "./history.js";
 import { buildKnowledgeReadTools, buildKnowledgeTools } from "./knowledgeTools.js";
 import { leadDeleteTool, leadTools } from "./leadTools.js";
-import { resolveActiveModel } from "./llm/registry.js";
+import { getThinkingLevel, resolveActiveModel } from "./llm/registry.js";
 import { streamViaModelRegistry } from "./oneShot.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { skillReadTool, skillWriteTool } from "./skillTools.js";
@@ -28,9 +29,9 @@ import { webSearchTool } from "./webSearchTool.js";
 
 const log = moduleLogger("assembly");
 
-/** Balanced default, deliberately not user-configurable. */
-function resolveThinkingLevel(model: { reasoning: boolean }): "off" | "low" | "medium" | "high" {
-  return model.reasoning ? "medium" : "off";
+/** The user's thinking setting; forced off for models that can't reason. */
+async function resolveThinkingLevel(model: { reasoning: boolean }): Promise<ThinkingLevel> {
+  return model.reasoning ? getThinkingLevel() : "off";
 }
 
 export async function buildAgent(
@@ -66,7 +67,7 @@ export async function buildAgent(
     initialState: {
       systemPrompt: await buildSystemPrompt(caps),
       model,
-      thinkingLevel: resolveThinkingLevel(model),
+      thinkingLevel: await resolveThinkingLevel(model),
       tools: [
         listDraftsTool,
         // Keeping a proposed draft is the user's explicit approval, so the

@@ -74,6 +74,7 @@
     "notFound": "Nicht gefunden. Vielleicht wurde es gelöscht.",
     "forbidden": "Dafür fehlt Ihnen die Berechtigung.",
     "request": "Das hat nicht geklappt. Bitte nochmal versuchen.",
+    "chatStream": "Die Verbindung zum Assistenten wurde unterbrochen. Bitte nochmal versuchen.",
     "openSettings": "Einstellungen öffnen"
   },
   "chat": {
@@ -225,6 +226,26 @@
       "openInBrowser": "Im Browser öffnen",
       "save": "In der Bibliothek speichern",
       "saved": "„{{name}}“ in Ihrer Bibliothek gespeichert."
+    },
+    "model": {
+      "title": "Modell",
+      "thinkingTitle": "Denkmodus",
+      "fast": "Schnell",
+      "normal": "Normal",
+      "thorough": "Gründlich",
+      "fastHint": "Antwortet sofort",
+      "normalHint": "Denkt kurz nach für bessere Antworten",
+      "thoroughHint": "Nimmt sich Zeit bei schweren Fragen",
+      "window5h": "5-Std.-Fenster",
+      "windowWeek": "Diese Woche",
+      "windowMonth": "Dieser Monat",
+      "left": "{{pct}} % übrig",
+      "resets": "Setzt sich {{time}} zurück",
+      "noProviders": "Melden Sie sich zuerst in den Einstellungen bei einer KI an.",
+      "used": "{{pct}} % verbraucht",
+      "contextTitle": "Chat-Kontext",
+      "contextTokens": "≈{{used}}k von {{total}}k Tokens",
+      "buttonLabel": "KI-Modell und Kontingent"
     }
   },
   "search": {

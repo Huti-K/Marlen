@@ -26,7 +26,9 @@ import type {
   LibraryDocumentContent,
   LibrarySearchHit,
   LibraryStatus,
+  LlmContextResponse,
   LlmProviderInfo,
+  LlmUsageResponse,
   LoginFlowStatus,
   MemoryEntry,
   MissedAutomation,
@@ -42,6 +44,7 @@ import type {
   SearchResult,
   SeenState,
   Skill,
+  ThinkingLevel,
   Todo,
   TodoStatus,
   VoiceLearnRun,
@@ -177,6 +180,11 @@ export const api = {
   modelSettings: () => get<ModelSettings>("/api/llm/model"),
   setModel: (provider: string, model: string) =>
     http<ModelSettings>("PUT", "/api/llm/model", { provider, model }),
+  setThinkingLevel: (level: ThinkingLevel) =>
+    http<ModelSettings>("PUT", "/api/llm/thinking", { level }),
+  llmUsage: () => get<LlmUsageResponse>("/api/llm/usage"),
+  llmContext: (conversationId: string) =>
+    get<LlmContextResponse>(`/api/llm/context?conversation=${encodeURIComponent(conversationId)}`),
   loginStatus: () => get<LoginFlowStatus>("/api/llm/login/status"),
   loginStart: (providerId: string) =>
     http<LoginFlowStatus>("POST", "/api/llm/login/start", { providerId }),
@@ -517,7 +525,7 @@ export async function streamChat(
   // A refused turn (e.g. 409 while this conversation is still replying) answers
   // with the plain `{ error }` envelope rather than the SSE stream.
   await throwOnError(res);
-  if (!res.body) throw new Error("The chat response did not include a stream.");
+  if (!res.body) throw new Error(i18n.t("errors.chatStream"));
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -539,7 +547,7 @@ export async function streamChat(
           try {
             event = JSON.parse(line.slice(6)) as ChatStreamEvent;
           } catch {
-            throw new Error("The server sent an invalid chat event.");
+            throw new Error(i18n.t("errors.chatStream"));
           }
           if (event.type === "done" || event.type === "error") terminalEvent = true;
           onEvent(event);
@@ -549,5 +557,5 @@ export async function streamChat(
     }
   }
 
-  if (!terminalEvent) throw new Error("The chat response ended unexpectedly.");
+  if (!terminalEvent) throw new Error(i18n.t("errors.chatStream"));
 }

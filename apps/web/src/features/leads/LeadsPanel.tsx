@@ -55,9 +55,8 @@ function useLeadPatch(): (id: string, patch: LeadPatch) => void {
       );
       return { prev };
     },
-    onError: (err, _vars, ctx) => {
+    onError: (_err, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(["leads"], ctx.prev);
-      toast.error(err);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["leads"] }),
   });

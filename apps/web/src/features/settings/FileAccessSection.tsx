@@ -31,7 +31,7 @@ export function FileAccessSection({ index }: { index: number }) {
     api
       .fileAccess()
       .then((r) => setGrants(r.fileAccess))
-      .catch(() => {});
+      .catch(toast.error);
   }, []);
 
   /** Reports whether the write landed, so an armed grant only closes its dialog on success. */

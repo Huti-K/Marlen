@@ -16,6 +16,7 @@ import { RefChips } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
 import { onChatCommand } from "@/features/chat/controller";
 import { HistoryList } from "@/features/chat/HistoryList";
+import { ModelControl } from "@/features/chat/ModelControl";
 import { RateLimitNotice } from "@/features/chat/RateLimitNotice";
 import type { DisplayMessage } from "@/features/chat/runState";
 import { useChatRuns } from "@/features/chat/useChatRuns";
@@ -380,6 +381,7 @@ export function ChatPanel({
             className="max-h-40 min-h-9 flex-1 resize-none overflow-y-auto bg-transparent py-2 text-base md:text-sm leading-relaxed [scrollbar-width:none] [-webkit-scrollbar]:hidden placeholder:text-muted-foreground focus:outline-none"
             aria-busy={runs.busy}
           />
+          <ModelControl conversationId={runs.conversationId} className="mb-1 shrink-0" />
           <Button
             onClick={() => void send()}
             disabled={!input.trim()}

@@ -1,13 +1,35 @@
 import type { ServerEventTopic } from "@marlen/shared";
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { subscribeServerEvents } from "@/lib/serverEvents";
+import { toast } from "@/lib/toast";
+
+declare module "@tanstack/react-query" {
+  interface Register {
+    queryMeta: { suppressErrorToast?: boolean };
+    mutationMeta: { suppressErrorToast?: boolean };
+  }
+}
 
 /**
  * The app's one QueryClient. Freshness is push-driven: the SSE topic bridge
  * below invalidates by topic, so queries don't poll or refetch on focus —
  * server-side changes announce themselves.
+ *
+ * Every query or mutation failure surfaces as an error toast by default, so a
+ * broken load is never silent. A caller that renders the failure itself opts
+ * out with meta: { suppressErrorToast: true }.
  */
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      if (!query.meta?.suppressErrorToast) toast.error(error);
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      if (!mutation.meta?.suppressErrorToast) toast.error(error);
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 30_000,

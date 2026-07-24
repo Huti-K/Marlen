@@ -13,6 +13,24 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.1",
+    date: "2026-07-24",
+    notes: {
+      en: [
+        "The ring next to the send box opens a new model control: switch the AI provider and model, choose how thoroughly the assistant thinks (Fast, Normal, or Thorough), and see at a glance how much of your subscription's usage limits and of the current chat's memory you have used.",
+        "How thoroughly the assistant thinks is now yours to set. Fast answers right away, Normal thinks briefly for better answers, and Thorough takes its time on hard questions. Before, it was fixed.",
+        "Models now appear under their proper names instead of their technical ids, both in the new control and in Settings.",
+        "When something fails to load, a short notice now says so instead of leaving an empty space.",
+      ],
+      de: [
+        "Der Ring neben dem Senden-Feld öffnet eine neue Modellsteuerung: Anbieter und Modell wechseln, festlegen, wie gründlich der Assistent nachdenkt (Schnell, Normal oder Gründlich), und auf einen Blick sehen, wie viel von den Nutzungslimits Ihres Abos und vom Speicher des aktuellen Chats verbraucht ist.",
+        "Wie gründlich der Assistent nachdenkt, bestimmen jetzt Sie. Schnell antwortet sofort, Normal denkt kurz für bessere Antworten, und Gründlich lässt sich bei schweren Fragen Zeit. Vorher war das fest eingestellt.",
+        "Modelle erscheinen jetzt unter ihren richtigen Namen statt unter ihren technischen Kennungen, sowohl in der neuen Steuerung als auch in den Einstellungen.",
+        "Wenn etwas nicht geladen werden kann, sagt das jetzt ein kurzer Hinweis, statt eine leere Fläche zu hinterlassen.",
+      ],
+    },
+  },
+  {
     version: "0.4.0",
     date: "2026-07-23",
     notes: {

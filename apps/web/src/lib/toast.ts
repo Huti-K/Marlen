@@ -27,7 +27,9 @@ export const toast = {
   /** Pass the thrown value itself (not errorMessage(err)) so fixable errors keep their action. */
   error: (error: unknown) => {
     const message = typeof error === "string" ? error : errorMessage(error);
-    sonnerToast.error(message, { action: actionFor(error) });
+    // Keyed by message: a burst of identical failures (every query refetching
+    // against a dead server) re-ups one toast instead of stacking copies.
+    sonnerToast.error(message, { id: `error:${message}`, action: actionFor(error) });
   },
   success: (message: string) => sonnerToast.success(message),
   info: (message: string) => sonnerToast.info(message),

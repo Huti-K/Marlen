@@ -12,7 +12,7 @@ export function Toaster() {
   return (
     <Sonner
       position="top-right"
-      className="md:!right-[calc(var(--chat-width)+1.5rem)] !top-4"
+      className="md:!right-[calc(var(--chat-width)+1.5rem)] !top-4 !z-[140]"
       style={{ "--width": "300px" } as React.CSSProperties}
       closeButton
       toastOptions={{

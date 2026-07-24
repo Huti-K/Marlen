@@ -490,6 +490,7 @@ function AddTodoRow({
       void queryClient.invalidateQueries({ queryKey: ["todos"] });
     },
     onError: (e) => onError(errorMessage(e)),
+    meta: { suppressErrorToast: true },
   });
 
   const submit = () => {

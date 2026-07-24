@@ -41,6 +41,9 @@ Home / Start
 Chat
 - The composer sends on Enter (Shift+Enter for a new line). There is no file-upload control and
   no voice input; files reach the assistant via the Knowledge page or the library folder.
+- A ring next to the send button opens the model control: it switches provider and model, sets
+  thinking depth (Fast / Normal / Thorough), and shows how much of each subscription's rate
+  windows (5-hour, weekly) and of this chat's context is used. Full sign-in stays in Settings.
 - A focus chip in the header scopes the conversation to one account (or all); cards can pin a
   specific email to the next message.
 - The assistant's work renders as cards in the conversation: email drafts (with send / keep /

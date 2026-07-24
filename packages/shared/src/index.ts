@@ -363,10 +363,60 @@ export interface LoginFlowStatus {
   error?: string;
 }
 
+/** User-facing thinking depth; the web maps these to Fast / Normal / Thorough. */
+export type ThinkingLevel = "off" | "medium" | "high";
+
+/** One catalog model as the SDK registry describes it — pickers show the
+ *  friendly name instead of maintaining any hand-written model list. */
+export interface ModelInfo {
+  id: string;
+  name: string;
+}
+
 export interface ModelSettings {
   provider: string;
   model: string;
-  catalog: { id: string; name: string; models: string[] }[];
+  /** Whether the active model can reason at all; false hides the thinking control. */
+  reasoning: boolean;
+  thinkingLevel: ThinkingLevel;
+  catalog: { id: string; name: string; models: ModelInfo[] }[];
+}
+
+/** One subscription rate window. Normalized ids: "5h", "week", "week_<model>"
+ *  (model-scoped weekly windows like Opus or Fable); an unrecognized provider
+ *  window passes its raw key through so new tiers are never dropped. */
+export interface UsageWindow {
+  id: string;
+  /** Percent of the window consumed, 0-100. */
+  usedPct: number;
+  /** ISO timestamp when the window resets; null when the provider doesn't say. */
+  resetsAt: string | null;
+}
+
+export interface LlmUsage {
+  provider: string;
+  /** Subscription tier as the provider reports it ("plus", "max_20x"); null when it doesn't say. */
+  plan: string | null;
+  windows: UsageWindow[];
+}
+
+/** One entry per connected subscription sign-in that reports usage; empty
+ *  when none do (API-key sign-ins, fetch failures). */
+export interface LlmUsageResponse {
+  usages: LlmUsage[];
+}
+
+/** Estimated fullness of one conversation's context under the active model. */
+export interface LlmContextUsage {
+  /** Percent of the model's context window occupied, 0-100. */
+  usedPct: number;
+  tokens: number;
+  contextWindow: number;
+}
+
+/** context is null when no model is configured or it reports no window. */
+export interface LlmContextResponse {
+  context: LlmContextUsage | null;
 }
 
 export interface AppStatus {

@@ -3,9 +3,9 @@ import {
   isLanguage,
   LANGUAGE_LABELS,
   type LlmProviderInfo,
-  type ModelSettings,
   SUPPORTED_LANGUAGES,
 } from "@marlen/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   DatabaseBackup,
@@ -421,25 +421,27 @@ function ModelPicker({
   onSaved: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [settings, setSettings] = React.useState<ModelSettings | null>(null);
+  const queryClient = useQueryClient();
+  // Shares the ["llm", "model"] cache with the composer's ModelControl, so a
+  // change in either place shows up in both immediately.
+  const { data: settings, error: loadError } = useQuery({
+    queryKey: ["llm", "model"],
+    queryFn: api.modelSettings,
+    meta: { suppressErrorToast: true },
+  });
   const [provider, setProvider] = React.useState("");
   const [model, setModel] = React.useState("");
-  const [loadError, setLoadError] = React.useState<string | null>(null);
   const { state, error, run } = useSaveState();
 
   React.useEffect(() => {
-    api
-      .modelSettings()
-      .then((s) => {
-        setSettings(s);
-        setProvider(s.provider);
-        setModel(s.model);
-      })
-      .catch((err) => setLoadError(errorMessage(err)));
-  }, []);
+    if (settings) {
+      setProvider(settings.provider);
+      setModel(settings.model);
+    }
+  }, [settings]);
 
   if (!settings) {
-    return loadError ? <ErrorBanner>{loadError}</ErrorBanner> : <LoadingRow />;
+    return loadError ? <ErrorBanner>{errorMessage(loadError)}</ErrorBanner> : <LoadingRow />;
   }
 
   // Only offer models from providers you're connected to (but always keep the
@@ -462,7 +464,7 @@ function ModelPicker({
     if (!nextModel) return;
     await run(async () => {
       const next = await api.setModel(nextProvider, nextModel);
-      setSettings(next);
+      queryClient.setQueryData(["llm", "model"], next);
       await onSaved();
     });
   };
@@ -476,7 +478,7 @@ function ModelPicker({
             id="settings-provider"
             value={provider}
             onChange={(value) =>
-              void persist(value, usable.find((c) => c.id === value)?.models[0] ?? "")
+              void persist(value, usable.find((c) => c.id === value)?.models[0]?.id ?? "")
             }
             options={usable.map((c) => ({ value: c.id, label: c.name }))}
           />
@@ -487,7 +489,7 @@ function ModelPicker({
             id="settings-model"
             value={model}
             onChange={(value) => void persist(provider, value)}
-            options={(activeCatalog?.models ?? []).map((m) => ({ value: m, label: m }))}
+            options={(activeCatalog?.models ?? []).map((m) => ({ value: m.id, label: m.name }))}
             searchable
           />
         </div>

@@ -1,6 +1,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import type { LlmProviderInfo, ModelSettings } from "@marlen/shared";
+import type { LlmProviderInfo, ModelSettings, ThinkingLevel } from "@marlen/shared";
 import { env } from "../../core/env.js";
 import { badRequest } from "../../core/errors.js";
 import { moduleLogger } from "../../core/logger.js";
@@ -24,6 +24,17 @@ export async function setActiveModelIds(provider: string, model: string): Promis
   }
   await setSetting("llm.provider", provider);
   await setSetting("llm.model", model);
+}
+
+const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "medium", "high"];
+
+export async function getThinkingLevel(): Promise<ThinkingLevel> {
+  const stored = await getSetting("llm.thinkingLevel");
+  return THINKING_LEVELS.find((level) => level === stored) ?? "medium";
+}
+
+export async function setThinkingLevel(level: ThinkingLevel): Promise<void> {
+  await setSetting("llm.thinkingLevel", level);
 }
 
 export async function resolveActiveModel(): Promise<Model<Api>> {
@@ -133,10 +144,12 @@ export async function getModelSettings(): Promise<ModelSettings> {
   return {
     provider,
     model,
+    reasoning: modelRegistry.getModel(provider, model)?.reasoning ?? false,
+    thinkingLevel: await getThinkingLevel(),
     catalog: modelRegistry.getProviders().map((p) => ({
       id: p.id,
       name: p.name,
-      models: p.getModels().map((m) => m.id),
+      models: p.getModels().map((m) => ({ id: m.id, name: m.name })),
     })),
   };
 }

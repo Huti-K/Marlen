@@ -1,5 +1,7 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
+import type { LlmContextResponse, LlmUsageResponse } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
+import { estimateContextUsage } from "../agent/compaction.js";
 import {
   cancelLogin,
   getLoginStatus,
@@ -13,12 +15,18 @@ import {
   listProviders,
   saveApiKey,
   setActiveModelIds,
+  setThinkingLevel,
 } from "../agent/llm/registry.js";
+import { fetchLlmUsage } from "../agent/llm/usage.js";
 import { resetSessions } from "../agent/sessionCache.js";
 import { badRequest, conflict } from "../core/errors.js";
 import { errorMessage } from "../core/utils/util.js";
 
 const modelBody = Type.Object({ provider: Type.String(), model: Type.String() });
+
+const thinkingBody = Type.Object({
+  level: Type.Union([Type.Literal("off"), Type.Literal("medium"), Type.Literal("high")]),
+});
 
 const providerIdBody = Type.Object({ providerId: Type.String() });
 
@@ -43,6 +51,26 @@ export const llmRoutes: FastifyPluginAsyncTypebox = async (app) => {
     await resetSessions();
     return getModelSettings();
   });
+
+  app.put("/api/llm/thinking", { schema: { body: thinkingBody } }, async (req) => {
+    await setThinkingLevel(req.body.level);
+    // Existing in-memory agents carry the old level in their state; drop them.
+    await resetSessions();
+    return getModelSettings();
+  });
+
+  app.get(
+    "/api/llm/usage",
+    async (): Promise<LlmUsageResponse> => ({ usages: await fetchLlmUsage() }),
+  );
+
+  app.get(
+    "/api/llm/context",
+    { schema: { querystring: Type.Object({ conversation: Type.String() }) } },
+    async (req): Promise<LlmContextResponse> => ({
+      context: await estimateContextUsage(req.query.conversation),
+    }),
+  );
 
   app.get("/api/llm/login/status", async () => getLoginStatus());
 

@@ -201,10 +201,11 @@ Floating things stack in a fixed order. Pick the existing rung, don't invent one
 | `z-10`/`z-20` | Sticky headers and overlays inside a panel |
 | `z-40` | Chrome scrim, splitter |
 | `z-50` | App chrome (sidebar drawer), anchored panels (select, date picker) |
-| `z-[100]` | Cursor tooltip |
 | `z-[110]` | Modal scrim |
 | `z-[120]` | Modal panel (dialog, palette) |
 | `z-[130]` | Anchored panel opened above a modal |
+| `z-[140]` | Toasts (overrides sonner's own z-index) |
+| `z-[150]` | Cursor tooltip — the top rung; non-interactive, so nothing may sit above it |
 
 Everything modal shares the `.scrim` backdrop: a light dim plus a **2px** blur —
 the page stays readable through it, never frosted. Zones inside a floating panel

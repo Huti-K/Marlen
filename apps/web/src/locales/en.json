@@ -74,6 +74,7 @@
     "notFound": "That couldn't be found. It may have been removed.",
     "forbidden": "You don't have permission to do that.",
     "request": "That didn't work. Please try again.",
+    "chatStream": "The connection to the assistant was interrupted. Please try again.",
     "openSettings": "Open settings"
   },
   "chat": {
@@ -225,6 +226,26 @@
       "openInBrowser": "Open in browser",
       "save": "Save to library",
       "saved": "Saved “{{name}}” to your library."
+    },
+    "model": {
+      "title": "Model",
+      "thinkingTitle": "Thinking",
+      "fast": "Fast",
+      "normal": "Normal",
+      "thorough": "Thorough",
+      "fastHint": "Answers right away",
+      "normalHint": "Thinks briefly for better answers",
+      "thoroughHint": "Takes its time on hard questions",
+      "window5h": "5-hour window",
+      "windowWeek": "This week",
+      "windowMonth": "This month",
+      "left": "{{pct}}% left",
+      "resets": "Resets {{time}}",
+      "noProviders": "Sign in to an AI in Settings first.",
+      "used": "{{pct}}% used",
+      "contextTitle": "Chat context",
+      "contextTokens": "≈{{used}}k of {{total}}k tokens",
+      "buttonLabel": "AI model and usage"
     }
   },
   "search": {

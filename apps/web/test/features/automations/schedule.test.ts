@@ -1,4 +1,3 @@
-import type { useTranslation } from "react-i18next";
 import { describe, expect, it } from "vitest";
 import {
   buildCron,
@@ -8,7 +7,7 @@ import {
 } from "@/features/automations/schedule";
 
 /** Key-echoing stub — these tests assert which label key a schedule resolves to. */
-const t = ((key: string) => key) as ReturnType<typeof useTranslation>["t"];
+const t = (key: string) => key;
 
 describe("manual-only schedules", () => {
   it("buildCron emits the empty schedule for the manual frequency", () => {

@@ -84,7 +84,11 @@ export function SignatureEditor({ accountId }: { accountId: string }) {
 
   // The loaded array is the merge baseline for the save; saving is disabled
   // until it arrives, so a write can never wipe other accounts' signatures.
-  const query = useQuery({ queryKey: SIGNATURES_QUERY_KEY, queryFn: api.accountSignatures });
+  const query = useQuery({
+    queryKey: SIGNATURES_QUERY_KEY,
+    queryFn: api.accountSignatures,
+    meta: { suppressErrorToast: true },
+  });
   const signatures = query.data?.signatures;
 
   // Seed the editor once when the stored set first arrives; later signature

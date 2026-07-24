@@ -33,7 +33,7 @@ async function ensureActiveModel(providers: LlmProviderInfo[]): Promise<void> {
     for (const p of authed) {
       const [first] = settings.catalog.find((c) => c.id === p.id)?.models ?? [];
       if (first) {
-        await api.setModel(p.id, first);
+        await api.setModel(p.id, first.id);
         return;
       }
     }

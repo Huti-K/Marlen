@@ -1,4 +1,9 @@
-import type { useTranslation } from "react-i18next";
+import type { ParseKeys } from "i18next";
+
+/** Narrowed translate signature: the full generic TFunction type blows TS's
+ *  instantiation depth as the resource files grow, and this helper only ever
+ *  interpolates plain strings. */
+type Translate = (key: ParseKeys, options?: Record<string, string>) => string;
 
 /**
  * Plain-language schedule presets over cron. The server keeps storing cron
@@ -121,11 +126,7 @@ function monthDayLabel(month: number, day: number, locale: string): string {
 }
 
 /** "Weekdays · 08:00"-style label; null when the cron isn't picker-shaped. */
-export function scheduleLabel(
-  schedule: string,
-  t: ReturnType<typeof useTranslation>["t"],
-  locale: string,
-): string | null {
+export function scheduleLabel(schedule: string, t: Translate, locale: string): string | null {
   const preset = parseCron(schedule);
   if (!preset) return null;
   switch (preset.frequency) {

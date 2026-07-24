@@ -4,8 +4,12 @@ import {
   serializeConversation,
 } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
+import type { LlmContextUsage } from "@marlen/shared";
 import { moduleLogger, type TurnLogger } from "../core/logger.js";
+import { loadHistory } from "./history.js";
+import { resolveActiveModel } from "./llm/registry.js";
 import { runOneShot } from "./oneShot.js";
+import { buildSystemPrompt } from "./prompt.js";
 import { prompts } from "./prompts.js";
 
 const defaultLog = moduleLogger("compaction");
@@ -35,6 +39,27 @@ function estimateStateTokens(systemPrompt: string, messages: AgentMessage[]): nu
   let total = Math.ceil(systemPrompt.length / 4);
   for (const message of messages) total += estimateTokens(message);
   return total;
+}
+
+/**
+ * Context fullness for one conversation, by the same estimate the compaction
+ * trigger uses. Null when no model is configured or it reports no window.
+ */
+export async function estimateContextUsage(
+  conversationId: string,
+): Promise<LlmContextUsage | null> {
+  const model = await resolveActiveModel().catch(() => null);
+  if (!model?.contextWindow) return null;
+  const [systemPrompt, messages] = await Promise.all([
+    buildSystemPrompt(),
+    loadHistory(conversationId),
+  ]);
+  const tokens = estimateStateTokens(systemPrompt, messages);
+  return {
+    tokens,
+    contextWindow: model.contextWindow,
+    usedPct: Math.min(100, Math.round((tokens / model.contextWindow) * 100)),
+  };
 }
 
 /**
