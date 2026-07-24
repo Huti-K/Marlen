@@ -79,8 +79,12 @@ Automations / Automatisierungen
   recent runs.
 - Marlen also suggests automations from patterns in recent chats; suggestions are reviewed on
   the Automations page (add or dismiss).
-- Unattended runs can read, search and create drafts, but never send, delete or change mail,
-  regardless of grants. Anything needing a human lands as a draft or a to-do.
+- Unattended runs read, search and draft freely. They send only when the run's own instruction
+  explicitly says to send AND that account is send-armed in Settings (WhatsApp uses its own
+  "Auto-send / Automatisch senden" grant); otherwise what they draft waits for approval on Home.
+  The send always comes from the standing instruction, never from an incoming message's content,
+  so a malicious email can't trigger one. They still never delete or reorganize mail, and never
+  change the CRM beyond creating records; anything else lands as a draft or a to-do.
 
 Leads (with onOffice connected)
 - Every prospect the assistant tracks: filed automatically from email inquiries or added by

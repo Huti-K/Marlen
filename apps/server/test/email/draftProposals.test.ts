@@ -58,18 +58,26 @@ beforeAll(async () => {
 });
 
 /** Run the create-draft tool as one session profile would. */
-async function runCreateTool(interactive: boolean) {
+async function runCreateTool(
+  interactive: boolean,
+  opts: { sendArmed?: boolean; send?: boolean } = {},
+) {
   const createTool = draftTools.buildDraftTool(
     account,
     "fakemail-create-draft",
     provider,
-    false,
+    opts.sendArmed ?? false,
     false,
     interactive,
   );
   const result = await createTool.execute(
     "call-1",
-    { to: ["someone@example.com"], subject: "Termin", body: "Passt Dienstag?" },
+    {
+      to: ["someone@example.com"],
+      subject: "Termin",
+      body: "Passt Dienstag?",
+      ...(opts.send !== undefined ? { send: opts.send } : {}),
+    },
     undefined as never,
     undefined,
   );
@@ -179,5 +187,28 @@ describe("draft proposals", () => {
       status: "sent",
       sentMessageId: "sm-1",
     });
+  });
+
+  it("an unattended send=true dispatches when the account is send-armed", async () => {
+    const sentBefore = sentDraftIds.length;
+    const { text, card } = await runCreateTool(false, { sendArmed: true, send: true });
+    const draftId = card?.draft?.draftId as string;
+    expect(draftId).toBeTruthy();
+    // The real draft was created and then actually sent through the provider.
+    expect(sentDraftIds).toHaveLength(sentBefore + 1);
+    expect(sentDraftIds.at(-1)).toBe(draftId);
+    expect(text).toContain("Sent from");
+    expect(await draftStore.getDraftStatus(account.id, draftId)).toMatchObject({ status: "sent" });
+  });
+
+  it("an unattended send=true stays a draft when the account is not send-armed", async () => {
+    const sentBefore = sentDraftIds.length;
+    const { text, card } = await runCreateTool(false, { sendArmed: false, send: true });
+    const draftId = card?.draft?.draftId as string;
+    expect(draftId).toBeTruthy();
+    // Nothing dispatched: the grant is the gate, not the send=true flag alone.
+    expect(sentDraftIds).toHaveLength(sentBefore);
+    expect(text).toContain("isn't send-armed");
+    expect(await draftStore.getDraftStatus(account.id, draftId)).toMatchObject({ status: "open" });
   });
 });
