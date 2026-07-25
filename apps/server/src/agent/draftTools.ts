@@ -359,7 +359,7 @@ export function buildDraftTool(
 
       // Autosend only on an explicit send=true AND a stored send grant, so a
       // prompt-injected email can't dispatch: a human armed the grant, and the
-      // grant is read here regardless of the unattended providerWrites gate.
+      // send has to be asked for.
       let sent = false;
       let sendNote = "";
       if (send) {

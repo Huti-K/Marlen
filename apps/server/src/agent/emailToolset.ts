@@ -19,51 +19,13 @@ import {
 } from "../integrations/pipedream/mcpSession.js";
 import { buildListAttachmentsTool, buildSaveAttachmentTool } from "./attachmentTool.js";
 import { buildDraftTool, buildUpdateDraftTool } from "./draftTools.js";
+import { type ActionGrants, NO_GRANTS, registeredCategory, sessionGrants } from "./toolAccess.js";
 
 const log = moduleLogger("emailToolset");
 
 /** Tool names satisfy the LLM providers' [a-zA-Z0-9_-]{1,128} constraint. */
 function sanitizeToolName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128);
-}
-
-/**
- * Which MCP tools get registered at all, decided per tool by the verb its
- * action name starts with (Pipedream names every tool `app-verb-object`).
- * Reads (find/get/list/search/…) are ALWAYS registered, regardless of any
- * grant. Every other verb needs the matching per-account grant: send verbs
- * need `send`, delete verbs need `delete`, and every remaining verb (create,
- * update, move, label, and any verb this policy has never seen) needs `write`,
- * so an unclassified verb always requires an explicit grant instead of
- * slipping through. `providerWrites: false` forces every grant off (unattended
- * runs). Pipedream's own create-draft is kept even on a read-only account
- * (drafts never dispatch mail) for apps without a DraftProvider. Download
- * verbs are never registered: raw attachment bytes would land base64 in model
- * context; attachments go through the local list/save-attachment tools.
- */
-const READ_VERBS = /^(find|get|list|search|fetch|retrieve)(-|$)/;
-const SEND_VERBS = /^(send|reply|forward|publish)(-|$)/;
-const DELETE_VERBS = /^(delete|remove|trash|destroy|purge)(-|$)/;
-const EXCLUDED_VERBS = /^download(-|$)/;
-const DRAFT_ONLY = /^create-draft(-|$)/;
-
-type ActionGrants = Omit<AccountPermissions, "accountId">;
-
-const NO_GRANTS: ActionGrants = { write: false, send: false, delete: false };
-
-type ActionCategory = "excluded" | "read" | "draft" | "send" | "delete" | "write";
-
-function classifyAction(action: string): ActionCategory {
-  if (EXCLUDED_VERBS.test(action)) return "excluded";
-  if (DRAFT_ONLY.test(action)) return "draft";
-  if (READ_VERBS.test(action)) return "read";
-  if (SEND_VERBS.test(action)) return "send";
-  if (DELETE_VERBS.test(action)) return "delete";
-  return "write";
-}
-
-function actionOf(mcpToolName: string): string {
-  return mcpToolName.replace(/^[a-z0-9_]+-/, "");
 }
 
 function accountSlug(account: ConnectedAccount): string {
@@ -157,14 +119,12 @@ function buildAccountTools(
     // under the same slug for every app with a DraftProvider, so skip
     // Pipedream's version wherever ours takes over.
     if (getDraftProvider(account.app) && mcpTool.name === `${account.app}-create-draft`) continue;
-    const category = classifyAction(actionOf(mcpTool.name));
-    const isRead = category === "read";
-    const allowed =
-      isRead || category === "draft" || (category !== "excluded" && granted[category]);
-    if (!allowed) {
+    const category = registeredCategory(mcpTool.name, granted);
+    if (!category) {
       skipped.push(mcpTool.name);
       continue;
     }
+    const isRead = category === "read";
     let name = sanitizeToolName(`${mcpTool.name}${suffix}`);
     if (seenNames.has(name)) name = sanitizeToolName(`${mcpTool.name}__${account.id}`);
     if (seenNames.has(name)) continue;
@@ -221,19 +181,11 @@ export interface EmailToolset {
 
 export interface LoadEmailToolsOptions {
   /**
-   * Whether any account's permission grants (write/send/delete) can arm MCP
-   * tools beyond reads and drafts. Defaults to true. Pass false to gate every
-   * account like a read-only one, no matter which grants are stored: reads and
-   * drafts are unaffected (unattended runs still read mail, and a draft never
-   * dispatches). Used for unattended automation runs, where a prompt-injected
-   * email can't trigger a send.
-   */
-  providerWrites?: boolean;
-  /**
-   * Whether a human is reviewing this session live. Defaults to true.
-   * Interactive create-draft proposes (a card the user keeps) instead of
-   * writing a mailbox draft; unattended runs write real drafts, since nobody
-   * is there to keep a proposal.
+   * Whether a human is reviewing this session live. Defaults to true. It
+   * decides two things: which grants apply (sessionGrants), and how
+   * create-draft behaves — interactive create-draft proposes (a card the user
+   * keeps) instead of writing a mailbox draft, while unattended runs write
+   * real drafts, since nobody is there to keep a proposal.
    */
   interactive?: boolean;
 }
@@ -247,7 +199,6 @@ const EMPTY_TOOLSET: EmailToolset = { tools: [], readTools: [], close: async () 
  * fail to connect are skipped; the agent works with what's left.
  */
 export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promise<EmailToolset> {
-  const providerWrites = options.providerWrites ?? true;
   const interactive = options.interactive ?? true;
   const config = await getConnectConfig();
   if (!config) return EMPTY_TOOLSET;
@@ -272,17 +223,10 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
   }
   if (accounts.length === 0) return EMPTY_TOOLSET;
 
-  // Empty when providerWrites is false: every account then resolves to
-  // NO_GRANTS below like a read-only account, regardless of stored grants.
   const grantsById = new Map(
-    providerWrites ? permissions.map((p) => [p.accountId, p] as const) : [],
+    permissions.map((p) => [p.accountId, sessionGrants(p, interactive)] as const),
   );
   const grantsFor = (accountId: string): ActionGrants => grantsById.get(accountId) ?? NO_GRANTS;
-
-  // The real send grant, independent of providerWrites: an armed account can
-  // autosend a create-draft even from an unattended run, gated by the tool's
-  // explicit send=true. providerWrites only governs the MCP verb tools.
-  const sendArmedById = new Map(permissions.map((p) => [p.accountId, p.send] as const));
 
   // Signature presence only steers the tool descriptions; the html itself is
   // re-read at call time. Signature edits reset sessions, keeping these fresh.
@@ -369,7 +313,7 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
             account,
             name,
             draftProvider,
-            sendArmedById.get(account.id) ?? false,
+            grantsFor(account.id).send,
             signedIds.has(account.id),
             interactive,
           ),

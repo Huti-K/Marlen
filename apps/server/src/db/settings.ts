@@ -196,9 +196,9 @@ export async function setOnOfficeWriteAccess(enabled: boolean): Promise<void> {
 const WHATSAPP_SEND_ACCESS_KEY = "whatsapp.sendAccess";
 
 /**
- * Whether interactive chat sessions may use whatsapp_send_message. Off by
- * default: a WhatsApp message dispatches immediately with no draft stage.
- * Unattended runs never get the send tool regardless.
+ * Whether whatsapp_send_message may dispatch instead of drafting, in chat and
+ * in unattended runs alike. Off by default: a sent WhatsApp message skips the
+ * draft stage entirely, so nobody sees it before the recipient does.
  */
 export async function getWhatsAppSendAccess(): Promise<boolean> {
   return (await getSetting(WHATSAPP_SEND_ACCESS_KEY)) === "true";

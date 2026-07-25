@@ -139,10 +139,7 @@ export async function getOrCreateSession(conversationId: string): Promise<AgentS
 
   const creation = (async (): Promise<AgentSession> => {
     const caps = await sessionCapabilities(true);
-    const toolsetPromise = loadEmailTools({
-      providerWrites: caps.providerWrites,
-      interactive: caps.interactive,
-    });
+    const toolsetPromise = loadEmailTools({ interactive: caps.interactive });
     try {
       const [toolset, history] = await Promise.all([toolsetPromise, loadHistory(conversationId)]);
       const session = createAgentSession(
@@ -195,15 +192,12 @@ export async function disposeSession(conversationId: string): Promise<void> {
 /**
  * Create a throwaway session for one automation run (the run id is its
  * conversation id). No human reviews a scheduled run's actions, so the
- * unattended profile withholds every provider write tool while leaving draft
- * tools untouched (providerWrites, see loadEmailTools).
+ * unattended profile withholds the create/change/delete tools while leaving
+ * reads, drafts and granted sending intact (sessionGrants in toolAccess).
  */
 export async function createEphemeralSession(conversationId: string): Promise<AgentSession> {
   const caps = await sessionCapabilities(false);
-  const toolset = await loadEmailTools({
-    providerWrites: caps.providerWrites,
-    interactive: caps.interactive,
-  });
+  const toolset = await loadEmailTools({ interactive: caps.interactive });
   try {
     return createAgentSession(
       await buildAgent(toolset, [], caps, conversationId),

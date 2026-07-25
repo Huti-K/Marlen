@@ -1,6 +1,7 @@
 import type { ConnectedAccount } from "@marlen/shared";
 import { getAccountPermissions } from "../db/settings.js";
 import { listAccounts } from "../integrations/pipedream/connect.js";
+import { sessionGrants } from "./toolAccess.js";
 
 export function findAccount(
   accounts: ConnectedAccount[],
@@ -54,8 +55,15 @@ export async function fetchAccountNameMap(): Promise<Map<string, string>> {
   }
 }
 
-/** Fail-open: a failed account listing (a Pipedream outage, not "not set up") returns "". */
-export async function buildAccountsContext(): Promise<string> {
+/**
+ * The connected-account list the system prompt ends with, each account's
+ * grants as they hold in THIS session (sessionGrants), so the list never
+ * promises a tool the session doesn't have.
+ *
+ * Fail-open: a failed account listing (a Pipedream outage, not "not set up")
+ * returns "".
+ */
+export async function buildAccountsContext(interactive: boolean): Promise<string> {
   let accounts: ConnectedAccount[];
   try {
     accounts = await listAccounts();
@@ -69,7 +77,9 @@ export async function buildAccountsContext(): Promise<string> {
       `Settings → Connect email.`
     );
   }
-  const permissions = new Map((await getAccountPermissions()).map((p) => [p.accountId, p]));
+  const permissions = new Map(
+    (await getAccountPermissions()).map((p) => [p.accountId, sessionGrants(p, interactive)]),
+  );
   const lines = accounts.map((account) => {
     const app = account.appName ?? account.app;
     const p = permissions.get(account.id);

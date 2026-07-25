@@ -16,10 +16,11 @@ import { isWhatsAppLinked } from "../integrations/whatsapp/session.js";
 export interface SessionCapabilities {
   /**
    * False for unattended scheduled runs: no human reviews an action before it
-   * happens, so write surfaces and standing-instruction tools are withheld.
+   * happens, so create/change/delete surfaces and standing-instruction tools
+   * are withheld. Sending is not one of them: an armed send grant holds in
+   * every session (sessionGrants in toolAccess.ts).
    */
   interactive: boolean;
-  providerWrites: boolean;
   onOffice: {
     configured: boolean;
     /** The CRM modify/delete/send surface is armed; never for unattended runs. */
@@ -42,7 +43,6 @@ export async function sessionCapabilities(interactive: boolean): Promise<Session
   const whatsappLinked = whatsappMirror || (await getWhatsAppBusinessAccount()) !== null;
   return {
     interactive,
-    providerWrites: interactive,
     onOffice: {
       configured,
       writes: configured && interactive && (await getOnOfficeWriteAccess()),

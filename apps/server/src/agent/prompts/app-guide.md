@@ -65,7 +65,8 @@ Outbound flow (email and WhatsApp)
   also exist in the real mailbox ("Open in mailbox / Im Postfach öffnen").
 - Nothing sends on its own. Sending by the assistant needs the account's "Send / Senden" grant
   armed in Settings AND an explicit instruction to send; WhatsApp has its own "Auto-send /
-  Automatisch senden" grant, off by default.
+  Automatisch senden" grant, off by default. The grant counts for every connected account, mail
+  or any other app, and it holds in chat and in automations alike.
 - Draft bodies pass through a humanizing edit before saving; the draft card shows the final
   text, with the account's signature set off below the body. Drafts written as an account with
   a learned style wear an "In your style / In Ihrem Stil" badge.
@@ -79,12 +80,13 @@ Automations / Automatisierungen
   recent runs.
 - Marlen also suggests automations from patterns in recent chats; suggestions are reviewed on
   the Automations page (add or dismiss).
-- Unattended runs read, search and draft freely. They send only when the run's own instruction
-  explicitly says to send AND that account is send-armed in Settings (WhatsApp uses its own
-  "Auto-send / Automatisch senden" grant); otherwise what they draft waits for approval on Home.
-  The send always comes from the standing instruction, never from an incoming message's content,
-  so a malicious email can't trigger one. They still never delete or reorganize mail, and never
-  change the CRM beyond creating records; anything else lands as a draft or a to-do.
+- Unattended runs read, search and draft freely, and they send from any account whose "Send /
+  Senden" grant is armed (WhatsApp: its own "Auto-send / Automatisch senden" grant), just as in
+  chat. Without the grant what they draft waits for approval on Home. The send always comes from
+  the run's own standing instruction, never from an incoming message's content, so a malicious
+  email can't trigger one. Creating, changing and deleting stay off in unattended runs however
+  they are granted (no labelling, moving or deleting mail, no CRM changes beyond new records);
+  anything needing one lands as a to-do.
 
 Leads (with onOffice connected)
 - Every prospect the assistant tracks: filed automatically from email inquiries or added by
