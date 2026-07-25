@@ -13,6 +13,24 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.2",
+    date: "2026-07-25",
+    notes: {
+      en: [
+        "Dictate instead of typing: the microphone next to the send box records your message, shows the sound as a wave across the composer while you speak, and puts what you said into the text field as editable text. Nothing is ever sent on its own. Escape discards a recording.",
+        "Dictation needs a key for a speech service. The first time you press the microphone, Marlen asks for one and links straight to where you get it, with Groq marked as the free option.",
+        "An API key that was copied with extra formatting is now refused right away, with a note to copy it again, instead of failing later with a technical error.",
+        "The permission to send now counts the same way everywhere: for every connected account, in chat and in scheduled automations alike. Creating, changing and deleting stay reserved for when you are there, whatever is granted.",
+      ],
+      de: [
+        "Diktieren statt tippen: Das Mikrofon neben dem Senden-Feld nimmt Ihre Nachricht auf, zeigt den Ton beim Sprechen als Welle über dem Eingabefeld und setzt das Gesagte als bearbeitbaren Text ins Feld. Gesendet wird nie von allein. Esc verwirft eine Aufnahme.",
+        "Zum Diktieren braucht es einen Schlüssel für einen Sprachdienst. Beim ersten Druck auf das Mikrofon fragt Marlen danach und verlinkt direkt dorthin, wo Sie ihn bekommen, Groq ist als kostenlose Möglichkeit gekennzeichnet.",
+        "Ein API-Schlüssel, der mit zusätzlicher Formatierung kopiert wurde, wird jetzt sofort abgelehnt, mit dem Hinweis, ihn nochmal zu kopieren, statt später mit einem technischen Fehler zu scheitern.",
+        "Die Berechtigung zum Senden gilt jetzt überall gleich: für jedes verbundene Konto, im Chat wie in geplanten Automatisierungen. Anlegen, Ändern und Löschen bleiben Ihrer Anwesenheit vorbehalten, unabhängig davon, was erlaubt ist.",
+      ],
+    },
+  },
+  {
     version: "0.4.1",
     date: "2026-07-24",
     notes: {
