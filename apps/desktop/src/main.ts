@@ -7,7 +7,9 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  session,
   shell,
+  systemPreferences,
   type UtilityProcess,
   utilityProcess,
   type WebContents,
@@ -158,6 +160,26 @@ function installLinkPolicy(contents: WebContents): void {
   });
 }
 
+/**
+ * The window only ever shows the local app, so a permission request is always
+ * the app's own and is granted. On macOS a microphone request (chat dictation)
+ * additionally clears the system's own consent prompt first: without it
+ * Chromium hands the page a silent input rather than the microphone.
+ */
+function installPermissionPolicy(): void {
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
+    const wantsMicrophone =
+      permission === "media" &&
+      "mediaTypes" in details &&
+      (details.mediaTypes ?? []).includes("audio");
+    if (!wantsMicrophone || process.platform !== "darwin") {
+      callback(true);
+      return;
+    }
+    void systemPreferences.askForMediaAccess("microphone").then(callback);
+  });
+}
+
 /** With `booting`, the window opens on the inline splash spinner instead of the
  *  app; the caller swaps in the real URL once the server answers. */
 function createWindow(port: number, booting = false): BrowserWindow {
@@ -277,6 +299,7 @@ if (!hasLock) {
 
   void app.whenReady().then(async () => {
     installAppMenu();
+    installPermissionPolicy();
     try {
       const port = await findFreePort();
       serverPort = port;

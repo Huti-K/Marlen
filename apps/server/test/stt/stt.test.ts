@@ -28,6 +28,17 @@ afterAll(async () => {
 });
 
 describe("voice input", () => {
+  it("reports no connected provider and offers the ones a key can be added for", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/stt" });
+    expect(response.statusCode).toBe(200);
+    const status = response.json();
+    expect(status.providerId).toBeNull();
+    expect(status.options.map((o: { id: string }) => o.id)).toContain("groq");
+    expect(status.options.every((o: { keyUrl: string }) => o.keyUrl.startsWith("https://"))).toBe(
+      true,
+    );
+  });
+
   it("refuses transcription with a clear message when no STT provider is connected", async () => {
     const response = await app.inject({
       method: "POST",

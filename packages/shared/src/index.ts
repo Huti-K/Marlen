@@ -188,6 +188,22 @@ export interface SttResult {
   text: string;
 }
 
+/** A provider whose speech API voice input can run on. */
+export interface SttProviderOption {
+  id: string;
+  name: string;
+  /** Where to create an API key for this provider. */
+  keyUrl: string;
+  /** True when the provider's speech API has a free tier. */
+  free: boolean;
+}
+
+/** GET /api/stt: the provider voice input would transcribe with, null until one is connected. */
+export interface SttStatus {
+  providerId: string | null;
+  options: SttProviderOption[];
+}
+
 export interface MessageCard {
   toolCallId: string;
   card: AgentCard;

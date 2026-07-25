@@ -39,8 +39,13 @@ Home / Start
   retry for failed runs, and open-in-chat.
 
 Chat
-- The composer sends on Enter (Shift+Enter for a new line). There is no file-upload control and
-  no voice input; files reach the assistant via the Knowledge page or the library folder.
+- The composer sends on Enter (Shift+Enter for a new line). There is no file-upload control;
+  files reach the assistant via the Knowledge page or the library folder.
+- A microphone next to the send button dictates: while recording, a waveform fills the composer
+  with the elapsed time, a discard button and a transcribe button (Escape discards). The
+  transcript lands in the composer as editable text and is never sent on its own. Dictation
+  needs an OpenAI, Groq or Mistral API key (Groq's speech API has a free tier); without one the
+  microphone asks for a key instead of recording.
 - A ring next to the send button opens the model control: it switches provider and model, sets
   thinking depth (Fast / Normal / Thorough), and shows how much of each subscription's rate
   windows (5-hour, weekly) and of this chat's context is used. Full sign-in stays in Settings.

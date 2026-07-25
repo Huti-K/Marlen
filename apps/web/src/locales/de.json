@@ -120,6 +120,18 @@
     "refs": {
       "remove": "{{label}} entfernen"
     },
+    "voice": {
+      "start": "Nachricht diktieren",
+      "stop": "Aufnahme umwandeln",
+      "discard": "Aufnahme verwerfen",
+      "transcribing": "Wird umgewandelt…",
+      "micBlocked": "Das Mikrofon ist blockiert. Erlauben Sie den Zugriff für Marlen in den Systemeinstellungen und versuchen Sie es erneut.",
+      "setupTitle": "Diktieren braucht einen Sprachanbieter",
+      "setupBody": "Hinterlegen Sie einen API-Schlüssel für einen dieser Anbieter, dann landet Ihre Aufnahme als Text im Eingabefeld. Die Sprach-API von Groq hat ein kostenloses Kontingent.",
+      "freeTier": "Kostenlos",
+      "getKey": "API-Schlüssel für {{provider}} holen",
+      "addKey": "Schlüssel hinzufügen"
+    },
     "tool": {
       "failed": "fehlgeschlagen",
       "parameters": "Parameter",
@@ -339,11 +351,11 @@
       },
       "send": {
         "title": "Senden",
-        "on": "Darf Nachrichten aus diesem Konto senden, wenn Sie es sagen.",
+        "on": "Darf Nachrichten aus diesem Konto senden, wenn Sie oder eine Automatisierung es verlangen.",
         "off": "Kann aus diesem Konto nichts senden.",
         "offEmail": "Sendet nichts. Ausgehende E-Mails bleiben Entwürfe.",
         "confirmTitle": "Der KI das Senden als {{account}} erlauben?",
-        "confirmBody": "Der Assistent sendet dann Nachrichten als {{account}}, wenn Sie es sagen. Jederzeit abschaltbar.",
+        "confirmBody": "Der Assistent sendet dann Nachrichten als {{account}}, wenn Sie es im Chat sagen, und auch wenn eine Automatisierung es anweist, ohne Ihre Freigabe abzuwarten. Jederzeit abschaltbar.",
         "confirmCta": "Senden erlauben"
       },
       "delete": {

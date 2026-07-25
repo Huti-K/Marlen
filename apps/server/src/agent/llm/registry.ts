@@ -4,6 +4,7 @@ import type { LlmProviderInfo, ModelSettings, ThinkingLevel } from "@marlen/shar
 import { env } from "../../core/env.js";
 import { badRequest } from "../../core/errors.js";
 import { moduleLogger } from "../../core/logger.js";
+import { isHeaderSafe } from "../../core/utils/util.js";
 import { getSetting, setSetting } from "../../db/settings.js";
 import { credentialStore } from "./credentialStore.js";
 
@@ -157,6 +158,13 @@ export async function getModelSettings(): Promise<ModelSettings> {
 export async function saveApiKey(providerId: string, apiKey: string): Promise<void> {
   if (!modelRegistry.getProvider(providerId)) {
     throw badRequest(`Unknown provider "${providerId}"`);
+  }
+  // Every provider call sends this key as an Authorization header, so a paste
+  // that carried decoration in has to be caught here rather than at request time.
+  if (!isHeaderSafe(apiKey)) {
+    throw badRequest(
+      "That API key contains characters that cannot go in a request header, the copy picked up extra formatting. Copy the key again and paste only the key itself.",
+    );
   }
   await credentialStore.modify(providerId, async () => ({ type: "api_key", key: apiKey }));
 }

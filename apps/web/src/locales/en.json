@@ -120,6 +120,18 @@
     "refs": {
       "remove": "Remove {{label}}"
     },
+    "voice": {
+      "start": "Dictate a message",
+      "stop": "Transcribe the recording",
+      "discard": "Discard the recording",
+      "transcribing": "Transcribing…",
+      "micBlocked": "The microphone is blocked. Allow access for Marlen in your system settings, then try again.",
+      "setupTitle": "Dictation needs a speech provider",
+      "setupBody": "Add an API key for one of these and your recording is transcribed into the composer. Groq's speech API has a free tier.",
+      "freeTier": "Free tier",
+      "getKey": "Get a {{provider}} API key",
+      "addKey": "Add key"
+    },
     "tool": {
       "failed": "failed",
       "parameters": "Parameters",
@@ -339,11 +351,11 @@
       },
       "send": {
         "title": "Send",
-        "on": "May send messages from this account when you ask it to.",
+        "on": "May send messages from this account when you or one of your automations ask it to.",
         "off": "Cannot send anything from this account.",
         "offEmail": "Cannot send, outgoing email stays as drafts for your review.",
         "confirmTitle": "Allow the AI to send as {{account}}?",
-        "confirmBody": "Once on, the assistant can send messages as {{account}} when you ask it to. You can turn this off anytime.",
+        "confirmBody": "Once on, the assistant can send messages as {{account}} when you ask it to in chat, and when one of your automations tells it to, without waiting for your approval. You can turn this off anytime.",
         "confirmCta": "Allow sending"
       },
       "delete": {

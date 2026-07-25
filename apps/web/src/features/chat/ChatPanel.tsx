@@ -14,6 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { AgentAvatar } from "@/features/chat/AgentAvatar";
 import { RefChips } from "@/features/chat/composer/RefChips";
 import { useComposerRefs } from "@/features/chat/composer/useComposerRefs";
+import { VoiceInput } from "@/features/chat/composer/VoiceInput";
 import { onChatCommand } from "@/features/chat/controller";
 import { HistoryList } from "@/features/chat/HistoryList";
 import { ModelControl } from "@/features/chat/ModelControl";
@@ -382,6 +383,14 @@ export function ChatPanel({
             aria-busy={runs.busy}
           />
           <ModelControl conversationId={runs.conversationId} className="mb-1 shrink-0" />
+          {/* Dictation lands in the composer as text; sending stays a separate press. */}
+          <VoiceInput
+            className="mb-1 shrink-0"
+            onTranscript={(text) => {
+              setInput((current) => (current ? `${current.trimEnd()} ${text}` : text));
+              focusComposer();
+            }}
+          />
           <Button
             onClick={() => void send()}
             disabled={!input.trim()}

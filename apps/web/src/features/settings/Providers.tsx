@@ -200,7 +200,8 @@ function AddApiKey({
   );
 }
 
-function ApiKeyEditor({
+/** Key field for one provider, saved on Enter or blur. Also the chat voice-input setup dialog's editor. */
+export function ApiKeyEditor({
   providerId,
   onDone,
   onCancel,

@@ -44,6 +44,8 @@ import type {
   SearchResult,
   SeenState,
   Skill,
+  SttResult,
+  SttStatus,
   ThinkingLevel,
   Todo,
   TodoStatus,
@@ -325,6 +327,12 @@ export const api = {
   conversationMessages: (id: string) =>
     get<ChatMessage[]>(`/api/conversations/${encodeURIComponent(id)}/messages`),
   systemPrompt: () => get<{ prompt: string }>("/api/chat/system-prompt"),
+
+  sttStatus: () => get<SttStatus>("/api/stt"),
+  /** `audio` is the recording base64-encoded; `language` is an ISO-639-1 recognition hint. */
+  transcribe: (audio: string, mimeType: string, language: string) =>
+    http<SttResult>("POST", "/api/stt", { audio, mimeType, language }),
+
   renameConversation: (id: string, title: string) =>
     http<{ ok: boolean }>("PATCH", `/api/conversations/${encodeURIComponent(id)}`, { title }),
   // A string sets focus to that account (the server clears the thread part);
