@@ -292,7 +292,10 @@
     "statusConnecting": "Verbindet…",
     "statusOffline": "Getrennt",
     "unlink": "WhatsApp trennen",
-    "unlinkConfirm": "Dieses Gerät trennen und die lokal gespiegelten Chats löschen? Ihr WhatsApp-Konto und die Chats auf Ihrem Handy bleiben unberührt."
+    "unlinkConfirm": "Dieses Gerät trennen und die lokal gespiegelten Chats löschen? Ihr WhatsApp-Konto und die Chats auf Ihrem Handy bleiben unberührt.",
+    "businessDisconnect": "WhatsApp Business trennen",
+    "businessDisconnectConfirm": "Das WhatsApp-Business-Konto trennen? Nachrichten laufen dann nur noch über die persönliche Verknüpfung, und die Business-API steht dem Assistenten nicht mehr zur Verfügung.",
+    "businessIdle": "Nicht aktiv"
   },
   "onoffice": {
     "setupTitle": "onOffice verbinden",

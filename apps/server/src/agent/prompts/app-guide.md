@@ -117,6 +117,9 @@ Settings / Einstellungen (sections in order)
   personal link with chat mirror, or a Business account, send-only). Each account row has a
   color, a learned-writing-style badge (click to view/edit the directives), a gear for
   permissions, and disconnect.
+- Both WhatsApp transports get their own row when both exist, each with its own disconnect. The
+  personal link is the only one that sends once it is paired, and the Business row reads "Not in
+  use / Nicht aktiv" while that is the case.
 - Permissions are per account and per category — "Create & change / Anlegen & Ändern",
   "Send / Senden", "Delete / Löschen" — armed on the account's row behind a confirm; reading
   and drafting are always allowed. onOffice separately grants chat writes and whether

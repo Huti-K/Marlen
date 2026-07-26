@@ -292,7 +292,10 @@
     "statusConnecting": "Connecting…",
     "statusOffline": "Disconnected",
     "unlink": "Unlink WhatsApp",
-    "unlinkConfirm": "Unlink this device and delete the locally mirrored chats? Your WhatsApp account and the chats on your phone are not affected."
+    "unlinkConfirm": "Unlink this device and delete the locally mirrored chats? Your WhatsApp account and the chats on your phone are not affected.",
+    "businessDisconnect": "Disconnect WhatsApp Business",
+    "businessDisconnectConfirm": "Disconnect the WhatsApp Business account? Messages then go only over the personal link, and the Business API is no longer available to the assistant.",
+    "businessIdle": "Not in use"
   },
   "onoffice": {
     "setupTitle": "Connect onOffice",

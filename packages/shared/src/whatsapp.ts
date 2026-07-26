@@ -13,6 +13,7 @@ export interface WhatsAppStatus {
   pushName: string | null;
   sendAccess: boolean;
   /** A WhatsApp Business (Cloud API) account connected through Pipedream —
-   *  the send transport when no personal link exists. */
-  business: { connected: boolean; name: string | null };
+   *  the send transport when no personal link exists. `accountId` is the
+   *  Pipedream account, so the row can disconnect it. */
+  business: { connected: boolean; name: string | null; accountId: string | null };
 }

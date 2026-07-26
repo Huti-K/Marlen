@@ -15,7 +15,11 @@ async function statusPayload(): Promise<WhatsAppStatus> {
   return {
     ...getWhatsAppRuntimeStatus(),
     sendAccess: await getWhatsAppSendAccess(),
-    business: { connected: business !== null, name: business?.name ?? null },
+    business: {
+      connected: business !== null,
+      name: business?.name ?? null,
+      accountId: business?.id ?? null,
+    },
   };
 }
 

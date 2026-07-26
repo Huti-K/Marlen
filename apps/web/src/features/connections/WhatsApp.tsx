@@ -245,18 +245,40 @@ export function WhatsAppAccountRow({
 }
 
 /**
- * The messaging row for a Business-only setup (Cloud API account via
- * Pipedream, no personal link). Removal happens on the account's generic row;
- * this one carries the channel identity and the permissions editor.
+ * The messaging row for the WhatsApp Business (Cloud API) account connected
+ * through Pipedream. Shown whenever that account exists, personal link or not:
+ * it is the channel's own row, so disconnecting it belongs here rather than
+ * only on the generic account row further up the page. While the personal link
+ * is paired this account sends nothing, and the row says so.
  */
 export function WhatsAppBusinessRow({
   status,
   onTogglePermissions,
+  onDisconnected,
 }: {
   status: WhatsAppStatus;
   onTogglePermissions: () => void;
+  onDisconnected: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const [confirm, setConfirm] = React.useState(false);
+  const [removing, setRemoving] = React.useState(false);
+  const accountId = status.business.accountId;
+
+  const disconnect = async () => {
+    if (!accountId) return;
+    setRemoving(true);
+    try {
+      await api.deletePipedreamAccount(accountId);
+      await onDisconnected();
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setRemoving(false);
+      setConfirm(false);
+    }
+  };
+
   return (
     <ListRow className="relative">
       <div className="flex min-w-0 items-center gap-3">
@@ -269,7 +291,11 @@ export function WhatsAppBusinessRow({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <Badge variant="success">{t("whatsapp.businessBadge")}</Badge>
+        {/* The personal link is the only transport once paired, so this account
+            reads as present but idle rather than as a live channel. */}
+        <Badge variant={status.linked ? "muted" : "success"}>
+          {t(status.linked ? "whatsapp.businessIdle" : "whatsapp.businessBadge")}
+        </Badge>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -279,7 +305,27 @@ export function WhatsAppBusinessRow({
         >
           <Settings />
         </Button>
+        {accountId && (
+          <Button
+            variant="ghost-danger"
+            size="icon-sm"
+            onClick={() => setConfirm(true)}
+            aria-label={t("whatsapp.businessDisconnect")}
+            data-tooltip={t("whatsapp.businessDisconnect")}
+          >
+            <LogOut />
+          </Button>
+        )}
       </div>
+      <ConfirmDialog
+        open={confirm}
+        onOpenChange={setConfirm}
+        title={t("whatsapp.businessDisconnect")}
+        description={t("whatsapp.businessDisconnectConfirm")}
+        confirmLabel={t("whatsapp.businessDisconnect")}
+        busy={removing}
+        onConfirm={() => void disconnect()}
+      />
     </ListRow>
   );
 }

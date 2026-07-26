@@ -726,7 +726,10 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                   {t("connections.messagingHeading")}
                 </GroupLabel>
                 <div className="animate-in-up flex flex-col gap-1.5">
-                  {whatsApp.linked ? (
+                  {/* Both transports get their own row when both exist: the
+                      Business account is otherwise invisible here, and its
+                      generic row further up is not where anyone looks for it. */}
+                  {whatsApp.linked && (
                     <WhatsAppAccountRow
                       status={whatsApp}
                       onTogglePermissions={() => setWhatsAppPermsOpen((open) => !open)}
@@ -735,10 +738,15 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
                         onChanged?.();
                       }}
                     />
-                  ) : (
+                  )}
+                  {whatsApp.business.connected && (
                     <WhatsAppBusinessRow
                       status={whatsApp}
                       onTogglePermissions={() => setWhatsAppPermsOpen((open) => !open)}
+                      onDisconnected={async () => {
+                        await Promise.all([refreshWhatsApp(), load()]);
+                        onChanged?.();
+                      }}
                     />
                   )}
                   {whatsAppPermsOpen && (
