@@ -13,6 +13,22 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.3",
+    date: "2026-07-26",
+    notes: {
+      en: [
+        "WhatsApp messages no longer take the wrong route. With your phone linked by QR code, that link is the only way a message goes out; a WhatsApp Business account connected alongside it is left alone instead of being used behind the scenes, which could fail on its own credentials.",
+        "A connected WhatsApp Business account now has its own row under Settings, Accounts, with its own disconnect. Before, it was hidden behind the personal link and could only be removed further up the page. While your phone is linked, that row is marked as not in use.",
+        "If WhatsApp Business does refuse an access token, the message now says that the stored token is the problem and where to replace it, instead of passing WhatsApp's technical wording straight through.",
+      ],
+      de: [
+        "WhatsApp-Nachrichten nehmen nicht mehr den falschen Weg. Ist Ihr Handy per QR-Code verknüpft, geht jede Nachricht über diese Verknüpfung; ein daneben verbundenes WhatsApp-Business-Konto bleibt unangetastet, statt im Hintergrund benutzt zu werden und an seinen eigenen Zugangsdaten zu scheitern.",
+        "Ein verbundenes WhatsApp-Business-Konto hat jetzt unter Einstellungen, Konten eine eigene Zeile mit eigenem Trennen. Vorher war es hinter der persönlichen Verknüpfung verborgen und ließ sich nur weiter oben auf der Seite entfernen. Solange Ihr Handy verknüpft ist, ist die Zeile als nicht aktiv gekennzeichnet.",
+        "Weist WhatsApp Business einen Zugangs-Token doch zurück, sagt die Meldung jetzt, dass der hinterlegte Token das Problem ist und wo Sie ihn ersetzen, statt den technischen Wortlaut von WhatsApp durchzureichen.",
+      ],
+    },
+  },
+  {
     version: "0.4.2",
     date: "2026-07-25",
     notes: {
