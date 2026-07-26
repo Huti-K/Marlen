@@ -17,6 +17,7 @@ import {
   type McpSession,
   type McpSessionBox,
 } from "../integrations/pipedream/mcpSession.js";
+import { isWhatsAppLinked } from "../integrations/whatsapp/session.js";
 import { buildListAttachmentsTool, buildSaveAttachmentTool } from "./attachmentTool.js";
 import { buildDraftTool, buildUpdateDraftTool } from "./draftTools.js";
 import { type ActionGrants, NO_GRANTS, registeredCategory, sessionGrants } from "./toolAccess.js";
@@ -220,6 +221,14 @@ export async function loadEmailTools(options: LoadEmailToolsOptions = {}): Promi
   } catch (error) {
     log.warn({ err: error }, "listing Pipedream accounts failed");
     return EMPTY_TOOLSET;
+  }
+  // The personal WhatsApp link is the only transport sendWhatsApp uses once it
+  // is paired, so a Business account's tools would be a second send path the
+  // system prompt never describes and dispatch never picks: a message sent
+  // through them bypasses the link and fails on the Business account's own
+  // credentials. Keep tool availability matching what dispatch would do.
+  if (isWhatsAppLinked()) {
+    accounts = accounts.filter((account) => account.app !== "whatsapp_business");
   }
   if (accounts.length === 0) return EMPTY_TOOLSET;
 

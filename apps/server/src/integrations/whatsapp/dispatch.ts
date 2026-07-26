@@ -41,6 +41,13 @@ async function graphRequest(token: string, path: string, body?: unknown): Promis
         " — the recipient is outside WhatsApp's 24-hour service window; they must message " +
         "this number first, or an approved template is required";
     }
+    // 190: Meta rejected the token itself, which its own wording never explains.
+    if (payload.error?.code === 190) {
+      message +=
+        ". Meta rejected the access token stored for the WhatsApp Business account, so it is " +
+        "not a valid token (a wrong field, a broken paste, or an expired temporary one). " +
+        "Reconnect the account under Settings, Accounts and paste a permanent access token.";
+    }
     throw new Error(message);
   }
   return payload;
