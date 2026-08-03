@@ -3,10 +3,14 @@ import { join, resolve } from "node:path";
 import type { WhatsAppConnection } from "@marlen/shared";
 import makeWASocket, {
   Browsers,
+  DEFAULT_CONNECTION_CONFIG,
   DisconnectReason,
+  fetchLatestBaileysVersion,
+  fetchLatestWaWebVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
   type WASocket,
+  type WAVersion,
 } from "baileys";
 import QRCode from "qrcode";
 import { env } from "../../core/env.js";
@@ -33,6 +37,10 @@ const log = moduleLogger("whatsapp");
  */
 
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 30_000, 60_000];
+
+/** WhatsApp refuses the handshake with this status when the client version has aged out. */
+const OUTDATED_VERSION_STATUS = 405;
+const VERSION_LOOKUP_TIMEOUT_MS = 5_000;
 
 export interface WhatsAppRuntimeStatus {
   linked: boolean;
@@ -174,6 +182,36 @@ function renderQr(qr: string): void {
     .catch((err: unknown) => log.warn({ err }, "rendering the pairing QR failed"));
 }
 
+let waVersion: WAVersion | null = null;
+
+/**
+ * The web client version handed to WhatsApp. The one Baileys bundles ages out
+ * within weeks and is then refused with 405 before any QR is offered, so the
+ * live revision comes from WhatsApp's own service worker, the Baileys mirror
+ * second, the bundled version only when both are unreachable.
+ */
+async function resolveWaVersion(): Promise<WAVersion> {
+  if (waVersion) return waVersion;
+  const lookup = (async (): Promise<WAVersion | null> => {
+    const web = await fetchLatestWaWebVersion();
+    if (web.isLatest) return web.version;
+    const mirror = await fetchLatestBaileysVersion();
+    return mirror.isLatest ? mirror.version : null;
+  })().catch(() => null);
+  // Neither lookup carries its own deadline, and pairing waits on this one.
+  const deadline = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), VERSION_LOOKUP_TIMEOUT_MS).unref();
+  });
+  const version = await Promise.race([lookup, deadline]);
+  if (!version) {
+    log.warn("looking up the live WhatsApp web version failed — falling back to the bundled one");
+    return DEFAULT_CONNECTION_CONFIG.version;
+  }
+  log.info({ version: version.join(".") }, "resolved the WhatsApp web version");
+  waVersion = version;
+  return version;
+}
+
 function scheduleReconnect(): void {
   if (state.reconnectTimer || state.shuttingDown) return;
   const delay =
@@ -200,6 +238,10 @@ function handleClose(generation: number, error: unknown): void {
   if (generation !== state.generation) return;
   state.socket = null;
   const statusCode = disconnectStatusCode(error);
+
+  // WhatsApp rotated past the pinned version: drop it so the next attempt looks
+  // the current one up again instead of retrying the refused one.
+  if (statusCode === OUTDATED_VERSION_STATUS) waVersion = null;
 
   if (statusCode === DisconnectReason.loggedOut) {
     // Unlinked from the phone: credentials are dead, same cleanup as a local
@@ -240,8 +282,10 @@ async function connect(): Promise<void> {
   setConnection(wasLinked ? "connecting" : "pairing");
 
   const { state: authState, saveCreds } = await useMultiFileAuthState(authDir());
+  const version = await resolveWaVersion();
   const socketLogger = log.child({ lib: "baileys" }, { level: "warn" });
   const socket = makeWASocket({
+    version,
     auth: {
       creds: authState.creds,
       keys: makeCacheableSignalKeyStore(authState.keys, socketLogger),
