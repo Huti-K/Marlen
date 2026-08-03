@@ -38,9 +38,29 @@ const log = moduleLogger("whatsapp");
 
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 30_000, 60_000];
 
+/**
+ * Failed attempts after which a paired account stops reading as "connecting":
+ * the backoff keeps trying, but the socket is down and the UI says so rather
+ * than spinning forever.
+ */
+const CONNECTING_ATTEMPTS = 3;
+
 /** WhatsApp refuses the handshake with this status when the client version has aged out. */
 const OUTDATED_VERSION_STATUS = 405;
 const VERSION_LOOKUP_TIMEOUT_MS = 5_000;
+
+/**
+ * Closes no reconnect can fix: the account is blocked, the session needs
+ * re-pairing, or another socket took it over (reconnecting would kick that one
+ * off, which kicks this one off, forever). 500 is deliberately absent: Baileys
+ * falls back to it for any stream error it doesn't recognize, so it says
+ * nothing about the session.
+ */
+const UNRECOVERABLE_STATUS = new Set<number>([
+  DisconnectReason.forbidden,
+  DisconnectReason.multideviceMismatch,
+  DisconnectReason.connectionReplaced,
+]);
 
 export interface WhatsAppRuntimeStatus {
   linked: boolean;
@@ -50,9 +70,23 @@ export interface WhatsAppRuntimeStatus {
   pushName: string | null;
 }
 
+/** The paired account as WhatsApp reports it (the credentials' `me`). */
+interface LinkedAccount {
+  id?: string;
+  name?: string;
+}
+
 interface SessionState {
   socket: WASocket | null;
   connection: WhatsAppConnection;
+  /**
+   * The paired account, null when none is, undefined until first read. Loaded
+   * from creds.json once and tracked from the socket's creds.update after that:
+   * Baileys rewrites that file non-atomically, so a read landing mid-write
+   * reported a linked account as unlinked, which reset live agent sessions,
+   * routed sends to the Business transport, and stranded reconnects.
+   */
+  linked: LinkedAccount | null | undefined;
   /** The raw QR payload currently on offer; the data URL renders async. */
   qr: string | null;
   qrDataUrl: string | null;
@@ -65,6 +99,7 @@ interface SessionState {
 const state: SessionState = {
   socket: null,
   connection: "off",
+  linked: undefined,
   qr: null,
   qrDataUrl: null,
   generation: 0,
@@ -89,18 +124,37 @@ function authDir(): string {
   return resolve(process.cwd(), env.whatsappAuthPath);
 }
 
-function readLinkedMe(): { id?: string; name?: string } | null {
+/** The account creds.json was last written for; the seed for state.linked. */
+function readCredsAccount(): LinkedAccount | null {
   try {
     const raw = readFileSync(join(authDir(), "creds.json"), "utf8");
-    const creds = JSON.parse(raw) as { me?: { id?: string; name?: string } };
-    return creds.me ?? null;
+    return (JSON.parse(raw) as { me?: LinkedAccount }).me ?? null;
   } catch {
     return null;
   }
 }
 
+/**
+ * The paired account. The file is read once, on the first call of a process;
+ * from there the socket's creds.update keeps this current, so no read ever
+ * races Baileys writing that file.
+ */
+function linkedAccount(): LinkedAccount | null {
+  if (state.linked === undefined) state.linked = readCredsAccount();
+  return state.linked;
+}
+
 export function isWhatsAppLinked(): boolean {
-  return readLinkedMe() !== null;
+  return linkedAccount() !== null;
+}
+
+/** Take the identity from a creds.update, announcing a pairing as it lands. */
+function rememberLinked(me: LinkedAccount | undefined): void {
+  if (!me?.id) return;
+  const current = linkedAccount();
+  if (current && current.id === me.id && current.name === me.name) return;
+  state.linked = { id: me.id, name: me.name };
+  notifyStatusChanged();
 }
 
 function phoneNumberOfMeJid(jid: string | undefined): string | null {
@@ -109,9 +163,9 @@ function phoneNumberOfMeJid(jid: string | undefined): string | null {
 }
 
 export function getWhatsAppRuntimeStatus(): WhatsAppRuntimeStatus {
-  const me = state.socket?.user ?? readLinkedMe() ?? undefined;
+  const me = linkedAccount();
   return {
-    linked: isWhatsAppLinked(),
+    linked: me !== null,
     connection: state.connection,
     qrDataUrl: state.connection === "pairing" ? state.qrDataUrl : null,
     phoneNumber: phoneNumberOfMeJid(me?.id),
@@ -133,11 +187,21 @@ export async function dispatchWhatsApp(
   text: string,
 ): Promise<{ sentRef?: string }> {
   const socket = getWhatsAppSocket();
-  if (!socket) throw new Error("WhatsApp is not connected");
+  if (!socket) {
+    throw new Error(
+      state.connection === "connecting"
+        ? "The WhatsApp link is reconnecting, try again in a moment"
+        : "The WhatsApp link is offline; reconnect it under Settings, Accounts",
+    );
+  }
   let jid = target;
   if (jid.endsWith("@s.whatsapp.net")) {
     const number = jid.split("@")[0] ?? "";
-    const match = ((await socket.onWhatsApp(number)) ?? [])[0];
+    // An undefined result is a failed lookup, not an answer: reporting it as
+    // "not on WhatsApp" would blame a number that is fine.
+    const matches = await socket.onWhatsApp(number);
+    if (!matches) throw new Error(`Could not check whether +${number} is on WhatsApp`);
+    const match = matches[0];
     if (!match?.exists) throw new Error(`+${number} is not on WhatsApp`);
     jid = match.jid;
   }
@@ -197,7 +261,15 @@ async function resolveWaVersion(): Promise<WAVersion> {
     if (web.isLatest) return web.version;
     const mirror = await fetchLatestBaileysVersion();
     return mirror.isLatest ? mirror.version : null;
-  })().catch(() => null);
+  })().then(
+    (version) => {
+      // Kept even when the deadline below already won, so the next attempt
+      // starts from the answer instead of racing for it again.
+      if (version) waVersion = version;
+      return version;
+    },
+    () => null,
+  );
   // Neither lookup carries its own deadline, and pairing waits on this one.
   const deadline = new Promise<null>((resolve) => {
     setTimeout(() => resolve(null), VERSION_LOOKUP_TIMEOUT_MS).unref();
@@ -208,7 +280,6 @@ async function resolveWaVersion(): Promise<WAVersion> {
     return DEFAULT_CONNECTION_CONFIG.version;
   }
   log.info({ version: version.join(".") }, "resolved the WhatsApp web version");
-  waVersion = version;
   return version;
 }
 
@@ -232,6 +303,11 @@ function scheduleReconnect(): void {
 function disconnectStatusCode(error: unknown): number | undefined {
   const output = (error as { output?: { statusCode?: number } } | undefined)?.output;
   return typeof output?.statusCode === "number" ? output.statusCode : undefined;
+}
+
+/** What a paired-and-dialing account reports: see CONNECTING_ATTEMPTS. */
+function dialingConnection(): WhatsAppConnection {
+  return state.reconnectAttempts <= CONNECTING_ATTEMPTS ? "connecting" : "off";
 }
 
 function handleClose(generation: number, error: unknown): void {
@@ -261,9 +337,17 @@ function handleClose(generation: number, error: unknown): void {
     setConnection("off");
     return;
   }
+  if (statusCode !== undefined && UNRECOVERABLE_STATUS.has(statusCode)) {
+    // Credentials stay: only the phone can decide they're gone, and wiping
+    // would cost the user a re-pair over what the next launch may fix.
+    log.warn({ statusCode }, "WhatsApp ended the session — not reconnecting");
+    state.reconnectAttempts = 0;
+    setConnection("off");
+    return;
+  }
   // A paired account reconnects: immediately after the post-pairing restart
   // WhatsApp requires (515), with backoff otherwise.
-  setConnection("connecting");
+  setConnection(dialingConnection());
   if (statusCode === DisconnectReason.restartRequired) {
     connect().catch((err: unknown) => {
       log.warn({ err }, "WhatsApp post-pairing restart failed");
@@ -279,7 +363,7 @@ async function connect(): Promise<void> {
   if (state.socket || state.shuttingDown) return;
   const generation = ++state.generation;
   const wasLinked = isWhatsAppLinked();
-  setConnection(wasLinked ? "connecting" : "pairing");
+  setConnection(wasLinked ? dialingConnection() : "pairing");
 
   const { state: authState, saveCreds } = await useMultiFileAuthState(authDir());
   const version = await resolveWaVersion();
@@ -306,8 +390,13 @@ async function connect(): Promise<void> {
   }
   state.socket = socket;
 
-  socket.ev.on("creds.update", () => {
-    void saveCreds();
+  socket.ev.on("creds.update", (update) => {
+    // Pairing announces the account through this path, before the file it
+    // lands in has been written.
+    rememberLinked(update.me);
+    saveCreds().catch((err: unknown) => {
+      log.warn({ err }, "saving the WhatsApp credentials failed");
+    });
   });
   socket.ev.on("connection.update", (update) => {
     if (generation !== state.generation) return;
@@ -370,6 +459,7 @@ export async function beginWhatsAppPairing(): Promise<void> {
 
 async function wipeLink(): Promise<void> {
   state.generation++;
+  state.linked = null;
   if (state.reconnectTimer) {
     clearTimeout(state.reconnectTimer);
     state.reconnectTimer = null;

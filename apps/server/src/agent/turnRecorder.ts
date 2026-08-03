@@ -151,7 +151,7 @@ const realSessions: TurnSessions = {
 
 let sessions: TurnSessions = realSessions;
 
-/** Test-only seam; pass null to restore the real sessions. @internal */
+/** Test-only seam; pass null to restore the real sessions. */
 export function _setSessionsForTest(override: TurnSessions | null): void {
   sessions = override ?? realSessions;
 }

@@ -165,11 +165,11 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
     if (runningConversations.has(req.params.id)) {
       throw conflict("a reply is in progress for this conversation");
     }
-    // Dispose the live session before deleting rows, not after: once this
-    // resolves nothing can start a new turn (the next getOrCreateSession would
-    // rebuild from `messages`, about to be gone), so no write lands after the
-    // delete commits.
-    await disposeSession(req.params.id);
+    // Dispose the live session before deleting rows, not after: it drops the
+    // session from the cache synchronously, so from here nothing can start a
+    // new turn (the next getOrCreateSession would rebuild from `messages`,
+    // about to be gone) and no write lands after the delete commits.
+    disposeSession(req.params.id);
     deleteConversationCascade(req.params.id);
     return { ok: true };
   });

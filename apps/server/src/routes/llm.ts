@@ -48,14 +48,14 @@ export const llmRoutes: FastifyPluginAsyncTypebox = async (app) => {
       throw badRequest(errorMessage(error));
     }
     // New conversations pick up the new model; drop existing in-memory agents.
-    await resetSessions();
+    resetSessions();
     return getModelSettings();
   });
 
   app.put("/api/llm/thinking", { schema: { body: thinkingBody } }, async (req) => {
     await setThinkingLevel(req.body.level);
     // Existing in-memory agents carry the old level in their state; drop them.
-    await resetSessions();
+    resetSessions();
     return getModelSettings();
   });
 
@@ -122,13 +122,13 @@ export const llmRoutes: FastifyPluginAsyncTypebox = async (app) => {
     } catch (error) {
       throw badRequest(errorMessage(error));
     }
-    await resetSessions();
+    resetSessions();
     return { ok: true };
   });
 
   app.post("/api/llm/logout", { schema: { body: providerIdBody } }, async (req) => {
     await clearCredential(req.body.providerId);
-    await resetSessions();
+    resetSessions();
     return { ok: true };
   });
 };

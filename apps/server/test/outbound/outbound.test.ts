@@ -152,7 +152,7 @@ describe("outbound drafts", () => {
     expect(late.statusCode).toBe(400);
   });
 
-  it("discard removes the draft from the open list", async () => {
+  it("discard removes the draft from the open list, and it can never be sent after", async () => {
     const { id } = await store.createOutboundDraft({
       channel: "test-channel",
       target: "491700000003@s.whatsapp.net",
@@ -166,6 +166,30 @@ describe("outbound drafts", () => {
         status: string;
       }>().status,
     ).toBe("discarded");
+
+    // A card left open elsewhere still has a Send button; discarding is a
+    // decision, so pressing it must not deliver the message anyway.
+    const sendsBefore = sends.length;
+    const late = await app.inject({ method: "POST", url: `/api/outbound/${id}/send` });
+    expect(late.statusCode).toBe(400);
+    expect(sends.length).toBe(sendsBefore);
+  });
+
+  it("two simultaneous sends of one draft dispatch it once", async () => {
+    const { id } = await store.createOutboundDraft({
+      channel: "test-channel",
+      target: "491700000007@s.whatsapp.net",
+      body: "Nur einmal bitte",
+    });
+    const sendsBefore = sends.length;
+
+    const results = await Promise.all([
+      app.inject({ method: "POST", url: `/api/outbound/${id}/send` }),
+      app.inject({ method: "POST", url: `/api/outbound/${id}/send` }),
+    ]);
+
+    expect(sends.length).toBe(sendsBefore + 1);
+    expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409]);
   });
 
   it("withholds a draft while its conversation's turn runs and surfaces it at turn end", async () => {
@@ -182,6 +206,7 @@ describe("outbound drafts", () => {
         agent: null as never,
         toolset: { tools: [], readTools: [], close: async () => {} },
         inFlight: 0,
+        retired: false,
         lastUsed: Date.now(),
         runTurn: async () => {
           await gate;

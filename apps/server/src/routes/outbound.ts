@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { OutboundDraft } from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
 import { isTurnInFlight } from "../agent/turnRecorder.js";
-import { badRequest, notFound } from "../core/errors.js";
+import { badRequest, conflict, notFound } from "../core/errors.js";
 import {
   getOutboundDraft,
   listOutboundDrafts,
@@ -20,6 +20,13 @@ const listQuery = Type.Object({
     Type.Union([Type.Literal("open"), Type.Literal("sent"), Type.Literal("discarded")]),
   ),
 });
+
+/**
+ * Drafts currently being dispatched. The status row only turns "sent" after the
+ * channel returns, so without this two clicks on one card (or a stale second
+ * tab) both read "open" and both deliver the message.
+ */
+const dispatching = new Set<string>();
 
 export const outboundRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get(
@@ -46,12 +53,21 @@ export const outboundRoutes: FastifyPluginAsyncTypebox = async (app) => {
     const draft = await getOutboundDraft(req.params.id);
     if (!draft) throw notFound("outbound draft not found");
     if (draft.status === "sent") return { ok: true };
+    // A discarded draft is a decision not to send it; a card left open in
+    // another view must not be able to deliver it anyway.
+    if (draft.status !== "open") throw badRequest(`draft already ${draft.status}`);
     const channel = getOutboundChannel(draft.channel);
     if (!channel) throw badRequest(`unknown outbound channel: ${draft.channel}`);
-    const { sentRef } = await channel.send(draft);
-    await markOutboundStatus(draft.id, "sent", sentRef).catch((error: unknown) =>
-      req.log.warn({ err: error }, "marking outbound draft sent failed"),
-    );
+    if (dispatching.has(draft.id)) throw conflict("that message is already being sent");
+    dispatching.add(draft.id);
+    try {
+      const { sentRef } = await channel.send(draft);
+      await markOutboundStatus(draft.id, "sent", sentRef).catch((error: unknown) =>
+        req.log.warn({ err: error }, "marking outbound draft sent failed"),
+      );
+    } finally {
+      dispatching.delete(draft.id);
+    }
     return { ok: true };
   });
 

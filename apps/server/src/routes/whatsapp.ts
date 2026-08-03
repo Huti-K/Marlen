@@ -44,7 +44,7 @@ export const whatsAppRoutes: FastifyPluginAsyncTypebox = async (app) => {
     { schema: { body: Type.Object({ enabled: Type.Boolean() }) } },
     async (req) => {
       await setWhatsAppSendAccess(req.body.enabled);
-      await resetSessions();
+      resetSessions();
       return statusPayload();
     },
   );

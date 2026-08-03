@@ -30,6 +30,7 @@ function fakeSession(runTurn: AgentSession["runTurn"], onClose?: () => void): Ag
       },
     },
     inFlight: 0,
+    retired: false,
     lastUsed: Date.now(),
     runTurn,
   };

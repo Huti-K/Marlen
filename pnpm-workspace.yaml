@@ -6,3 +6,11 @@ onlyBuiltDependencies:
   - better-sqlite3
   - electron
   - esbuild
+
+# tiptap-markdown imports @tiptap/pm without declaring the peer, which leaves
+# the lockfile resolving core/pm against mismatched majors. pnpm 11 reads these
+# here, not from package.json's "pnpm" field.
+packageExtensions:
+  tiptap-markdown:
+    peerDependencies:
+      "@tiptap/pm": "^2"

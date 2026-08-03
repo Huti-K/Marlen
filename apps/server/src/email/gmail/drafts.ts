@@ -130,6 +130,25 @@ function assertSafeHeaderValue(header: string, value: string): void {
   }
 }
 
+/**
+ * Header lines whose values come from mail we received (a thread's Message-ID
+ * and References), so they carry the same CR/LF smuggling risk as a recipient.
+ * Unlike a recipient, a threading header is optional — dropping a malformed one
+ * costs threading in non-Gmail clients, while rejecting would make the draft
+ * unbuildable and, on update, uneditable.
+ */
+function safeHeaderLines(lines: string[]): string[] {
+  return lines.filter((line) => {
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matches CR/LF and other control characters to reject header-injection attempts (see assertSafeHeaderValue)
+    if (!/[\x00-\x1f\x7f]/.test(line)) return true;
+    log.warn(
+      { header: line.split(":")[0] },
+      "dropped a header carrying a line break or control character",
+    );
+    return false;
+  });
+}
+
 function bodyPartLines(body: string, format: "text" | "html" = "text"): string[] {
   return [
     `Content-Type: text/${format === "html" ? "html" : "plain"}; charset=UTF-8`,
@@ -192,6 +211,8 @@ function attachmentPartLines(attachment: DraftAttachment): string[] {
  * at the top level (so In-Reply-To/References keep threading whether or not the
  * message is multipart); drafts.update replaces the whole message, so an
  * updating caller passes back every header it wants to survive (PRESERVED_HEADERS).
+ * `extraHeaders` pass through safeHeaderLines, since their values are read
+ * verbatim off mail we received.
  */
 function buildRawMessage(input: {
   to: string;
@@ -213,7 +234,7 @@ function buildRawMessage(input: {
     ...(input.cc ? [`Cc: ${input.cc}`] : []),
     ...(input.bcc ? [`Bcc: ${input.bcc}`] : []),
     `Subject: ${encodeHeaderWord(input.subject)}`,
-    ...(input.extraHeaders ?? []),
+    ...safeHeaderLines(input.extraHeaders ?? []),
     "MIME-Version: 1.0",
   ];
 

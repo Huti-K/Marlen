@@ -40,24 +40,32 @@ function jidFromNumber(raw: string): string | null {
   return `${digits}@s.whatsapp.net`;
 }
 
+/** The servers a chat jid lives on: direct (number or LID) and group. */
+const JID_SUFFIXES = ["@s.whatsapp.net", "@lid", "@g.us"];
+
 interface ChatResolution {
   jid?: string;
   error?: string;
 }
 
-function resolveChat(param: string): ChatResolution {
+/** `mirror` false is a Business-only setup: no chats to search, no read tools. */
+function resolveChat(param: string, mirror: boolean): ChatResolution {
   const trimmed = param.trim();
-  if (trimmed.includes("@")) return { jid: trimmed };
+  // Anything else with an @ (an email address, say) falls through to the name
+  // search rather than becoming a jid that only fails at send time.
+  if (JID_SUFFIXES.some((suffix) => trimmed.endsWith(suffix))) return { jid: trimmed };
   const numberJid = jidFromNumber(trimmed);
   if (numberJid) return { jid: numberJid };
 
-  const matches = findChatsByName(trimmed, 6);
+  const matches = mirror ? findChatsByName(trimmed, 6) : [];
   if (matches.length === 1 && matches[0]) return { jid: matches[0].jid };
   if (matches.length === 0) {
     return {
-      error:
-        `No chat matches "${trimmed}". Try whatsapp_search_contacts or ` +
-        `whatsapp_list_chats to find the right one.`,
+      error: mirror
+        ? `No chat matches "${trimmed}". Try whatsapp_search_contacts or ` +
+          `whatsapp_list_chats to find the right one.`
+        : `No chat matches "${trimmed}". This setup sends through WhatsApp Business and ` +
+          `mirrors no chats: address the recipient by phone number, with country code.`,
     };
   }
   const options = matches.map((m) => `${m.name} (${m.jid})`).join(", ");
@@ -119,7 +127,8 @@ const readMessagesTool = tool({
     ),
   },
   execute: async (params) => {
-    const resolved = resolveChat(params.chat);
+    // This tool ships only alongside the mirror, so the search behind it exists.
+    const resolved = resolveChat(params.chat, true);
     if (!resolved.jid) return textResult(resolved.error ?? "Chat not found.");
     const limit = clampLimit(params.limit, 30, 200);
     const messages = await readMessages(resolved.jid, { limit, before: params.before });
@@ -173,7 +182,7 @@ const MESSAGE_CARD_NOTE = cardNote(
 );
 
 /** Closes over the session's conversation so the draft links back to this chat. */
-const buildSendMessageTool = (conversationId: string | undefined): AgentTool =>
+const buildSendMessageTool = (mirror: boolean, conversationId: string | undefined): AgentTool =>
   tool({
     name: "whatsapp_send_message",
     label: "Draft WhatsApp message",
@@ -198,7 +207,7 @@ const buildSendMessageTool = (conversationId: string | undefined): AgentTool =>
     },
     catchToText: true,
     execute: async (params) => {
-      const resolved = resolveChat(params.to);
+      const resolved = resolveChat(params.to, mirror);
       if (!resolved.jid) return textResult(resolved.error ?? "Recipient not found.");
       const label = chatDisplayName(resolved.jid);
       const draft = await createOutboundDraft({
@@ -238,62 +247,63 @@ const buildSendMessageTool = (conversationId: string | undefined): AgentTool =>
     },
   });
 
-const updateMessageTool = tool({
-  name: "whatsapp_update_message",
-  label: "Update WhatsApp draft",
-  description:
-    "Rewrite a pending WhatsApp draft in place. Use this whenever the user asks to change a " +
-    "message that is still awaiting approval (you know its draft id from drafting it) — never " +
-    "draft a second message for a refinement. Nothing is sent; the user approves the updated " +
-    "text with the Send button as before.",
-  params: {
-    draftId: Type.String({ description: "Id of the pending draft to rewrite." }),
-    text: Type.Optional(Type.String({ description: "The full replacement message text." })),
-    to: Type.Optional(
-      Type.String({
-        description: `Redirect the draft to a different chat. ${CHAT_PARAM_DESCRIPTION}`,
-      }),
-    ),
-  },
-  catchToText: true,
-  execute: async (params) => {
-    const draft = await getOutboundDraft(params.draftId);
-    if (draft?.channel !== "whatsapp") {
-      return textResult(`No WhatsApp draft with id ${params.draftId}.`);
-    }
-    if (draft.status !== "open") {
+const buildUpdateMessageTool = (mirror: boolean): AgentTool =>
+  tool({
+    name: "whatsapp_update_message",
+    label: "Update WhatsApp draft",
+    description:
+      "Rewrite a pending WhatsApp draft in place. Use this whenever the user asks to change a " +
+      "message that is still awaiting approval (you know its draft id from drafting it) — never " +
+      "draft a second message for a refinement. Nothing is sent; the user approves the updated " +
+      "text with the Send button as before.",
+    params: {
+      draftId: Type.String({ description: "Id of the pending draft to rewrite." }),
+      text: Type.Optional(Type.String({ description: "The full replacement message text." })),
+      to: Type.Optional(
+        Type.String({
+          description: `Redirect the draft to a different chat. ${CHAT_PARAM_DESCRIPTION}`,
+        }),
+      ),
+    },
+    catchToText: true,
+    execute: async (params) => {
+      const draft = await getOutboundDraft(params.draftId);
+      if (draft?.channel !== "whatsapp") {
+        return textResult(`No WhatsApp draft with id ${params.draftId}.`);
+      }
+      if (draft.status !== "open") {
+        return textResult(
+          `That draft was already ${draft.status === "sent" ? "sent" : "discarded"}; draft a new ` +
+            `message with whatsapp_send_message instead.`,
+        );
+      }
+      if (params.text === undefined && params.to === undefined) {
+        return textResult("Nothing to update: pass a new text and/or a new chat.");
+      }
+
+      let target = draft.target;
+      let label = draft.targetLabel;
+      if (params.to !== undefined) {
+        const resolved = resolveChat(params.to, mirror);
+        if (!resolved.jid) return textResult(resolved.error ?? "Recipient not found.");
+        target = resolved.jid;
+        label = chatDisplayName(resolved.jid);
+      }
+      const body = params.text ?? draft.body;
+      await updateOutboundDraft(draft.id, { target, targetLabel: label, body });
+
+      const card = buildMessageDraftCard({
+        channel: "whatsapp",
+        targetLabel: label,
+        body,
+        draftId: draft.id,
+      });
       return textResult(
-        `That draft was already ${draft.status === "sent" ? "sent" : "discarded"}; draft a new ` +
-          `message with whatsapp_send_message instead.`,
+        `Updated the WhatsApp draft to ${label}. It still awaits approval.${MESSAGE_CARD_NOTE}`,
+        card,
       );
-    }
-    if (params.text === undefined && params.to === undefined) {
-      return textResult("Nothing to update: pass a new text and/or a new chat.");
-    }
-
-    let target = draft.target;
-    let label = draft.targetLabel;
-    if (params.to !== undefined) {
-      const resolved = resolveChat(params.to);
-      if (!resolved.jid) return textResult(resolved.error ?? "Recipient not found.");
-      target = resolved.jid;
-      label = chatDisplayName(resolved.jid);
-    }
-    const body = params.text ?? draft.body;
-    await updateOutboundDraft(draft.id, { target, targetLabel: label, body });
-
-    const card = buildMessageDraftCard({
-      channel: "whatsapp",
-      targetLabel: label,
-      body,
-      draftId: draft.id,
-    });
-    return textResult(
-      `Updated the WhatsApp draft to ${label}. It still awaits approval.${MESSAGE_CARD_NOTE}`,
-      card,
-    );
-  },
-});
+    },
+  });
 
 const READ_TOOLS: AgentTool[] = [listChatsTool, readMessagesTool, searchContactsTool];
 
@@ -307,5 +317,9 @@ export function buildWhatsAppTools(
   mirror: boolean,
   conversationId: string | undefined,
 ): AgentTool[] {
-  return [...(mirror ? READ_TOOLS : []), buildSendMessageTool(conversationId), updateMessageTool];
+  return [
+    ...(mirror ? READ_TOOLS : []),
+    buildSendMessageTool(mirror, conversationId),
+    buildUpdateMessageTool(mirror),
+  ];
 }

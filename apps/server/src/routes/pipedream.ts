@@ -24,6 +24,7 @@ import {
   setUseCustom,
   verifyConnectConfig,
 } from "../integrations/pipedream/connect.js";
+import { invalidateWhatsAppSender } from "../integrations/whatsapp/dispatch.js";
 
 const pipedreamConfigBody = Type.Object({
   clientId: Type.String(),
@@ -77,21 +78,21 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
     // Saving your own credentials implies you want to use them.
     await setUseCustom(true);
     // Live agents hold MCP sessions built with the old credentials.
-    await resetSessions();
+    resetSessions();
     emitServerEvent("accounts");
     return getPipedreamStatus();
   });
 
   app.put("/api/pipedream/mode", { schema: { body: pipedreamModeBody } }, async (req) => {
     await setUseCustom(req.body.useCustom);
-    await resetSessions();
+    resetSessions();
     emitServerEvent("accounts");
     return getPipedreamStatus();
   });
 
   app.delete("/api/pipedream", async () => {
     await clearConnectSettings();
-    await resetSessions();
+    resetSessions();
     emitServerEvent("accounts");
     return getPipedreamStatus();
   });
@@ -158,8 +159,9 @@ export const pipedreamRoutes: FastifyPluginAsyncTypebox = async (app) => {
         throw upstreamError(errorMessage(error), error);
       }
       // Live agents may hold tools for the removed account.
-      await resetSessions();
+      resetSessions();
       invalidateDraftsCache(req.params.id);
+      invalidateWhatsAppSender(req.params.id);
       invalidateAccountsCache();
       emitServerEvent("accounts");
       await deleteVoiceLearnRun(req.params.id);

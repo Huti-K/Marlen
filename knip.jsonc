@@ -8,7 +8,11 @@
   "tags": ["-internal"],
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mjs"]
+      "entry": ["scripts/*.mjs"],
+      // @tiptap/pm appears in pnpm-workspace.yaml only as the peer that
+      // packageExtensions grafts onto tiptap-markdown; the real dependency is
+      // declared (and imported) in apps/web.
+      "ignoreDependencies": ["@tiptap/pm"]
     },
     "apps/server": {
       "entry": ["test/**/*.test.ts"],
@@ -27,6 +31,10 @@
     "apps/desktop": {
       "entry": ["src/main.ts", "src/preload.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.mjs"]
+    },
+    "apps/e2e": {
+      "entry": ["tests/**/*.spec.ts"],
+      "project": ["src/**/*.ts", "tests/**/*.ts"]
     },
     "packages/shared": {
       "project": ["src/**/*.ts"]

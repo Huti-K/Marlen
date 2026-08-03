@@ -14,11 +14,16 @@ export interface AgentSession {
   agent: Agent;
   toolset: EmailToolset;
   /**
-   * Turns running against this session. sweepSessions never closes a
-   * session's toolset while this is above zero; go through runTurn (not the
-   * bare runPrompt) so a turn can't forget to mark itself.
+   * Turns running against this session. A session's toolset is never closed
+   * while this is above zero; go through runTurn (not the bare runPrompt) so a
+   * turn can't forget to mark itself.
    */
   inFlight: number;
+  /**
+   * Dropped from the cache but still running a turn: no new turn can reach it,
+   * and the last one to finish closes its toolset (see retireSession).
+   */
+  retired: boolean;
   /** Idle/LRU eviction clock; refreshed on creation, lookup, and turn end. */
   lastUsed: number;
   /**
@@ -48,6 +53,7 @@ function createAgentSession(
     agent,
     toolset,
     inFlight: 0,
+    retired: false,
     lastUsed: Date.now(),
     async runTurn(prompt, handlers, signal, turnLog) {
       session.inFlight++;
@@ -72,6 +78,7 @@ function createAgentSession(
       } finally {
         session.inFlight--;
         session.lastUsed = Date.now();
+        if (session.retired && session.inFlight === 0) closeToolset(session, conversationId);
       }
     },
   };
@@ -90,27 +97,40 @@ const sessions = new Map<string, AgentSession>();
 // (and one leaking) its own MCP session.
 const pendingSessions = new Map<string, Promise<AgentSession>>();
 
-function evictSession(conversationId: string, session: AgentSession): void {
-  sessions.delete(conversationId);
+function closeToolset(session: AgentSession, conversationId: string): void {
   void session.toolset.close().catch((err: unknown) => {
-    log.warn({ err, conversationId }, "closing an evicted session's MCP sessions failed");
+    log.warn({ err, conversationId }, "closing a retired session's MCP sessions failed");
   });
+}
+
+/**
+ * Drop a session from the cache. Its toolset closes now if it is idle, and
+ * otherwise when its last turn ends: closing under a running turn pins every
+ * MCP session shut (mcpSession.ts refuses to revive a closed box), so the turn
+ * would lose every email tool mid-answer.
+ */
+function retireSession(conversationId: string, session: AgentSession): void {
+  sessions.delete(conversationId);
+  if (session.inFlight > 0) {
+    session.retired = true;
+    return;
+  }
+  closeToolset(session, conversationId);
 }
 
 function sweepSessions(): void {
   const now = Date.now();
   for (const [conversationId, session] of sessions) {
-    // A turn is running against this session; closing its toolset now would
-    // pull the rug out from under an in-flight tool call.
+    // A busy session isn't idle, whatever its clock says.
     if (session.inFlight > 0) continue;
-    if (now - session.lastUsed > SESSION_IDLE_TTL_MS) evictSession(conversationId, session);
+    if (now - session.lastUsed > SESSION_IDLE_TTL_MS) retireSession(conversationId, session);
   }
   if (sessions.size > SESSION_MAX_COUNT) {
     const evictable = [...sessions.entries()]
       .filter(([, session]) => session.inFlight === 0)
       .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
     for (const [conversationId, session] of evictable.slice(0, sessions.size - SESSION_MAX_COUNT)) {
-      evictSession(conversationId, session);
+      retireSession(conversationId, session);
     }
   }
 }
@@ -170,23 +190,19 @@ export async function getOrCreateSession(conversationId: string): Promise<AgentS
   }
 }
 
-export async function resetSessions(): Promise<void> {
-  const all = [...sessions.values()];
-  sessions.clear();
-  await Promise.all(
-    all.map((session) =>
-      session.toolset.close().catch((err: unknown) => {
-        log.warn({ err }, "closing a reset session's MCP sessions failed");
-      }),
-    ),
-  );
+/**
+ * Drop every cached session, so the next turn of every conversation is built
+ * against the current credentials, grants and prompt. A turn already running
+ * finishes on the toolset it started with; it is past the point where new
+ * settings could apply to it anyway.
+ */
+export function resetSessions(): void {
+  for (const [conversationId, session] of [...sessions]) retireSession(conversationId, session);
 }
 
-export async function disposeSession(conversationId: string): Promise<void> {
+export function disposeSession(conversationId: string): void {
   const session = sessions.get(conversationId);
-  if (!session) return;
-  sessions.delete(conversationId);
-  await session.toolset.close();
+  if (session) retireSession(conversationId, session);
 }
 
 /**

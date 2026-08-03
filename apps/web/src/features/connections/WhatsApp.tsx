@@ -81,10 +81,12 @@ export function WhatsAppPairingCard({
 }) {
   const { t } = useTranslation();
   const [restarting, setRestarting] = React.useState(false);
+  const [started, setStarted] = React.useState(false);
 
   const connect = React.useCallback(async () => {
     try {
       await api.whatsAppConnect();
+      setStarted(true);
     } catch (err) {
       toast.error(err);
     }
@@ -99,8 +101,9 @@ export function WhatsAppPairingCard({
     if (paired) void onPaired();
   }, [paired, onPaired]);
 
-  // The server drops back to "off" when the QR expires unscanned.
-  const expired = !status.linked && status.connection === "off";
+  // The server drops back to "off" when the QR expires unscanned. Before the
+  // connect call lands "off" is just the pre-pairing state, not an expiry.
+  const expired = started && !status.linked && status.connection === "off";
 
   const restart = async () => {
     setRestarting(true);

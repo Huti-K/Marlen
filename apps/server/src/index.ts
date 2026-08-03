@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     stopLibrary();
     stopHomeWatchers();
     await stopWhatsApp();
-    await resetSessions();
+    resetSessions();
   });
 
   // Ctrl-C / `docker stop` drains in-flight requests, then runs the onClose
@@ -100,7 +100,7 @@ async function startServices(app: FastifyInstance): Promise<void> {
 
   // Reconnect a paired WhatsApp account (no-op while none linked). Live agent
   // sessions hold a tool list for the old link state, so a pairing/unlink rebuilds them.
-  onWhatsAppLinkedChange(() => void resetSessions());
+  onWhatsAppLinkedChange(() => resetSessions());
   startWhatsApp();
 
   if (!(await activeModelConfigured())) {

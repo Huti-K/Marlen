@@ -44,3 +44,35 @@ jobs:
 
       - name: Web tests
         run: pnpm --filter @marlen/web test
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The Fastify server serves the SPA from apps/web/dist, so the e2e
+      # servers need it built before they boot.
+      - name: Web build
+        run: pnpm --filter @marlen/web build
+
+      - name: Install Chromium
+        run: pnpm --filter @marlen/e2e exec playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: pnpm --filter @marlen/e2e test
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: apps/e2e/playwright-report/
+          retention-days: 7

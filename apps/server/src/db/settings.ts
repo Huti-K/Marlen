@@ -19,14 +19,35 @@ import { db, dbGeneration, schema } from "./index.js";
  */
 
 let cache: { entries: Map<string, string>; generation: number } | null = null;
+/**
+ * The load in progress, tagged with the generation it started under.
+ * Concurrent first reads must share one: two loads would each install their own
+ * Map, and whichever caller holds the loser's Map would write its update into an
+ * object nothing reads again (the DB row stays correct, the cache goes stale).
+ */
+let loading: { entries: Promise<Map<string, string>>; generation: number } | null = null;
 
 async function loadCache(): Promise<Map<string, string>> {
   const generation = dbGeneration();
-  if (!cache || cache.generation !== generation) {
-    const rows = await db.select().from(schema.settings);
-    cache = { entries: new Map(rows.map((row) => [row.key, row.value])), generation };
+  if (cache && cache.generation === generation) return cache.entries;
+  if (!loading || loading.generation !== generation) {
+    const entries = (async () => {
+      const rows = await db.select().from(schema.settings);
+      const loaded = new Map(rows.map((row) => [row.key, row.value]));
+      cache = { entries: loaded, generation };
+      return loaded;
+    })();
+    loading = { entries, generation };
+    // Clear the slot either way, so a failed load is retried rather than
+    // returned forever. The catch is the observer's, not the caller's — every
+    // caller still sees the rejection through the promise returned below.
+    entries
+      .catch(() => {})
+      .finally(() => {
+        if (loading?.entries === entries) loading = null;
+      });
   }
-  return cache.entries;
+  return loading.entries;
 }
 
 export async function getSetting(key: string): Promise<string | undefined> {

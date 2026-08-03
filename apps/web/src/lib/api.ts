@@ -84,6 +84,16 @@ export function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
+/**
+ * True when the request needed a Pipedream project and there isn't one. Callers
+ * that can render something useful anyway (the accounts list still holds the
+ * native onOffice and WhatsApp connections) treat it as an empty result rather
+ * than an error.
+ */
+export function isPipedreamMissing(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "pipedream_not_configured";
+}
+
 /** Plain-language message for an HTTP status class. */
 function statusMessage(status: number): string {
   if (status === 401 || status === 403) return i18n.t("errors.forbidden");

@@ -84,9 +84,7 @@ async function getUseCustom(): Promise<boolean> {
 
 export async function setUseCustom(useCustom: boolean): Promise<void> {
   await setSetting(KEYS.useCustom, String(useCustom));
-  // Switching modes switches which project's accounts are "the" accounts; the
-  // old mode's cache would otherwise leak into the new one.
-  invalidateAccountsCache();
+  invalidateProjectCaches();
 }
 
 export async function getConnectConfig(): Promise<ConnectConfig | null> {
@@ -121,24 +119,22 @@ export async function saveConnectSettings(input: {
   projectId: string;
   environment: PipedreamEnvironment;
 }): Promise<void> {
-  // Sequential, not Promise.all: concurrent setSetting calls each rebuild
-  // db/settings.ts's whole-table cache from a different live snapshot, silently
-  // dropping keys from the in-memory cache (the DB rows stay correct).
-  await setSetting(KEYS.clientId, input.clientId);
-  await setSetting(KEYS.projectId, input.projectId);
-  await setSetting(KEYS.environment, input.environment);
-  await writeClientSecret(input.clientSecret);
-  // New credentials mean a different project/account list; the old cache is
-  // no longer meaningful.
-  invalidateAccountsCache();
+  await Promise.all([
+    setSetting(KEYS.clientId, input.clientId),
+    setSetting(KEYS.projectId, input.projectId),
+    setSetting(KEYS.environment, input.environment),
+    writeClientSecret(input.clientSecret),
+  ]);
+  invalidateProjectCaches();
 }
 
 /** Remove app-saved credentials; built-in ones (if any) become active again. */
 export async function clearConnectSettings(): Promise<void> {
-  // Sequential; see saveConnectSettings on why concurrent writes are unsafe.
-  for (const key of Object.values(KEYS)) await deleteSetting(key);
-  await deleteClientSecret();
-  invalidateAccountsCache();
+  await Promise.all([
+    ...Object.values(KEYS).map((key) => deleteSetting(key)),
+    deleteClientSecret(),
+  ]);
+  invalidateProjectCaches();
 }
 
 let cached: { client: PipedreamClient; signature: string } | null = null;
@@ -216,9 +212,19 @@ const ACCOUNTS_CACHE_KEY = "accounts";
 
 const accountsCache = createFetchCache<ConnectedAccount[]>({ ttlMs: 60_000 });
 
-/** Drop the cache so the next call fetches live; call when accounts or the active project change. */
+/** Drop the cache so the next call fetches live; call when accounts change. */
 export function invalidateAccountsCache(): void {
   accountsCache.invalidate(ACCOUNTS_CACHE_KEY);
+}
+
+/**
+ * Everything derived from which project is active: the account list and the
+ * resolved app catalog. Called wherever the credentials or the builtin/custom
+ * choice change, so the old project's answers can't outlive it.
+ */
+function invalidateProjectCaches(): void {
+  invalidateAccountsCache();
+  defaultAppsCache = null;
 }
 
 async function fetchAccountsLive(): Promise<ConnectedAccount[]> {
@@ -298,7 +304,11 @@ async function resolveApp(pd: PipedreamClient, slug: string): Promise<PipedreamA
   return null;
 }
 
-// The suggested set never changes at runtime; resolve it once per process.
+/**
+ * The suggested set, resolved once against the active project. Only a run that
+ * resolved something is cached: a project switch or a rate-limited lookup would
+ * otherwise pin an empty or truncated picker for the rest of the process.
+ */
 let defaultAppsCache: PipedreamApp[] | null = null;
 
 export async function getDefaultApps(): Promise<PipedreamApp[]> {
@@ -306,8 +316,9 @@ export async function getDefaultApps(): Promise<PipedreamApp[]> {
   const { pd } = await getClient();
   const slugs: string[] = [...EMAIL_APPS, ...POPULAR_APPS];
   const resolved = await Promise.all(slugs.map((slug) => resolveApp(pd, slug)));
-  defaultAppsCache = resolved.filter((a): a is PipedreamApp => a !== null);
-  return defaultAppsCache;
+  const apps = resolved.filter((a): a is PipedreamApp => a !== null);
+  if (apps.length > 0) defaultAppsCache = apps;
+  return apps;
 }
 
 export async function deleteAccount(accountId: string): Promise<void> {

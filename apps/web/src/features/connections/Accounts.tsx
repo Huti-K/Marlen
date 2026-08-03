@@ -45,7 +45,7 @@ import {
   WhatsAppPickerButton,
 } from "@/features/connections/WhatsApp";
 import { isEmailApp } from "@/lib/accounts";
-import { api } from "@/lib/api";
+import { api, isPipedreamMissing } from "@/lib/api";
 import { useServerEvents } from "@/lib/serverEvents";
 import { toast } from "@/lib/toast";
 import { stagger, UNASSIGNED_ACCOUNT_COLOR } from "@/lib/utils";
@@ -199,7 +199,7 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
           .pipedreamApps(q)
           .then(setResults)
           .catch((err) => {
-            toast.error(err);
+            if (!isPipedreamMissing(err)) toast.error(err);
             setResults([]);
           });
       },
@@ -214,6 +214,13 @@ export function Accounts({ onChanged }: { onChanged?: () => void }) {
       setAccounts(next);
       return next;
     } catch (err) {
+      // No Pipedream project is a state, not a failure: onOffice and WhatsApp
+      // are native connections that work without one, and this list is where
+      // they live.
+      if (isPipedreamMissing(err)) {
+        setAccounts([]);
+        return [];
+      }
       toast.error(err);
       return null;
     }

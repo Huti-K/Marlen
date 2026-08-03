@@ -21,26 +21,43 @@ onClose hook.
 ## Launch an isolated server instance
 
 The Fastify server serves the built web UI itself when `apps/web/dist` exists,
-so one process gives you both the API and the SPA:
+so one process gives you both the API and the SPA. Run it from a scratch
+directory, not from `apps/server`: every state path the server has is
+cwd-relative (including the `.env` it loads), so the cwd does most of the
+isolation on its own.
 
 ```sh
 pnpm --filter @marlen/web build          # ~1s; refresh dist after UI changes
-cd apps/server
-DATABASE_PATH=/tmp/<scratch>/verify.db AGENT_HOME_PATH=/tmp/<scratch>/home WHATSAPP_AUTH_PATH=/tmp/<scratch>/whatsapp-auth PORT=3111 pnpm exec tsx src/index.ts
+mkdir -p /tmp/<scratch> && cd /tmp/<scratch>
+DATABASE_PATH=./verify.db AGENT_HOME_PATH=./home \
+LEGACY_AGENT_HOME_PATH=./legacy-home LIBRARY_PATH=./legacy-library SKILLS_PATH=./legacy-skills \
+WHATSAPP_AUTH_PATH=./whatsapp-auth PORT=3111 \
+node ~/…/Trailin/apps/server/node_modules/.bin/tsx ~/…/Trailin/apps/server/src/index.ts
 ```
 
 - `DATABASE_PATH` isolates SQLite state (tables are auto-created). The user's
   real data is `apps/server/data/` — never point tests there.
 - `AGENT_HOME_PATH` isolates the agent home (memory/skills/knowledge folders);
   without it the server uses the user's real `~/Trailin`.
+- `LEGACY_AGENT_HOME_PATH`, `LIBRARY_PATH` and `SKILLS_PATH` are the three boot
+  migrations' SOURCE folders, and they MOVE (`rename`) what they find into the
+  agent home. Left at their defaults (`~/Trailin`, `./data/library`,
+  `./data/skills`) a throwaway server relocates the user's real memories,
+  skills and knowledge documents into the scratch home, and deleting the
+  scratch dir destroys them.
 - `WHATSAPP_AUTH_PATH` is NOT optional: it defaults to `./data/whatsapp-auth`
   (cwd-relative), so a verify server launched from `apps/server` would grab the
   user's real WhatsApp credentials, connect on boot, and kick the real
   server's session offline — WhatsApp allows one socket per linked device.
 - Config env vars (`PIPEDREAM_*`, `ANTHROPIC_API_KEY`, …) can be set per
-  instance to simulate .env fallback states. App-saved settings live in the
-  `settings` table of the SQLite DB and win over env.
+  instance to simulate .env fallback states; set them to the empty string to
+  shadow an `apps/server/.env` entry (Node's env-file loader only fills unset
+  variables). App-saved settings live in the `settings` table of the SQLite DB
+  and win over env.
 - Don't reuse :3001/:5173 — those may be the user's own `pnpm dev`.
+
+`apps/e2e/src/server.ts` does all of the above already; read it rather than
+re-deriving the flags.
 
 ## Drive the API
 
@@ -53,9 +70,12 @@ Plain curl against `http://127.0.0.1:<port>/api/...`. Useful states:
 
 ## Drive the UI headlessly
 
-No Playwright in the repo, but chromium is cached at
-`~/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`.
-In a scratch dir: `npm i playwright-core`, then
-`chromium.launch({ executablePath: <above>, headless: true })` and open
-`http://127.0.0.1:<port>/`. It's a SPA — navigate via the sidebar buttons
-(`getByRole("button", { name: "Settings" })`). Screenshot for evidence.
+`apps/e2e` is a Playwright suite over exactly this setup: `pnpm test:e2e` from
+the repo root builds the web app and runs it. Add a spec there rather than
+hand-rolling a browser session — the fixtures already boot an isolated server
+per worker, dismiss the first-run setup gate, and pin the language.
+
+`apps/e2e/README.md` has the rules that bite: never wait for `networkidle` (the
+SPA holds an SSE connection open forever), select through the `t()` helper
+rather than hardcoded German copy, and remember nav items are links, not
+buttons.

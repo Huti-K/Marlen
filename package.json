@@ -11,6 +11,8 @@
     "start": "pnpm --filter @marlen/server start",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @marlen/server test && pnpm --filter @marlen/web test",
+    "test:e2e": "pnpm --filter @marlen/web build && pnpm --filter @marlen/e2e test",
+    "test:e2e:ui": "pnpm --filter @marlen/web build && pnpm --filter @marlen/e2e test:ui",
     "format": "biome format --write .",
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
@@ -29,15 +31,6 @@
     "node": ">=20"
   },
   "packageManager": "pnpm@10.18.3",
-  "pnpm": {
-    "packageExtensions": {
-      "tiptap-markdown": {
-        "peerDependencies": {
-          "@tiptap/pm": "^2"
-        }
-      }
-    }
-  },
   "devDependencies": {
     "@biomejs/biome": "^2.5.4",
     "knip": "^6.27.0",

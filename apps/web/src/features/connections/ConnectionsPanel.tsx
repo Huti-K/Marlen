@@ -125,13 +125,21 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
     </div>
   );
 
+  // The accounts list carries the native onOffice and WhatsApp connections too,
+  // which need no Pipedream project — so it renders either way. Only where the
+  // Pipedream plumbing sits moves: front and centre until a project exists,
+  // tucked under "Advanced" once one does.
+  const accountsList = (
+    <div className="animate-in-up" style={{ animationDelay: "0ms" }}>
+      <Accounts onChanged={onStatusChanged} />
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       {status.configured ? (
         <>
-          <div className="animate-in-up" style={{ animationDelay: "0ms" }}>
-            <Accounts onChanged={onStatusChanged} />
-          </div>
+          {accountsList}
           <div className="animate-in-up" style={{ animationDelay: "50ms" }}>
             <DisclosureToggle
               open={advancedOpen}
@@ -156,6 +164,7 @@ export function ConnectionsPanel({ onStatusChanged }: { onStatusChanged?: () => 
         <>
           {modeToggle}
           {projectPanel}
+          {accountsList}
         </>
       )}
     </div>

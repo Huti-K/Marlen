@@ -26,13 +26,13 @@ export const onOfficeRoutes: FastifyPluginAsyncTypebox = async (app) => {
       throw badRequest(errorMessage(error));
     }
     // Live agents hold an onOffice client built from the old credentials.
-    await resetSessions();
+    resetSessions();
     return getOnOfficeStatus();
   });
 
   app.delete("/api/onoffice", async () => {
     await clearOnOfficeConfig();
-    await resetSessions();
+    resetSessions();
     return getOnOfficeStatus();
   });
 
@@ -54,7 +54,7 @@ export const onOfficeRoutes: FastifyPluginAsyncTypebox = async (app) => {
     { schema: { body: Type.Object({ enabled: Type.Boolean() }) } },
     async (req) => {
       await setOnOfficeWriteAccess(req.body.enabled);
-      await resetSessions();
+      resetSessions();
       return getOnOfficeStatus();
     },
   );

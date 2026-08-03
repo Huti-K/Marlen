@@ -56,12 +56,63 @@ const accountSignaturesBody = Type.Object({
   ),
 });
 
-/** Drops active content (scripts, handlers, javascript: URLs) while keeping mail-client formatting. */
+/** Tags whose content is never signature markup; both the element and what it wraps go. */
+const ACTIVE_ELEMENTS = "script|style|iframe|object|embed|form|template|noscript";
+
+/**
+ * Drops active content (scripts, handlers, script-bearing URLs) while keeping
+ * the layout tables, fonts and colors a pasted mail-client signature depends on.
+ *
+ * Deliberately a denylist over tag soup rather than a parser: an allowlist would
+ * have to reproduce what Gmail and Outlook emit, and stripping a real signature
+ * to markup Marlen approves of is a worse outcome than the residual risk here.
+ * Signatures are author-only (no agent tool writes one) and render inside the
+ * app's own origin, so the threat is a user pasting markup that attacks
+ * themselves. The browser-side editor (SignatureEditor.tsx) parses properly and
+ * is the primary filter; this is the boundary that must not be bypassable by
+ * calling the API directly.
+ */
 function sanitizeSignatureHtml(html: string): string {
-  return html
-    .replace(/<(script|style|iframe|object|embed|form)[\s\S]*?<\/\1\s*>/gi, "")
-    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/((?:href|src)\s*=\s*["'])\s*javascript:/gi, "$1");
+  return (
+    html
+      // Paired active elements, content and all.
+      .replace(new RegExp(`<(${ACTIVE_ELEMENTS})\\b[\\s\\S]*?<\\/\\1\\s*>`, "gi"), "")
+      // The same tags left unclosed, plus the ones that never have a body and
+      // can redirect or refresh the page.
+      .replace(new RegExp(`<\\/?(?:${ACTIVE_ELEMENTS}|base|meta|link)\\b[^>]*>`, "gi"), "")
+      // Event handlers. The boundary before `on…` is any attribute separator,
+      // not just whitespace: `<svg/onload=…>` is valid HTML.
+      .replace(/[\s/]+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      // Script-bearing URL values, quoted or bare. Entities, NUL and whitespace
+      // between the scheme's letters are all ways browsers still resolve
+      // `javascript:`, so the value is normalized before it is judged.
+      .replace(
+        /\b(href|src|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+        (whole, attribute: string, quoted?: string, single?: string, bare?: string) =>
+          isScriptUrl(quoted ?? single ?? bare ?? "") ? `${attribute}="#"` : whole,
+      )
+  );
+}
+
+/** One numeric character reference, or nothing when it names no character. */
+function decodeCodePoint(raw: string, base: number): string {
+  const code = Number.parseInt(raw, base);
+  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return "";
+  return String.fromCodePoint(code);
+}
+
+/** True for a URL a browser would execute rather than fetch, after undoing the usual obfuscations. */
+function isScriptUrl(value: string): boolean {
+  const normalized = value
+    // `&#x6a;avascript:` and `&#106;avascript:` both resolve before navigation.
+    .replace(/&#x([0-9a-f]+);?/gi, (_whole, hex: string) => decodeCodePoint(hex, 16))
+    .replace(/&#(\d+);?/g, (_whole, dec: string) => decodeCodePoint(dec, 10))
+    // Control characters and spaces are ignored inside a scheme, so they must
+    // not hide one from this check either.
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+    .replace(/[\x00-\x20\x7f]/g, "")
+    .toLowerCase();
+  return normalized.startsWith("javascript:") || normalized.startsWith("vbscript:");
 }
 
 export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
@@ -74,7 +125,7 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
     }
     await setSetting(LANGUAGE_SETTING_KEY, language);
     // The language lives in the system prompt, so drop in-memory agents; new conversations pick it up.
-    await resetSessions();
+    resetSessions();
     return { language };
   });
 
@@ -93,7 +144,7 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
     await rescheduleNightlyLearn();
     await rescheduleNightlySuggest();
     // The current time is baked into the system prompt, so drop in-memory agents.
-    await resetSessions();
+    resetSessions();
     return { timezone };
   });
 
@@ -111,7 +162,7 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
       const permissions = [...byId.values()].filter((p) => p.write || p.send || p.delete);
       await setAccountPermissions(permissions);
       // Per-account grants decide which tools get registered; rebuild agent toolsets.
-      await resetSessions();
+      resetSessions();
       emitServerEvent("accounts");
       return { permissions };
     },
@@ -125,7 +176,7 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
     const fileAccess = req.body;
     await setFileAccessSettings(fileAccess);
     // The grants decide which file tools buildAgent mounts and the prompt text; rebuild sessions.
-    await resetSessions();
+    resetSessions();
     return { fileAccess };
   });
 
@@ -157,7 +208,7 @@ export const settingsRoutes: FastifyPluginAsyncTypebox = async (app) => {
       const signatures = [...byId.values()].filter((s) => s.html);
       await setAccountSignatures(signatures);
       // The draft tools' descriptions mention the signature; rebuild agent toolsets.
-      await resetSessions();
+      resetSessions();
       emitServerEvent("accounts");
       return { signatures };
     },
