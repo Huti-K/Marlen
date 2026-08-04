@@ -14,6 +14,28 @@ const DATE_LOCALE_BY_LANGUAGE: Record<Language, string> = {
   de: "de-DE",
 };
 
+/**
+ * Ceiling for the whole assembled system prompt, about 20k tokens. It is a
+ * real ceiling, not a target: the prompt rides on every turn of every
+ * conversation and is the one part compaction can never trim (compaction.ts
+ * replaces messages, never the prompt), so whatever it costs is subtracted
+ * from the context window for good. Left to grow it eventually leaves no room
+ * for the conversation itself.
+ *
+ * The app's own instructions are fixed and always fit; the sections that grow
+ * with use (memory, skills, the library index) are handed what is left over
+ * and stay inside it. Nothing is deleted to fit: what does not make the prompt
+ * stays on disk and is reachable with the file and memory tools.
+ */
+export const SYSTEM_PROMPT_MAX_CHARS = 80_000;
+
+/**
+ * The share of the growable budget reserved for the skills index, so a large
+ * memory can never crowd out the playbooks the user wrote. Skills are one line
+ * each, so this is generous.
+ */
+const SKILLS_BUDGET_SHARE = 0.2;
+
 /** English name of the configured app language; memory and style learning write in it. */
 export async function appLanguageName(): Promise<string> {
   return LANGUAGE_ENGLISH_NAMES[(await getLanguageSetting()) ?? "de"];
@@ -172,8 +194,15 @@ export async function buildSystemPrompt(caps?: SessionCapabilities): Promise<str
   }
 
   prompt += await buildAccountsContext(interactive);
-  prompt += await buildKnowledgeContext();
-  prompt += await buildSkillsContext();
+
+  // Everything above is the app's own instructions plus one line per connected
+  // account: fixed, and what is left of the ceiling belongs to the sections
+  // that grow with use. Skills are measured first so they keep their reserve,
+  // and appended after memory to leave the prompt's reading order unchanged.
+  const growable = Math.max(0, SYSTEM_PROMPT_MAX_CHARS - prompt.length);
+  const skills = await buildSkillsContext(Math.floor(growable * SKILLS_BUDGET_SHARE));
+  prompt += await buildKnowledgeContext(growable - skills.length);
+  prompt += skills;
   return prompt;
 }
 

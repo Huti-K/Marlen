@@ -1,5 +1,10 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { formatFileSize, MEMORY_MAX_COUNT, type MemoryEntry } from "@marlen/shared";
+import {
+  formatFileSize,
+  MEMORY_MAX_COUNT,
+  MEMORY_MAX_LENGTH,
+  type MemoryEntry,
+} from "@marlen/shared";
 import { Type } from "@sinclair/typebox";
 import { groupBy } from "../core/utils/util.js";
 import { getLibraryDir, SUPPORTED_FORMATS } from "../storage/library/ingest.js";
@@ -306,62 +311,155 @@ export function buildKnowledgeReadTools(): AgentTool[] {
 /** Caps library titles in the system prompt so it can't grow unbounded. */
 const LIBRARY_TOC_LIMIT = 100;
 
-export async function buildKnowledgeContext(): Promise<string> {
-  let context = "";
+/**
+ * One entry as the prompt carries it. Entries are files the user and the agent
+ * can also write from outside the app, so the length a memory is allowed to be
+ * is enforced here on the way in, not only in createMemory: one hand-edited
+ * file cannot take the block over on its own.
+ */
+function memoryText(entry: MemoryEntry): string {
+  const content = entry.content.trim();
+  if (content.length <= MEMORY_MAX_LENGTH) return content;
+  return `${content.slice(0, MEMORY_MAX_LENGTH)}\n[Cut off here. Read the whole entry with file_read on memory/${entry.id}.md.]`;
+}
 
-  // The cap bounds the prompt even when the user hand-drops more files into
-  // memory/ than createMemory would ever allow.
-  const memories = (await listMemories()).slice(0, MEMORY_MAX_COUNT);
-  if (memories.length > 0) {
-    // Multi-line entries render as an id line with the body indented beneath it,
-    // so a combined topic file stays one list item.
-    const format = (list: MemoryEntry[]) =>
-      list
-        .map((m) =>
-          m.content.includes("\n")
-            ? `- [${m.id}]\n  ${m.content.split("\n").join("\n  ")}`
-            : `- [${m.id}] ${m.content}`,
-        )
-        .join("\n");
+/** One entry as it is rendered into the block; also what it costs the budget. */
+function memoryLine(entry: MemoryEntry): string {
+  const text = memoryText(entry);
+  return text.includes("\n")
+    ? `- [${entry.id}]\n  ${text.split("\n").join("\n  ")}`
+    : `- [${entry.id}] ${text}`;
+}
 
-    const global = memories.filter((m) => m.accountId === null && m.contactId === null);
-    const accountScoped = memories.filter((m) => m.accountId !== null);
-    const contactScoped = memories.filter((m) => m.contactId !== null);
+/** Which section an entry renders under; a new key costs its header too. */
+function memoryScope(entry: MemoryEntry): string {
+  if (entry.accountId !== null) return `account:${entry.accountId}`;
+  if (entry.contactId !== null) return `contact:${entry.contactId}`;
+  return "global";
+}
 
-    const sections: string[] = [];
-    if (global.length > 0) sections.push(format(global));
+/**
+ * The entries the prompt can carry, returned in the caller's original order.
+ * Both caps are applied over the same most-recently-touched-first pass, so
+ * what gets left out is always the stalest thing and a memory saved a moment
+ * ago is never the one that goes: the count bounds a folder holding more files
+ * than createMemory would allow, the budget bounds files longer than it would
+ * allow. Costed on the rendered text, headers included, so the block really
+ * does fit. Nothing is deleted: what does not fit stays on disk, and the file
+ * tools still reach it.
+ */
+function withinMemoryBudget(
+  memories: MemoryEntry[],
+  budget: number,
+  headerCost: (scope: string) => number,
+): { shown: MemoryEntry[]; omitted: number } {
+  const fitting = new Set<string>();
+  const scopesSeen = new Set<string>();
+  let used = 0;
+  for (const entry of [...memories].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
+    if (fitting.size >= MEMORY_MAX_COUNT) break;
+    const scope = memoryScope(entry);
+    // +1 for the newline joining this line to the previous one.
+    let cost = memoryLine(entry).length + 1;
+    if (!scopesSeen.has(scope)) cost += headerCost(scope);
+    if (used + cost > budget) break;
+    used += cost;
+    scopesSeen.add(scope);
+    fitting.add(entry.id);
+  }
+  return {
+    shown: memories.filter((entry) => fitting.has(entry.id)),
+    omitted: memories.length - fitting.size,
+  };
+}
 
-    if (accountScoped.length > 0) {
-      const names = await fetchAccountNameMap();
-      const byAccount = groupBy(accountScoped, (m) => m.accountId as string);
-      for (const [accountId, entries] of byAccount) {
-        const name = names.get(accountId) ?? accountId;
-        sections.push(
-          `Memory for ${name} (applies only when reading or writing as this account):\n${format(entries)}`,
-        );
-      }
-    }
+const MEMORY_BLOCK_HEADER =
+  "\n\nLong-term memory (saved earlier; the user manages these on the Knowledge page):\n";
 
-    if (contactScoped.length > 0) {
-      const byContact = groupBy(contactScoped, (m) => m.contactId as string);
-      for (const [address, entries] of byContact) {
-        sections.push(
-          `Memory about ${address} (applies only when corresponding with them):\n${format(entries)}`,
-        );
-      }
-    }
+const MEMORY_BLOCK_FOOTER =
+  "\n\nWhen one of these memories shapes your reply, draft, or decision this turn, call memory_used at the end with the bracketed id(s) of the ones you actually relied on — only those, and skip the call when none were relevant.";
 
-    context += `\n\nLong-term memory (saved earlier; the user manages these on the Knowledge page):\n${sections.join("\n\n")}\n\nWhen one of these memories shapes your reply, draft, or decision this turn, call memory_used at the end with the bracketed id(s) of the ones you actually relied on — only those, and skip the call when none were relevant.`;
+/**
+ * What the block costs before a single entry: its framing, plus the note that
+ * appears when entries had to be left out. Charged up front so the budget the
+ * entries are measured against is the room they will actually have.
+ */
+function memoryFramingCost(): number {
+  return MEMORY_BLOCK_HEADER.length + MEMORY_BLOCK_FOOTER.length + omittedNote(999).length;
+}
+
+/** The housekeeping note for entries left out; "" when none were. */
+function omittedNote(omitted: number): string {
+  if (omitted === 0) return "";
+  // Memory outgrowing its share is the agent's own housekeeping: it wrote most
+  // of these, and it is the only thing positioned to tell which of them are now
+  // the same fact said twice. Stated as work to do, since nothing else will do it.
+  return `\n\n${omitted} further ${omitted === 1 ? "memory is" : "memories are"} saved but not shown: memory has outgrown the room it gets in this prompt, and these are the least recently touched. They are files under memory/ — find them with file_ls, read one with file_read. Tidy up when you next save or update a memory: merge entries covering the same topic into one with memory_update, and delete with memory_delete what has been superseded or no longer holds. Fewer, fuller entries are the goal, never a longer list.`;
+}
+
+/**
+ * Memory and the library index, held to `budget` characters between them (the
+ * share of the system prompt's ceiling left over by prompt.ts). The library
+ * index is measured first: it is already bounded by LIBRARY_TOC_LIMIT, and
+ * memory is the section that grows without one.
+ */
+export async function buildKnowledgeContext(budget: number): Promise<string> {
+  const library = await buildLibraryContext();
+
+  const all = await listMemories();
+  const names = await fetchAccountNameMap();
+  const scopeHeader = (scope: string): string => {
+    if (scope === "global") return "";
+    const [kind, ...rest] = scope.split(":");
+    const id = rest.join(":");
+    return kind === "account"
+      ? `Memory for ${names.get(id) ?? id} (applies only when reading or writing as this account):\n`
+      : `Memory about ${id} (applies only when corresponding with them):\n`;
+  };
+
+  const entryBudget = Math.max(0, budget - library.length - memoryFramingCost());
+  const { shown: memories, omitted } = withinMemoryBudget(
+    all,
+    entryBudget,
+    // +2 for the blank line separating this section from the previous one.
+    (scope) => scopeHeader(scope).length + 2,
+  );
+  if (memories.length === 0) return library;
+
+  // Multi-line entries render as an id line with the body indented beneath it,
+  // so a combined topic file stays one list item.
+  const format = (list: MemoryEntry[]) => list.map(memoryLine).join("\n");
+
+  const global = memories.filter((m) => m.accountId === null && m.contactId === null);
+  const accountScoped = memories.filter((m) => m.accountId !== null);
+  const contactScoped = memories.filter((m) => m.contactId !== null);
+
+  const sections: string[] = [];
+  if (global.length > 0) sections.push(format(global));
+  for (const [accountId, entries] of groupBy(accountScoped, (m) => m.accountId as string)) {
+    sections.push(scopeHeader(`account:${accountId}`) + format(entries));
+  }
+  for (const [address, entries] of groupBy(contactScoped, (m) => m.contactId as string)) {
+    sections.push(scopeHeader(`contact:${address}`) + format(entries));
   }
 
+  return (
+    MEMORY_BLOCK_HEADER +
+    sections.join("\n\n") +
+    omittedNote(omitted) +
+    MEMORY_BLOCK_FOOTER +
+    library
+  );
+}
+
+/** The library index: already bounded by LIBRARY_TOC_LIMIT titles, one line each. */
+async function buildLibraryContext(): Promise<string> {
   const indexed = (await listDocuments()).filter((d) => d.status === "indexed" && d.chunkCount > 0);
-  if (indexed.length > 0) {
-    const shown = indexed.slice(0, LIBRARY_TOC_LIMIT);
-    const lines = shown.map((d) => `- ${d.title} (${d.ext})`);
-    if (indexed.length > shown.length) {
-      lines.push(`… and ${indexed.length - shown.length} more — use library_list.`);
-    }
-    context += `\n\nDocument library (search with library_search, read with library_read):\n${lines.join("\n")}`;
+  if (indexed.length === 0) return "";
+  const shown = indexed.slice(0, LIBRARY_TOC_LIMIT);
+  const lines = shown.map((d) => `- ${d.title} (${d.ext})`);
+  if (indexed.length > shown.length) {
+    lines.push(`… and ${indexed.length - shown.length} more — use library_list.`);
   }
-  return context;
+  return `\n\nDocument library (search with library_search, read with library_read):\n${lines.join("\n")}`;
 }

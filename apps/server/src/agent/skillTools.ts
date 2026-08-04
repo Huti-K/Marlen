@@ -63,13 +63,40 @@ export const skillWriteTool: AgentTool = tool({
   },
 });
 
-/** System-prompt index: name + one-line description only; the body is left to skill_read since every entry rides on every turn. */
-export async function buildSkillsContext(): Promise<string> {
+/** A description is an index line, not the skill; the body is what skill_read is for. */
+const SKILL_DESCRIPTION_MAX_CHARS = 300;
+
+/**
+ * System-prompt index: name + one-line description only; the body is left to
+ * skill_read since every entry rides on every turn. Skills are files the user
+ * can also write from outside the app, so the index is held to `budget`
+ * characters: entries past it are named but not described, and past that
+ * counted, so the section can never outgrow its share of the prompt.
+ */
+export async function buildSkillsContext(budget: number): Promise<string> {
   const skills = await listSkills();
   if (skills.length === 0) return "";
-  const lines = skills.map((s) => `- ${s.name}: ${s.description}`);
-  return (
+  const header =
     `\n\nSkills — the user's saved playbooks for how they want recurring tasks done. When a ` +
-    `request matches one, read it with skill_read and follow it:\n${lines.join("\n")}`
-  );
+    `request matches one, read it with skill_read and follow it:\n`;
+
+  // Too little room for a header and a line or two: the section would cost the
+  // conversation more than the stub is worth.
+  if (budget < header.length + 200) return "";
+
+  const lines: string[] = [];
+  let used = header.length;
+  for (const skill of skills) {
+    const line = `- ${skill.name}: ${skill.description.slice(0, SKILL_DESCRIPTION_MAX_CHARS)}`;
+    const rest = `… and ${skills.length - lines.length} more, listed on the Knowledge page.`;
+    // Room for this line AND the note that would replace the remainder, so the
+    // last line never pushes the section over.
+    if (used + line.length + rest.length + 2 > budget) {
+      lines.push(rest);
+      break;
+    }
+    used += line.length + 1;
+    lines.push(line);
+  }
+  return header + lines.join("\n");
 }

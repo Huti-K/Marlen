@@ -7,6 +7,7 @@ import { automationReadTools } from "./automationTools.js";
 import { buildDelegationCard } from "./cards.js";
 import { buildKnowledgeContext, buildKnowledgeReadTools } from "./knowledgeTools.js";
 import { runOneShot } from "./oneShot.js";
+import { SYSTEM_PROMPT_MAX_CHARS } from "./prompt.js";
 import { prompts } from "./prompts.js";
 import { textResult, tool } from "./toolkit.js";
 import { webFetchTool } from "./webFetchTool.js";
@@ -60,7 +61,9 @@ lookup, call the email or web tools directly instead.`,
       const dropped = allTasks.length - MAX_TASKS;
       const tasks = allTasks.slice(0, MAX_TASKS);
 
-      const systemPrompt = prompts.delegateWorker + (await buildKnowledgeContext());
+      const systemPrompt =
+        prompts.delegateWorker +
+        (await buildKnowledgeContext(SYSTEM_PROMPT_MAX_CHARS - prompts.delegateWorker.length));
       const tools = [
         ...readTools,
         ...buildKnowledgeReadTools(),
