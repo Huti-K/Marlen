@@ -36,6 +36,15 @@ type DesktopBridge = {
   /** Report the resolved theme so the native window background tracks it. */
   setChromeTheme: (theme: "light" | "dark") => void;
   getAppInfo: () => Promise<DesktopAppInfo>;
+  /** Translate the tray menu: the app language lives here, not in the shell. */
+  setTrayLabels: (labels: { open: string; quit: string; background: string }) => void;
+  /** What awaits the user: the count badges the app icon, the translated
+   *  summary becomes the tray tooltip. */
+  setWaiting: (count: number, summary: string) => void;
+  /** Whether the OS starts Marlen at login. */
+  getLaunchAtLogin: () => Promise<boolean>;
+  /** Set the login item; resolves to what the OS actually reports afterwards. */
+  setLaunchAtLogin: (enabled: boolean) => Promise<boolean>;
   /** Version of an update already downloaded and waiting for a restart, if any. */
   getPendingUpdate: () => Promise<string | null>;
   /** Check the release feed now; a found update starts downloading in the background. */

@@ -35,11 +35,13 @@ function stripDashes(text: string): string {
 function collectTurnActivity(conversationId: string): {
   cards: MessageCard[];
   toolCalls: ChatToolCall[];
+  /** Prose streamed so far, so a stopped turn can keep what it already said. */
+  text: () => string;
   wrap: (caller?: RunHandlers) => RunHandlers;
 } {
   const cards: MessageCard[] = [];
   const toolCalls: ChatToolCall[] = [];
-  let textLength = 0;
+  let streamed = "";
 
   const onCard = (toolCallId: string, card: AgentCard) => {
     // A retried tool call replaces its earlier card, not a second entry.
@@ -79,7 +81,7 @@ function collectTurnActivity(conversationId: string): {
     ...caller,
     onTextDelta: (delta) => {
       const clean = stripDashes(delta);
-      textLength += clean.length;
+      streamed += clean;
       caller.onTextDelta?.(clean);
     },
     onToolStart: (toolCallId, toolName, toolLabel, parameters) => {
@@ -90,7 +92,7 @@ function collectTurnActivity(conversationId: string): {
         isError: false,
         done: false,
         parameters,
-        contentOffset: textLength,
+        contentOffset: streamed.length,
       };
       // A retried tool call replaces its earlier record, not a second entry.
       const existing = toolCalls.findIndex((c) => c.id === toolCallId);
@@ -113,7 +115,7 @@ function collectTurnActivity(conversationId: string): {
     },
   });
 
-  return { cards, toolCalls, wrap };
+  return { cards, toolCalls, text: () => streamed, wrap };
 }
 
 export function serializeTurnCards(cards: MessageCard[]): string | null {
@@ -131,6 +133,18 @@ export class TurnInFlightError extends Error {
   constructor(conversationId: string) {
     super(`a turn is already in flight for conversation ${conversationId}`);
     this.name = "TurnInFlightError";
+  }
+}
+
+/**
+ * Thrown by Turn.run() when stopTurn() ended the turn. Carries the transcript
+ * row that was recorded, so the caller streams the user the same text a reload
+ * would rebuild rather than an error.
+ */
+export class TurnStoppedError extends Error {
+  constructor(readonly text: string) {
+    super("turn stopped by the user");
+    this.name = "TurnStoppedError";
   }
 }
 
@@ -176,6 +190,23 @@ export interface Turn {
 // Module-level because the chat route and the scheduler share one lock.
 const inFlight = new Set<string>();
 
+// The stop handle of each in-flight turn. Separate from any signal the caller
+// passes in (an automation's timeout): only stopTurn() aborts these, so an
+// abort here is always the user asking for the turn to end.
+const stoppers = new Map<string, AbortController>();
+
+/**
+ * Stop the turn running for a conversation, if any. The turn caps its own
+ * transcript with what it had already said and throws TurnStoppedError.
+ * Returns false when nothing was running.
+ */
+export function stopTurn(conversationId: string): boolean {
+  const stopper = stoppers.get(conversationId);
+  if (!stopper) return false;
+  stopper.abort();
+  return true;
+}
+
 /**
  * Whether a conversation currently has a turn running. The approval lists
  * (routes/drafts.ts, routes/outbound.ts) hold a draft back while its
@@ -194,6 +225,7 @@ export function isTurnInFlight(conversationId: string): boolean {
  */
 function endTurn(conversationId: string): void {
   inFlight.delete(conversationId);
+  stoppers.delete(conversationId);
   emitServerEvent("drafts");
   emitServerEvent("outbound");
 }
@@ -208,6 +240,10 @@ function endTurn(conversationId: string): void {
 export function beginTurn(conversationId: string): Turn {
   if (inFlight.has(conversationId)) throw new TurnInFlightError(conversationId);
   inFlight.add(conversationId);
+  // Registered with the guard, not inside run(): a stop arriving between the
+  // two would otherwise find no handle and leave the turn running.
+  const stopper = new AbortController();
+  stoppers.set(conversationId, stopper);
 
   // run() is single-use: a second call would persist another turn under a
   // guard acquisition it can no longer be trusted to hold.
@@ -291,6 +327,21 @@ export function beginTurn(conversationId: string): Turn {
           emitServerEvent("conversations");
         };
 
+        // A stop and the caller's own signal (an automation's timeout) both end
+        // the turn; which one fired decides how it is recorded below.
+        const signal = opts.signal
+          ? AbortSignal.any([opts.signal, stopper.signal])
+          : stopper.signal;
+
+        // What a stopped turn leaves behind: the prose it had already streamed,
+        // marked as stopped, so the transcript matches what the user watched.
+        const stoppedOutcome = (): string => {
+          const partial = collector.text().trim();
+          return partial
+            ? `${partial}\n\n_Stopped._`
+            : "This reply was stopped before it produced anything.";
+        };
+
         let text: string;
         try {
           // session.runTurn (not the bare runPrompt) so the session's inFlight
@@ -302,11 +353,17 @@ export function beginTurn(conversationId: string): Turn {
             await session.runTurn(
               await buildTurnPrompt(opts.prompt, opts.refs, conversationId),
               handlers,
-              opts.signal,
+              signal,
               opts.log,
             ),
           );
         } catch (error) {
+          // Stopped: the user ended the turn. Keep what it already said.
+          if (stopper.signal.aborted) {
+            const stopped = stoppedOutcome();
+            await recordOutcome(stopped);
+            throw new TurnStoppedError(stopped);
+          }
           // Cancelled: the signal fired mid-turn (client disconnect, timeout).
           // Record the cancellation, keeping whatever cards already landed: a
           // draft may exist and its card still renders.
@@ -327,7 +384,12 @@ export function beginTurn(conversationId: string): Turn {
 
         // Post-resolve race: runPrompt returned normally but the signal
         // aborted at almost the same instant. Shipping this as success would
-        // deliver a reply the caller already gave up on; treat it as cancelled.
+        // deliver a reply the caller already gave up on; treat it as ended.
+        if (stopper.signal.aborted) {
+          const stopped = stoppedOutcome();
+          await recordOutcome(stopped);
+          throw new TurnStoppedError(stopped);
+        }
         if (opts.signal?.aborted) {
           await recordOutcome("This reply was cancelled before it finished.");
           throw new Error("turn cancelled: the signal was aborted as the turn resolved");

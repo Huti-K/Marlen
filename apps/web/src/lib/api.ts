@@ -337,6 +337,9 @@ export const api = {
   conversationMessages: (id: string) =>
     get<ChatMessage[]>(`/api/conversations/${encodeURIComponent(id)}/messages`),
   systemPrompt: () => get<{ prompt: string }>("/api/chat/system-prompt"),
+  /** End the turn running in this conversation; the stream reports it as "stopped". */
+  stopChat: (id: string) =>
+    http<{ stopped: boolean }>("POST", `/api/chat/${encodeURIComponent(id)}/stop`),
 
   sttStatus: () => get<SttStatus>("/api/stt"),
   /** `audio` is the recording base64-encoded; `language` is an ISO-639-1 recognition hint. */

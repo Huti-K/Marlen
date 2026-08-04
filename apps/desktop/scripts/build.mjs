@@ -10,6 +10,7 @@
  *                             and worker-thread loaders (pino transports) work
  *                             exactly as in a plain Node install
  *   web/                    – the built @marlen/web app, copied verbatim
+ *   resources/icon.png      – the tray icon, read at runtime by src/tray.ts
  *   package.json            – generated: exact-pinned runtime deps for
  *                             `npm install` + electron-builder's native rebuild
  *
@@ -61,7 +62,7 @@ const runtimeDeps = Object.fromEntries(
 
 // Replace previous bundles but keep node_modules/package-lock.json, so the
 // follow-up `npm install` stays incremental.
-for (const stale of ["main.cjs", "preload.cjs", "server", "web", "package.json"]) {
+for (const stale of ["main.cjs", "preload.cjs", "server", "web", "resources", "package.json"]) {
   rmSync(path.join(outDir, stale), { recursive: true, force: true });
 }
 mkdirSync(outDir, { recursive: true });
@@ -148,6 +149,12 @@ writeFileSync(
 );
 
 cpSync(webDist, path.join(outDir, "web"), { recursive: true });
+
+// The tray builds its icon from this at runtime (src/tray.ts). electron-builder
+// reads resources/ as build input for the installer icons, which never lands
+// inside the app, so the shell needs its own copy.
+mkdirSync(path.join(outDir, "resources"), { recursive: true });
+cpSync(path.join(desktopRoot, "resources", "icon.png"), path.join(outDir, "resources", "icon.png"));
 
 console.log(
   `assembled ${path.relative(repoRoot, outDir)} (v${appPkg.version}, ${Object.keys(runtimeDeps).length} runtime deps)`,

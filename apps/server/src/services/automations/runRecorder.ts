@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { RunTrigger } from "@marlen/shared";
+import type { MessageCard, RunTrigger } from "@marlen/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { env } from "../../core/env.js";
 import { emitRunNotification, emitServerEvent } from "../../core/events.js";
@@ -21,6 +21,16 @@ const NOTIFICATION_SUMMARY_CHARS = 140;
 function notificationSummary(result: string): string {
   const firstLine = result.split("\n", 1)[0] ?? "";
   return firstLine.slice(0, NOTIFICATION_SUMMARY_CHARS);
+}
+
+/** Card kinds an unattended run leaves on Home for the user to send or discard. */
+const APPROVAL_CARD_KINDS = new Set(["email_draft", "message_draft"]);
+
+/** Whether this run's own cards left something waiting for the user. */
+function leftApprovals(cardsJson: string | null): boolean {
+  if (!cardsJson) return false;
+  const cards = JSON.parse(cardsJson) as MessageCard[];
+  return cards.some((entry) => APPROVAL_CARD_KINDS.has(entry.card.kind));
 }
 
 export interface AutomationRunResult {
@@ -138,7 +148,10 @@ export async function executeAutomationRun(
       })
       .where(eq(schema.automationRuns.id, runId));
     emitServerEvent("runs");
-    if (automation.notifyOnCompletion) {
+    // A run that left a draft waiting notifies whatever the automation's own
+    // setting says: the switch governs "here is the result", not "this needs
+    // you". Without it, work queues up on Home with nothing to point at it.
+    if (automation.notifyOnCompletion || leftApprovals(cardsJson)) {
       emitRunNotification({
         runId,
         automationId,
@@ -168,15 +181,15 @@ export async function executeAutomationRun(
       })
       .where(eq(schema.automationRuns.id, runId));
     emitServerEvent("runs");
-    if (automation.notifyOnCompletion) {
-      emitRunNotification({
-        runId,
-        automationId,
-        automationName: automation.name,
-        status: "error",
-        summary: notificationSummary(message),
-      });
-    }
+    // Failures always notify: an unattended run that silently stopped working
+    // is only discovered by going looking for it.
+    emitRunNotification({
+      runId,
+      automationId,
+      automationName: automation.name,
+      status: "error",
+      summary: notificationSummary(message),
+    });
   }
 
   return { started: true, succeeded, schedule: automation.schedule };

@@ -41,6 +41,9 @@ Home / Start
 Chat
 - The composer sends on Enter (Shift+Enter for a new line). There is no file-upload control;
   files reach the assistant via the Knowledge page or the library folder.
+- While a reply is running the send button becomes a stop button. Stopping ends the turn at
+  once and keeps what was already written, marked as stopped; anything the turn had already
+  created (a draft, a card) stays.
 - A microphone next to the send button dictates: while recording, a waveform fills the composer
   with the elapsed time, a discard button and a transcribe button (Escape discards). The
   transcript lands in the composer as editable text and is never sent on its own. Dictation
@@ -82,7 +85,8 @@ Automations / Automatisierungen
   raw cron field hides behind "Advanced / Erweitert"). Options per automation: pin its result
   to the top of Home, show/hide in activity, also run immediately when new mail arrives, and
   desktop-notify when a run finishes. Cards drag to reorder, pause with a switch, and show
-  recent runs.
+  recent runs. That notify option governs "here is the result"; a run that fails, or that
+  leaves a draft waiting for approval, notifies whether or not it is on.
 - Marlen also suggests automations from patterns in recent chats; suggestions are reviewed on
   the Automations page (add or dismiss).
 - Unattended runs read, search and draft freely, and they send from any account whose "Send /
@@ -127,12 +131,20 @@ Settings / Einstellungen (sections in order)
 - File access / Dateizugriff: what the assistant may do outside its own folder — read files,
   write files, run commands; all off by default.
 - Preferences / Darstellung & Sprache: appearance (light/dark/system), language (German or
-  English, for the app and the assistant's answers), timezone, and quick actions — whether
-  buttons like "Draft reply / Antwort entwerfen" send immediately or open the draft for review.
+  English, for the app and the assistant's answers), timezone, quick actions — whether
+  buttons like "Draft reply / Antwort entwerfen" send immediately or open the draft for review
+  — and "Start with the computer / Mit dem Computer starten", which launches Marlen into the
+  background at login so scheduled automations run without the app being opened first.
 - Local data / Lokale Daten: download a backup snapshot of everything stored on this computer
   (without account credentials).
 - About / Über Marlen: version, build, license, source code on GitHub, report an issue, the
   full changelog, and "Check for updates / Nach Updates suchen".
+
+Running in the background
+- Closing the window does not stop Marlen: scheduled automations keep running. On macOS the app
+  stays in the dock, on Windows in the system tray, whose icon reopens it and whose menu quits
+  it. The app icon carries a badge (macOS) or the tray tooltip a count (Windows) for drafts
+  waiting for approval.
 
 Updates
 - The app updates itself from official releases. A downloaded update waits as an "Update ready /

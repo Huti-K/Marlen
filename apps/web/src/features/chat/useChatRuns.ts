@@ -32,6 +32,8 @@ export interface UseChatRunsResult {
   conversationId: string | undefined;
   /** Streams a real turn — starts one server-side if no conversation is open yet. */
   send: (message: string, refs?: EmailRef[]) => Promise<void>;
+  /** Ends the running turn; its outcome still arrives over the open stream. */
+  stop: () => Promise<void>;
   openConversation: (id: string) => Promise<void>;
   newConversation: () => void;
   /** Appends messages built outside a server run (e.g. /showcase). */
@@ -250,12 +252,25 @@ export function useChatRuns({
     [dispatch],
   );
 
+  /** Ask the server to end the running turn. The open stream delivers the
+   *  outcome as a "stopped" event, so nothing is dispatched here. */
+  const stop = React.useCallback(async () => {
+    const conversationId = stateRef.current.activeConversationId;
+    if (!conversationId) return;
+    try {
+      await api.stopChat(conversationId);
+    } catch (err) {
+      toast.error(err);
+    }
+  }, []);
+
   return {
     messages: state.messages,
     busy: state.busy,
     restoring: state.restoring,
     conversationId: state.activeConversationId,
     send,
+    stop,
     openConversation,
     newConversation,
     appendMessages,

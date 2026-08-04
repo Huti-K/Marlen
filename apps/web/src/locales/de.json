@@ -9,6 +9,15 @@
     "updateAvailable": "Update bereit",
     "updateRestart": "Marlen neu starten & aktualisieren"
   },
+  "desktop": {
+    "tray": {
+      "open": "Marlen öffnen",
+      "quit": "Marlen beenden",
+      "background": "Marlen läuft weiter und führt Ihre Automatisierungen aus. Beenden können Sie die App über das Symbol im Infobereich.",
+      "waiting_one": "{{count}} Entwurf wartet auf Freigabe",
+      "waiting_other": "{{count}} Entwürfe warten auf Freigabe"
+    }
+  },
   "changelog": {
     "open": "Changelog",
     "title": "Neuigkeiten",
@@ -88,6 +97,7 @@
     "emptyBody": "Der Assistent durchsucht Ihre verbundenen Konten, versieht E-Mails mit Labels und schreibt Entwürfe.",
     "placeholder": "Schreiben Sie Ihrem E-Mail-Assistenten…",
     "send": "Nachricht senden",
+    "stop": "Antwort stoppen",
     "resize": "Breite des Chat-Bereichs anpassen",
     "searchPlaceholder": "Unterhaltungen durchsuchen…",
     "noSearchResults": "Keine Treffer.",
@@ -789,6 +799,10 @@
       "label": "Zeitzone",
       "description": "Automatisierungen laufen und Zeiten werden in dieser Zeitzone angezeigt",
       "localTime": "Ortszeit {{time}}"
+    },
+    "launchAtLogin": {
+      "label": "Mit dem Computer starten",
+      "description": "Marlen startet beim Anmelden im Hintergrund, damit geplante Automatisierungen laufen, ohne dass Sie die App vorher öffnen."
     },
     "backup": {
       "label": "Sicherung",

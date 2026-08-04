@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
@@ -7,6 +7,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Notification,
   session,
   shell,
   systemPreferences,
@@ -24,6 +25,15 @@ import {
 } from "./chrome";
 import { startNotifications, stopNotifications } from "./notifications";
 import {
+  backgroundHint,
+  setTrayLabels,
+  setTrayWaiting,
+  startTray,
+  stopTray,
+  type TrayLabels,
+  trayActive,
+} from "./tray";
+import {
   checkForUpdatesNow,
   installUpdate,
   pendingUpdateVersion,
@@ -38,6 +48,15 @@ import {
  */
 const BASE_PORT = 43117;
 const PORT_SCAN_RANGE = 20;
+/**
+ * Restart budget for the server process. A server that dies is a hiccup worth
+ * restarting through — the port is stable, and the web reconnects its event
+ * stream and refetches on its own, so a restart costs the user nothing.
+ * Dying this many times inside the window is a broken install instead, and
+ * restarting forever would only hide it.
+ */
+const RESTART_WINDOW_MS = 60_000;
+const RESTART_BACKOFF_MS = [500, 1_000, 2_000, 5_000, 10_000];
 // Generous: the first launch after install (or an update) on Windows can spend
 // minutes in Defender's on-access scan of the unpacked node_modules before the
 // server even starts booting. The splash window keeps the wait visible.
@@ -46,6 +65,11 @@ const SERVER_READY_TIMEOUT_MS = 180_000;
 let serverProcess: UtilityProcess | null = null;
 let serverPort: number | null = null;
 let quitting = false;
+// Exit timestamps inside RESTART_WINDOW_MS, and the handle of a restart that is
+// waiting out its backoff — the pair is also what tells waitForServer that a
+// gap in `serverProcess` is a restart rather than a dead boot.
+let recentExits: number[] = [];
+let restartTimer: NodeJS.Timeout | null = null;
 
 const smokeMode = Boolean(process.env.MARLEN_DESKTOP_SMOKE);
 
@@ -117,9 +141,23 @@ function startServer(port: number): void {
   child.once("exit", (code) => {
     serverProcess = null;
     if (quitting) return;
-    fatal(
-      `The local Marlen server stopped unexpectedly (code ${code}). Check the logs and reopen the app.`,
-    );
+    const now = Date.now();
+    recentExits = recentExits.filter((at) => now - at < RESTART_WINDOW_MS);
+    const backoff = RESTART_BACKOFF_MS[recentExits.length];
+    if (backoff === undefined) {
+      fatal(
+        `The local Marlen server keeps stopping (code ${code}). Check the logs and reopen the app.`,
+      );
+      return;
+    }
+    recentExits.push(now);
+    log.warn(`server exited (code ${code}); restarting in ${backoff}ms`);
+    // Scheduled synchronously with the exit so no poll sees both a dead
+    // process and no pending restart.
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      if (!quitting) startServer(port);
+    }, backoff);
   });
   serverProcess = child;
 }
@@ -141,7 +179,11 @@ function serverResponding(port: number): Promise<boolean> {
 async function waitForServer(port: number): Promise<void> {
   const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (serverProcess === null) throw new Error("server exited during startup");
+    // A gone process with no restart pending means the restart budget ran out
+    // and fatal() has already reported it.
+    if (serverProcess === null && restartTimer === null) {
+      throw new Error("server exited during startup");
+    }
     if (await serverResponding(port)) return;
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
   }
@@ -224,10 +266,38 @@ function focusOrCreateWindow(): void {
   const [window] = BrowserWindow.getAllWindows();
   if (window) {
     if (window.isMinimized()) window.restore();
+    window.show();
     window.focus();
   } else if (serverPort !== null) {
     createWindow(serverPort);
   }
+}
+
+/**
+ * Tell the user once that closing the window left the app running, so the
+ * tray icon is not the only clue. The marker file makes "once" mean once per
+ * install rather than once per launch.
+ */
+function noteBackgroundRunning(): void {
+  const marker = path.join(app.getPath("userData"), "background-hint-shown");
+  if (existsSync(marker)) return;
+  try {
+    writeFileSync(marker, "");
+  } catch (error) {
+    // Only costs a repeated hint; never worth failing the close over.
+    log.warn(`writing the background hint marker failed: ${String(error)}`);
+  }
+  if (!Notification.isSupported()) return;
+  new Notification({ title: "Marlen", body: backgroundHint() }).show();
+}
+
+/**
+ * Launched by the OS at login (or relaunched with the flag the login item
+ * carries): the app boots into the tray with no window, which is the point of
+ * autostart for something that runs in the background.
+ */
+function startsHidden(): boolean {
+  return process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAsHidden;
 }
 
 // One-shot rebrand carry-over: Electron derives the userData folder from the app
@@ -260,9 +330,16 @@ if (!hasLock) {
   });
 
   app.on("window-all-closed", () => {
-    // On macOS the server (and its scheduled automations) keeps running with the
-    // window closed; elsewhere closing quits.
-    if (process.platform !== "darwin") app.quit();
+    // The server, and with it every scheduled automation, outlives the window:
+    // on macOS the dock keeps the app reachable, elsewhere the tray does. Only
+    // a platform where neither exists still quits with its last window, since
+    // there would be no way back.
+    if (process.platform === "darwin") return;
+    if (!trayActive()) {
+      app.quit();
+      return;
+    }
+    noteBackgroundRunning();
   });
 
   app.on("activate", () => {
@@ -274,6 +351,8 @@ if (!hasLock) {
   app.on("before-quit", () => {
     quitting = true;
     stopNotifications();
+    stopTray();
+    if (restartTimer) clearTimeout(restartTimer);
     serverProcess?.kill();
   });
 
@@ -284,6 +363,37 @@ if (!hasLock) {
     BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(
       chromeBackground(theme === "dark"),
     );
+  });
+
+  // The tray menu speaks the language the web app is set to, which only the
+  // renderer knows; it reports the strings on mount and on every change.
+  ipcMain.on("marlen:set-tray-labels", (_event, next: unknown) => {
+    const labels = next as Partial<TrayLabels> | null;
+    if (!labels?.open || !labels.quit || !labels.background) return;
+    setTrayLabels({ open: labels.open, quit: labels.quit, background: labels.background });
+  });
+
+  // What is waiting for the user, reported by the web app: only it knows, since
+  // the count spans local drafts and live mailbox ones, and only it can phrase
+  // the summary in the app's language.
+  ipcMain.on("marlen:set-waiting", (_event, count: unknown, summary: unknown) => {
+    const waiting = typeof count === "number" && count > 0 ? Math.floor(count) : 0;
+    // No-op on Windows, whose taskbar has no badge; the tooltip carries it there.
+    app.setBadgeCount(waiting);
+    setTrayWaiting(waiting > 0 && typeof summary === "string" ? summary : "");
+  });
+
+  ipcMain.handle("marlen:get-launch-at-login", () => app.getLoginItemSettings().openAtLogin);
+  ipcMain.handle("marlen:set-launch-at-login", (_event, enabled: unknown) => {
+    const openAtLogin = enabled === true;
+    // Hidden on purpose: an assistant started at login belongs in the tray,
+    // not in front of whatever the user opened their computer to do.
+    app.setLoginItemSettings({
+      openAtLogin,
+      openAsHidden: openAtLogin,
+      args: openAtLogin ? ["--hidden"] : [],
+    });
+    return app.getLoginItemSettings().openAtLogin;
   });
 
   ipcMain.handle("marlen:get-pending-update", () => pendingUpdateVersion());
@@ -304,11 +414,13 @@ if (!hasLock) {
       const port = await findFreePort();
       serverPort = port;
       startServer(port);
+      startTray({ onOpen: focusOrCreateWindow });
       // Window first, server-wait after: the user gets a spinner immediately
-      // instead of a silent gap while the server boots.
-      const window = createWindow(port, true);
+      // instead of a silent gap while the server boots. An autostarted launch
+      // has no window to fill, and boots straight into the tray.
+      const window = startsHidden() ? null : createWindow(port, true);
       await waitForServer(port);
-      if (!window.isDestroyed()) void window.loadURL(`http://127.0.0.1:${port}/`);
+      if (window && !window.isDestroyed()) void window.loadURL(`http://127.0.0.1:${port}/`);
       startNotifications(port, { onOpenRequest: focusOrCreateWindow });
       // Dev runs have no update feed baked in: app-update.yml only exists in a packaged build.
       if (app.isPackaged) {

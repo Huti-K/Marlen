@@ -226,7 +226,10 @@ function reduceStreamEvent(
           { toolCallId: event.toolCallId, card: event.card },
         ],
       }));
+    // A stopped turn is a finished turn: the server sends back the row it
+    // recorded, so the live message and a later reload read the same.
     case "done":
+    case "stopped":
       return applyToRun(state, runId, (m) => ({
         ...m,
         content: event.text || m.content,

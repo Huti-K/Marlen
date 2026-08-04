@@ -256,6 +256,49 @@ describe("an agent turn", () => {
     expect(assistant?.content).toContain("This turn failed: model exploded");
   });
 
+  it("stops a running turn and keeps what it had already said", async () => {
+    let streaming: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      streaming = resolve;
+    });
+    turnRecorder._setSessionsForTest({
+      ...unusedSessions,
+      pooled: async () =>
+        fakeSession(async (_prompt, handlers, signal) => {
+          handlers?.onTextDelta?.("Checking your inbox");
+          streaming();
+          // Runs until the stop aborts it, like a real turn mid-tool-call.
+          return await new Promise<string>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          });
+        }),
+    });
+
+    const turn = turnRecorder.beginTurn("conv-stop");
+    const running = turn.run({
+      prompt: "what came in?",
+      session: "pooled",
+      conversation: { type: "chat", title: "what came in?" },
+      log: silentLog,
+    });
+
+    await started;
+    expect(turnRecorder.stopTurn("conv-stop")).toBe(true);
+    await expect(running).rejects.toThrow(turnRecorder.TurnStoppedError);
+
+    // Nothing is running any more, so a second stop finds no turn.
+    expect(turnRecorder.stopTurn("conv-stop")).toBe(false);
+
+    const { db, schema } = dbModule;
+    const rows = await db
+      .select()
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, "conv-stop"));
+    const assistant = rows.find((row) => row.role === "assistant");
+    expect(assistant?.content).toContain("Checking your inbox");
+    expect(assistant?.content).toContain("Stopped");
+  });
+
   it("caps a rate-limited turn with a plain-language row, not the raw provider error", async () => {
     turnRecorder._setSessionsForTest({
       ...unusedSessions,

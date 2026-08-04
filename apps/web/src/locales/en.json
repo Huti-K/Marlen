@@ -9,6 +9,15 @@
     "updateAvailable": "Update ready",
     "updateRestart": "Restart & update Marlen"
   },
+  "desktop": {
+    "tray": {
+      "open": "Open Marlen",
+      "quit": "Quit Marlen",
+      "background": "Marlen keeps running and carries on with your automations. Quit it from the icon in the system tray.",
+      "waiting_one": "{{count}} draft waiting for approval",
+      "waiting_other": "{{count}} drafts waiting for approval"
+    }
+  },
   "changelog": {
     "open": "Changelog",
     "title": "What's new",
@@ -88,6 +97,7 @@
     "emptyBody": "The agent can search, label, and draft across your connected accounts.",
     "placeholder": "Message your email agent…",
     "send": "Send message",
+    "stop": "Stop the reply",
     "resize": "Resize chat panel",
     "searchPlaceholder": "Search conversations…",
     "noSearchResults": "No matches.",
@@ -789,6 +799,10 @@
       "label": "Timezone",
       "description": "Automations run and times are shown in this timezone",
       "localTime": "Local time {{time}}"
+    },
+    "launchAtLogin": {
+      "label": "Start with the computer",
+      "description": "Marlen starts in the background when you log in, so scheduled automations run without you opening it first."
     },
     "backup": {
       "label": "Backup",

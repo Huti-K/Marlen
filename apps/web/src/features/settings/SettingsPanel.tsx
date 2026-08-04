@@ -26,6 +26,7 @@ import { Section } from "@/components/ui/section-header";
 import { Select } from "@/components/ui/select";
 import { SettingRow } from "@/components/ui/setting-row";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { ConnectionsPanel } from "@/features/connections/ConnectionsPanel";
 import { useOnOfficeStatus } from "@/features/connections/OnOffice";
 import { useWhatsAppStatus } from "@/features/connections/WhatsApp";
@@ -34,6 +35,7 @@ import { FileAccessSection } from "@/features/settings/FileAccessSection";
 import { Providers } from "@/features/settings/Providers";
 import { useAccountColors } from "@/lib/accounts";
 import { api } from "@/lib/api";
+import { desktopBridge } from "@/lib/desktop";
 import { rememberLanguage } from "@/lib/i18n";
 import { type QuickActionMode, useQuickActionMode } from "@/lib/quickActions";
 import { toast } from "@/lib/toast";
@@ -148,6 +150,7 @@ export function SettingsPanel({ onStatusChanged }: { onStatusChanged?: () => voi
           <LanguageRow />
           <TimezoneRow />
           <QuickActionsRow />
+          <LaunchAtLoginRow />
         </div>
       </Section>
 
@@ -408,6 +411,54 @@ function QuickActionsRow() {
         { value: "prefill", label: t("settings.sections.quickActions.prefill") },
       ]}
     />
+  );
+}
+
+/**
+ * Start with the computer. Only in the desktop app, and only meaningful there:
+ * scheduled automations run in the app's own process, so nothing happens on a
+ * machine where it was never opened.
+ */
+function LaunchAtLoginRow() {
+  const { t } = useTranslation();
+  const bridge = desktopBridge();
+  const [enabled, setEnabled] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    if (!bridge) return;
+    bridge
+      .getLaunchAtLogin()
+      .then(setEnabled)
+      .catch(() => setEnabled(false));
+  }, [bridge]);
+
+  if (!bridge || enabled === null) return null;
+
+  const toggle = async (next: boolean) => {
+    // The OS is the source of truth: it can refuse (a managed machine), so the
+    // switch shows what it reports back rather than what was asked for.
+    setEnabled(next);
+    try {
+      setEnabled(await bridge.setLaunchAtLogin(next));
+    } catch (err) {
+      setEnabled(!next);
+      toast.error(err);
+    }
+  };
+
+  return (
+    <SettingRow
+      htmlFor="settings-launch-at-login"
+      label={t("settings.launchAtLogin.label")}
+      description={t("settings.launchAtLogin.description")}
+    >
+      <Switch
+        id="settings-launch-at-login"
+        checked={enabled}
+        onCheckedChange={(next) => void toggle(next)}
+        aria-label={t("settings.launchAtLogin.label")}
+      />
+    </SettingRow>
   );
 }
 

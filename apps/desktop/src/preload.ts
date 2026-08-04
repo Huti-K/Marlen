@@ -19,6 +19,16 @@ contextBridge.exposeInMainWorld("marlenDesktop", {
       platform: string;
       arch: string;
     }>,
+  setTrayLabels: (labels: { open: string; quit: string; background: string }): void => {
+    ipcRenderer.send("marlen:set-tray-labels", labels);
+  },
+  setWaiting: (count: number, summary: string): void => {
+    ipcRenderer.send("marlen:set-waiting", count, summary);
+  },
+  getLaunchAtLogin: (): Promise<boolean> =>
+    ipcRenderer.invoke("marlen:get-launch-at-login") as Promise<boolean>,
+  setLaunchAtLogin: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke("marlen:set-launch-at-login", enabled) as Promise<boolean>,
   getPendingUpdate: (): Promise<string | null> =>
     ipcRenderer.invoke("marlen:get-pending-update") as Promise<string | null>,
   checkForUpdates: (): Promise<UpdateCheckStatus> =>

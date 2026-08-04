@@ -688,4 +688,6 @@ export type ChatStreamEvent =
   | { type: "tool_end"; toolCallId: string; toolName: string; isError: boolean; result?: unknown }
   | { type: "card"; toolCallId: string; card: AgentCard }
   | { type: "done"; text: string }
+  /** The user stopped the turn; `text` is the capped transcript row. */
+  | { type: "stopped"; text: string }
   | { type: "error"; message: string; kind?: "rate_limit" };

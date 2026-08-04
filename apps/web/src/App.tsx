@@ -38,7 +38,7 @@ import { ShowcasePanel } from "@/features/showcase/ShowcasePanel"; // DEV showca
 import { api } from "@/lib/api";
 import { rememberLanguage } from "@/lib/i18n";
 import { NAV_VIEWS, openSearch, registerNavigate, SHOWCASE_NAV, type View } from "@/lib/nav";
-import { useDesktopChrome } from "@/lib/useDesktopChrome";
+import { useDesktopChrome, useWaitingBadge } from "@/lib/useDesktopChrome";
 import { useResizableWidth } from "@/lib/useResizableWidth";
 import { useRunNotifications } from "@/lib/useRunNotifications";
 import { useTheme } from "@/lib/useTheme";
@@ -158,6 +158,7 @@ export default function App() {
   const [historyQuery, setHistoryQuery] = React.useState("");
   const [, theme, setThemePref] = useTheme();
   useDesktopChrome(theme);
+  useWaitingBadge();
   const toggleTheme = React.useCallback(() => {
     setThemePref(theme === "dark" ? "light" : "dark");
   }, [theme, setThemePref]);

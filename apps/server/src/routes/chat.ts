@@ -10,7 +10,13 @@ import { parseStoredToolCalls } from "../agent/history.js";
 import { buildSystemPrompt } from "../agent/prompt.js";
 import { isRateLimitFailure } from "../agent/run.js";
 import { disposeSession } from "../agent/sessionCache.js";
-import { beginTurn, type Turn, TurnInFlightError } from "../agent/turnRecorder.js";
+import {
+  beginTurn,
+  stopTurn,
+  type Turn,
+  TurnInFlightError,
+  TurnStoppedError,
+} from "../agent/turnRecorder.js";
 import { badRequest, conflict, requireRow } from "../core/errors.js";
 import { emitServerEvent } from "../core/events.js";
 import { errorMessage } from "../core/utils/util.js";
@@ -277,6 +283,12 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
       send({ type: "done", text });
     } catch (error) {
+      // Stopped on request: the turn already capped its own transcript, so this
+      // is the normal end of a turn, not a failure to report.
+      if (error instanceof TurnStoppedError) {
+        send({ type: "stopped", text: error.text });
+        return;
+      }
       // turn.run() already closed out the transcript; this only notifies a
       // still-connected client. stream.send is a no-op once the stream has ended.
       req.log.error(error, "chat failed");
@@ -291,5 +303,11 @@ export const chatRoutes: FastifyPluginAsyncTypebox = async (app) => {
       emitServerEvent("conversations");
       stream.end();
     }
+  });
+
+  // Stopping is idempotent: a turn that finished on its own between the click
+  // and this request is not an error, so `stopped` reports what was found.
+  app.post("/api/chat/:id/stop", { schema: { params: idParams } }, async (req) => {
+    return { stopped: stopTurn(req.params.id) };
   });
 };

@@ -1,6 +1,6 @@
 import type { ChatToolCall, EmailRef } from "@marlen/shared";
 import type { ParseKeys } from "i18next";
-import { Check, Copy, Send, X } from "lucide-react";
+import { Check, Copy, Send, Square, X } from "lucide-react";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { AgentCardView } from "@/components/cards";
@@ -391,16 +391,30 @@ export function ChatPanel({
               focusComposer();
             }}
           />
-          <Button
-            onClick={() => void send()}
-            disabled={!input.trim()}
-            loading={runs.busy}
-            size="icon-sm"
-            className="mb-1 shrink-0 rounded-xl"
-            aria-label={t("chat.send")}
-          >
-            <Send className="-translate-x-px translate-y-px" />
-          </Button>
+          {/* One button, two jobs: while a turn runs it ends it, so the reply
+              the user has given up on stops costing them time and rate limit. */}
+          {runs.busy ? (
+            <Button
+              onClick={() => void runs.stop()}
+              size="icon-sm"
+              variant="secondary"
+              className="mb-1 shrink-0 rounded-xl"
+              aria-label={t("chat.stop")}
+              title={t("chat.stop")}
+            >
+              <Square className="h-3 w-3 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              onClick={() => void send()}
+              disabled={!input.trim()}
+              size="icon-sm"
+              className="mb-1 shrink-0 rounded-xl"
+              aria-label={t("chat.send")}
+            >
+              <Send className="-translate-x-px translate-y-px" />
+            </Button>
+          )}
         </div>
       </div>
     </div>
