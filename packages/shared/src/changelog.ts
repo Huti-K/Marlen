@@ -13,6 +13,32 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.4",
+    date: "2026-08-04",
+    notes: {
+      en: [
+        "Linking WhatsApp by QR code works again. The app now pairs against the version of WhatsApp Web that is live at that moment, so the code appears instead of the attempt expiring before you see it. Whenever WhatsApp retired the version the app announced, pairing stopped working on every installation at once.",
+        "A linked phone no longer drops out on its own. A status check landing while WhatsApp was rewriting its credentials read the account as unlinked, which reset the assistant's running sessions, routed messages over the Business account and left reconnects stranded.",
+        'Link attempts that cannot succeed now stop instead of retrying forever. If WhatsApp turns the link down for good, blocked, replaced by a newer link, or the wrong device, the app says so; and a paired account no longer sits on "Connecting" after repeated failures.',
+        "Replacing a rejected WhatsApp Business token takes effect immediately, with no restart.",
+        "Settings, Accounts now lists your accounts even when no Pipedream project is set up. onOffice and WhatsApp connect on their own and no longer disappear behind that setup.",
+        "An outbound draft can no longer go out twice from two quick clicks on Send, and a draft you discarded can no longer be sent afterwards.",
+        "Signatures are cleaned more thoroughly before they go into a message, and threading details copied from received mail can no longer add hidden recipients to a reply you send by hand.",
+        "The assistant keeps its email tools for a whole answer. A mailbox session dropping mid-answer used to take them away until the next question.",
+      ],
+      de: [
+        "Die Verknüpfung von WhatsApp per QR-Code funktioniert wieder. Die App verbindet sich jetzt mit der Version von WhatsApp Web, die gerade aktiv ist, damit der Code erscheint, statt dass der Versuch abläuft, bevor Sie ihn sehen. Sobald WhatsApp die von der App gemeldete Version abschaltete, schlug das Verknüpfen auf allen Installationen gleichzeitig fehl.",
+        "Ein verknüpftes Handy fällt nicht mehr von selbst heraus. Eine Statusabfrage, die eintraf, während WhatsApp seine Zugangsdaten neu schrieb, las das Konto als nicht verknüpft, was laufende Sitzungen des Assistenten zurücksetzte, Nachrichten über das Business-Konto leitete und Wiederverbindungen hängen ließ.",
+        'Verbindungsversuche, die nicht gelingen können, hören jetzt auf, statt endlos zu wiederholen. Lehnt WhatsApp die Verknüpfung endgültig ab, gesperrt, durch eine neuere ersetzt oder falsches Gerät, sagt die App das; und ein verknüpftes Konto bleibt nach wiederholten Fehlversuchen nicht mehr auf "Verbindet" stehen.',
+        "Ein ersetzter, zuvor abgewiesener WhatsApp-Business-Token wirkt sofort, ohne Neustart.",
+        "Einstellungen, Konten zeigt Ihre Konten jetzt auch dann, wenn kein Pipedream-Projekt eingerichtet ist. onOffice und WhatsApp verbinden sich eigenständig und verschwinden nicht mehr hinter dieser Einrichtung.",
+        "Ein ausgehender Entwurf geht nicht mehr doppelt hinaus, wenn Sie zweimal schnell auf Senden klicken, und ein verworfener Entwurf lässt sich danach nicht mehr senden.",
+        "Signaturen werden gründlicher bereinigt, bevor sie in eine Nachricht kommen, und aus empfangener Post übernommene Zuordnungsangaben können einer Antwort, die Sie selbst senden, keine verborgenen Empfänger mehr hinzufügen.",
+        "Der Assistent behält seine E-Mail-Werkzeuge während einer ganzen Antwort. Brach eine Postfach-Sitzung mitten in der Antwort ab, fehlten sie bis zur nächsten Frage.",
+      ],
+    },
+  },
+  {
     version: "0.4.3",
     date: "2026-07-26",
     notes: {
