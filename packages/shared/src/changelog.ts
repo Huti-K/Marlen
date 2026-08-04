@@ -13,6 +13,28 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.5",
+    date: "2026-08-04",
+    notes: {
+      en: [
+        "Chats no longer open at a full context. Everything the assistant remembers was loaded into every conversation whole, so on a well-used setup a brand-new chat could start with no room left and refuse the first message. Memory now has a fixed share of that space, the least recently used entries stay on file instead of in every conversation, and the assistant is asked to tidy them up as it goes. Nothing is deleted, and an affected installation is back to normal on its next message.",
+        "Marlen keeps running when you close the window. On Windows it stays in the system tray, where its icon reopens it and its menu quits it, so scheduled automations carry on instead of stopping until you next open the app.",
+        'New under Settings, Preferences: "Start with the computer". Marlen then starts in the background when you log in, so your automations run without you opening it first.',
+        "You are now told when something needs you. A run that fails, and a run that leaves a draft waiting for approval, both notify you even when that automation's completion notice is switched off. The app icon carries the number of drafts waiting for approval.",
+        "A reply can be stopped. While the assistant is working, the send button becomes a stop button; stopping keeps what it had already written.",
+        "If the part of Marlen that runs on your computer stops unexpectedly, it now starts again by itself instead of closing the app with an error.",
+      ],
+      de: [
+        "Chats beginnen nicht mehr mit vollem Kontext. Alles, was sich der Assistent gemerkt hat, wurde vollständig in jede Unterhaltung geladen, sodass bei längerer Nutzung schon ein neuer Chat ohne Platz startete und die erste Nachricht ablehnte. Das Gedächtnis hat jetzt einen festen Anteil an diesem Platz, länger nicht genutzte Einträge bleiben als Datei erhalten statt in jeder Unterhaltung mitzureisen, und der Assistent räumt sie nach und nach auf. Nichts wird gelöscht, und eine betroffene Installation ist mit der nächsten Nachricht wieder normal.",
+        "Marlen läuft weiter, wenn Sie das Fenster schließen. Unter Windows bleibt die App im Infobereich, das Symbol öffnet sie wieder, das Menü beendet sie. Geplante Automatisierungen laufen damit weiter, statt bis zum nächsten Öffnen zu pausieren.",
+        'Neu unter Einstellungen, Darstellung & Sprache: "Mit dem Computer starten". Marlen startet dann beim Anmelden im Hintergrund, damit Ihre Automatisierungen laufen, ohne dass Sie die App vorher öffnen.',
+        "Sie erfahren jetzt, wenn etwas auf Sie wartet. Ein fehlgeschlagener Lauf und ein Lauf, der einen Entwurf zur Freigabe hinterlässt, melden sich auch dann, wenn die Fertigmeldung dieser Automatisierung ausgeschaltet ist. Das App-Symbol zeigt die Zahl der Entwürfe, die auf Freigabe warten.",
+        "Eine Antwort lässt sich stoppen. Während der Assistent arbeitet, wird aus dem Senden-Knopf ein Stopp-Knopf; das bereits Geschriebene bleibt erhalten.",
+        "Hört der Teil von Marlen, der auf Ihrem Computer läuft, unerwartet auf, startet er jetzt von selbst neu, statt die App mit einer Fehlermeldung zu schließen.",
+      ],
+    },
+  },
+  {
     version: "0.4.4",
     date: "2026-08-04",
     notes: {
