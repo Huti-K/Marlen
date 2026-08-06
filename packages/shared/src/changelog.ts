@@ -13,6 +13,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.4.6",
+    date: "2026-08-06",
+    notes: {
+      en: [
+        "Marlen's code and releases moved to their new home on GitHub, the Oktami Labs organization. Updates keep arriving in the app as before, links in the app now point to the new location, and nothing needs doing on your side.",
+      ],
+      de: [
+        "Der Quellcode und die Versionen von Marlen sind auf GitHub umgezogen, in die Organisation Oktami Labs. Updates kommen wie gewohnt in der App an, Links in der App zeigen auf den neuen Ort, und auf Ihrer Seite ist nichts zu tun.",
+      ],
+    },
+  },
+  {
     version: "0.4.5",
     date: "2026-08-04",
     notes: {
