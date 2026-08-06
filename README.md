@@ -11,7 +11,7 @@ stays on your computer.
 ## Download
 
 Grab the macOS or Windows installer from the
-[latest release](https://github.com/Huti-K/Marlen/releases/latest). The app
+[latest release](https://github.com/Oktami-Labs/marlen/releases/latest). The app
 updates itself when a new release is published.
 
 (macOS, until builds are signed: allow the app once via System Settings →

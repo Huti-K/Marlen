@@ -39,8 +39,8 @@ files:
 
 publish:
   provider: github
-  owner: Huti-K
-  repo: Marlen
+  owner: Oktami-Labs
+  repo: marlen
 
 mac:
   category: public.app-category.productivity

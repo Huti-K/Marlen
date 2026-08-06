@@ -10,7 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { type DesktopAppInfo, desktopBridge, type UpdateCheckStatus } from "@/lib/desktop";
 import { cn, openExternal } from "@/lib/utils";
 
-const REPO_SLUG = "Huti-K/Marlen";
+const REPO_SLUG = "Oktami-Labs/marlen";
 const REPO_URL = `https://github.com/${REPO_SLUG}`;
 /** Mirrors appId in apps/desktop/electron-builder.yml. */
 const BUNDLE_ID = "email.marlen.desktop";
